@@ -34,7 +34,7 @@ layout (std430, set = 1, binding = 2) readonly restrict buffer InstanceSelected 
 };
 
 void main() {
-  position = vec3(mat4(1.0f) * aPos);
+  position = vec3(worldPosMat[gl_InstanceIndex + worldPosOffset] * vec4(aPos.x, aPos.y, aPos.z, 1.0));
 
   mat4 modelMat = worldPosMat[gl_InstanceIndex + worldPosOffset];
   gl_Position = projection * view * modelMat * vec4(aPos.x, aPos.y, aPos.z, 1.0);

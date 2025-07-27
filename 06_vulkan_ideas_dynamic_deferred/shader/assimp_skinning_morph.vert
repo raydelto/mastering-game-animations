@@ -34,7 +34,7 @@ layout (std430, set = 1, binding = 1) readonly restrict buffer BoneMatrices {
 };
 
 layout (std430, set = 1, binding = 2) readonly restrict buffer WorldPosMatrices {
-  mat4 worldPos[];
+  mat4 worldPosMat[];
 };
 
 layout (std430, set = 1, binding = 3) readonly restrict buffer InstanceSelected {
@@ -58,7 +58,7 @@ void main() {
     aBoneWeight.z * boneMat[aBoneNum.z + skinMatOffset] +
     aBoneWeight.w * boneMat[aBoneNum.w + skinMatOffset];
 
-  mat4 worldPosSkinMat = worldPos[gl_InstanceIndex + worldPosOffset] * skinMat;
+  mat4 worldPosSkinMat = worldPosMat[gl_InstanceIndex + worldPosOffset] * skinMat;
 
   /* y and z data contain the offset into the morph anim buffer */
   int morphAnimIndex = int(vertsPerMorphAnim[gl_InstanceIndex + worldPosOffset].y *
@@ -67,7 +67,8 @@ void main() {
   vec4 origVertex = vec4(aPos.x, aPos.y, aPos.z, 1.0);
   vec4 morphVertex = vec4(morphVertices[gl_VertexIndex + morphAnimIndex].position.xyz, 1.0);
 
-  position = vec3(mat4(1.0f) * aPos);
+  position = vec3(worldPosMat[gl_InstanceIndex + worldPosOffset] * vec4(aPos.x, aPos.y, aPos.z, 1.0));
+
   gl_Position = projection * view * worldPosSkinMat *
     mix(origVertex, morphVertex, vertsPerMorphAnim[gl_InstanceIndex + worldPosOffset].x);
 

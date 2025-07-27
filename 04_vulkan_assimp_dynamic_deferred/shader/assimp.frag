@@ -10,8 +10,8 @@ layout (location = 3) out vec4 outNormal;
 
 layout (set = 0, binding = 0) uniform sampler2D tex;
 
-layout (constant_id = 0) const float NEAR_PLANE = 0.01f;
-layout (constant_id = 1) const float FAR_PLANE = 25.0f;
+const float NEAR_PLANE = 0.1;
+const float FAR_PLANE = 500.0;
 
 float linearDepth(float depth) {
   float z = depth * 2.0f - 1.0f;

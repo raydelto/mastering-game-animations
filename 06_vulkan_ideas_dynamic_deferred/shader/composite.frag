@@ -40,11 +40,14 @@ void main() {
   float diff = max(dot(normal, normalize(vec3(lightDir))), 0.0);
   vec3 diffuse = diff * vec3(lightColor) * albedo.rgb;
 
+  float fogAmount = 1.0 - clamp(exp(-pow(fogDensity * fragDepth, 2.0)), 0.0, 1.0);
+  vec4 fogColor = 0.25 * vec4(vec3(lightColor), 1.0);
+
   //outColor = vec4((normal + 1.0) / 2.0, 1.0);
   //outColor = vec4(fragPos, 1.0);
   //outColor = vec4(fragDepth / 16.0);
   //outColor = albedo;
 
-  outColor = vec4(ambient + diffuse, 1.0);
+  outColor = mix(vec4(ambient + diffuse, 1.0), fogColor, fogAmount);
   outColor.rgb = sRGB(outColor.rgb);
 }

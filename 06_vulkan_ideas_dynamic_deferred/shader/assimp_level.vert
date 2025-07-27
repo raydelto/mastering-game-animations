@@ -29,7 +29,7 @@ layout (std430, set = 1, binding = 1) readonly restrict buffer WorldTransformMat
 };
 
 void main() {
-  position = vec3(mat4(1.0f) * aPos);
+  position = vec3(worldTransformMat[worldPosOffset] * vec4(aPos.x, aPos.y, aPos.z, 1.0));
 
   mat4 levelMat = worldTransformMat[worldPosOffset];
   gl_Position = projection * view * levelMat * vec4(aPos.x, aPos.y, aPos.z, 1.0);
