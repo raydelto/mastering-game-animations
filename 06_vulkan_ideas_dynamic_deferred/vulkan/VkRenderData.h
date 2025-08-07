@@ -217,7 +217,7 @@ struct VkRenderData {
   float rdSelectedInstanceHighlightValue = 1.0f;
 
   appMode rdApplicationMode = appMode::edit;
-  std::unordered_map<appMode, std::string> mAppModeMap{};
+  std::unordered_map<appMode, std::string> rdAppModeMap{};
 
   instanceEditMode rdInstanceEditMode = instanceEditMode::move;
 

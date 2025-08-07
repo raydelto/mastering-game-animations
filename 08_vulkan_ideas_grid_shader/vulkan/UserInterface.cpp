@@ -3600,23 +3600,20 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
   }
 
   if (ImGui::CollapsingHeader("Debug")) {
-    ImGui::Indent();
-    if (ImGui::CollapsingHeader("Vulkan images")) {
-      int32_t imageHeight = 200;
-      int32_t imageWidth = renderData.rdHeight > 0 ? imageHeight * static_cast<float>(renderData.rdWidth) / renderData.rdHeight : 0;
+    int32_t imageHeight = 200;
+    int32_t imageWidth = renderData.rdHeight > 0 ? imageHeight * static_cast<float>(renderData.rdWidth) / renderData.rdHeight : 0;
 
-      ImGui::Text("Albedo");
-      ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.color.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Text("Albedo");
+    ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.color.descriptorSet), ImVec2(imageWidth, imageHeight));
 
-      ImGui::Text("Position");
-      ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.position.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Text("Position");
+    ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.position.descriptorSet), ImVec2(imageWidth, imageHeight));
 
-      ImGui::Text("Normal");
-      ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.normal.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Text("Normal");
+    ImGui::Image(static_cast<ImTextureID>(renderData.gBuffer.normal.descriptorSet), ImVec2(imageWidth, imageHeight));
 
-      ImGui::Text("Selection");
-      ImGui::Image(static_cast<ImTextureID>(renderData.rdSelectionImageUIDescriptorset), ImVec2(imageWidth, imageHeight));
-    }
+    ImGui::Text("Selection");
+    ImGui::Image(static_cast<ImTextureID>(renderData.rdSelectionImageUIDescriptorset), ImVec2(imageWidth, imageHeight));
   }
 
   ImGui::End();
@@ -3791,7 +3788,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
   ImGui::AlignTextToFramePadding();
   ImGui::Text("Mode (F10):");
   ImGui::SameLine();
-  if (ImGui::Button(renderData.mAppModeMap.at(renderData.rdApplicationMode).c_str())) {
+  if (ImGui::Button(renderData.rdAppModeMap.at(renderData.rdApplicationMode).c_str())) {
     modInstCamData.micSsetAppModeCallbackFunction(++renderData.rdApplicationMode);
   }
 
@@ -3803,10 +3800,10 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
   ImGui::SameLine();
   ImGui::PushItemWidth(75.0f);
   if (ImGui::BeginCombo("##AppStateCombo",
-    renderData.mAppModeMap.at(renderData.rdApplicationMode).c_str())) {
+    renderData.rdAppModeMap.at(renderData.rdApplicationMode).c_str())) {
     for (int i = 0; i < static_cast<int>(appMode::NUM); ++i) {
       const bool isSelected = (static_cast<int>(mode) == i);
-      if (ImGui::Selectable(renderData.mAppModeMap[static_cast<appMode>(i)].c_str(), isSelected)) {
+      if (ImGui::Selectable(renderData.rdAppModeMap[static_cast<appMode>(i)].c_str(), isSelected)) {
         modInstCamData.micSsetAppModeCallbackFunction(static_cast<appMode>(i));
       }
 

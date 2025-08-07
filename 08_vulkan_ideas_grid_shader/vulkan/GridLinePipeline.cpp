@@ -94,7 +94,7 @@ bool GridLinePipeline::init(VkRenderData& renderData, std::vector<VkFormat> colo
   VkPipelineDepthStencilStateCreateInfo depthStencilInfo{};
   depthStencilInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
   depthStencilInfo.depthTestEnable = VK_TRUE;
-  depthStencilInfo.depthWriteEnable = VK_TRUE;
+  depthStencilInfo.depthWriteEnable = VK_FALSE;
   depthStencilInfo.depthCompareOp = VK_COMPARE_OP_LESS;
   depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
   depthStencilInfo.minDepthBounds = 0.0f;

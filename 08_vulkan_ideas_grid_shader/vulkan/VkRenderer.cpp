@@ -46,8 +46,8 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRandomEngine = std::default_random_engine(seed);
 
   /* init app mode map first */
-  mRenderData.mAppModeMap[appMode::edit] = "Edit";
-  mRenderData.mAppModeMap[appMode::view] = "View";
+  mRenderData.rdAppModeMap[appMode::edit] = "Edit";
+  mRenderData.rdAppModeMap[appMode::view] = "View";
 
   /* save orig window title, add current mode */
   mOrigWindowTitle = mModelInstCamData.micGetWindowTitleFunction();
@@ -4590,7 +4590,7 @@ bool VkRenderer::getConfigDirtyFlag() {
 
 void VkRenderer::setModeInWindowTitle() {
   mModelInstCamData.micSetWindowTitleFunction(mOrigWindowTitle + " (" +
-  mRenderData.mAppModeMap.at(mRenderData.rdApplicationMode) + " Mode)" +
+  mRenderData.rdAppModeMap.at(mRenderData.rdApplicationMode) + " Mode)" +
   mWindowTitleDirtySign);
 }
 
@@ -8134,8 +8134,8 @@ bool VkRenderer::draw(float deltaTime) {
     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
     .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
+    .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    .image = mRenderData.rdSelectionImage,
     .subresourceRange = {
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
@@ -8145,9 +8145,6 @@ bool VkRenderer::draw(float deltaTime) {
     }
   };
 
-  uiImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-  uiImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  uiImageMemoryBarrier.image = mRenderData.rdSelectionImage;
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffer,
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask

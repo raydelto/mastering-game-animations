@@ -3787,7 +3787,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
   ImGui::AlignTextToFramePadding();
   ImGui::Text("Mode (F10):");
   ImGui::SameLine();
-  if (ImGui::Button(renderData.mAppModeMap.at(renderData.rdApplicationMode).c_str())) {
+  if (ImGui::Button(renderData.rdAppModeMap.at(renderData.rdApplicationMode).c_str())) {
     modInstCamData.micSsetAppModeCallbackFunction(++renderData.rdApplicationMode);
   }
 
@@ -3799,10 +3799,10 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
   ImGui::SameLine();
   ImGui::PushItemWidth(75.0f);
   if (ImGui::BeginCombo("##AppStateCombo",
-    renderData.mAppModeMap.at(renderData.rdApplicationMode).c_str())) {
+    renderData.rdAppModeMap.at(renderData.rdApplicationMode).c_str())) {
     for (int i = 0; i < static_cast<int>(appMode::NUM); ++i) {
       const bool isSelected = (static_cast<int>(mode) == i);
-      if (ImGui::Selectable(renderData.mAppModeMap[static_cast<appMode>(i)].c_str(), isSelected)) {
+      if (ImGui::Selectable(renderData.rdAppModeMap[static_cast<appMode>(i)].c_str(), isSelected)) {
         modInstCamData.micSsetAppModeCallbackFunction(static_cast<appMode>(i));
       }
 
