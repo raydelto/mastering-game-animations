@@ -693,7 +693,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
   if (ImGui::CollapsingHeader("Deferred Shading")) {
     ImGui::AlignTextToFramePadding();
-    ImGui::Text("Deffered Output: ");
+    ImGui::Text("Deferred Output: ");
     ImGui::SameLine();
     if (ImGui::RadioButton("Composite##CompositeOut",
       renderData.rdCompositeDebug == compositeDebugDisplay::composite)) {
