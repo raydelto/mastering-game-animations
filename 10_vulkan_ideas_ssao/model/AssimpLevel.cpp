@@ -173,17 +173,17 @@ void AssimpLevel::draw(VkRenderData &renderData) {
     }
 
     if (diffuseTex.image != VK_NULL_HANDLE) {
-      vkCmdBindDescriptorSets(renderData.rdCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      vkCmdBindDescriptorSets(renderData.rdCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         renderData.rdAssimpLevelPipelineLayout, 0, 1, &diffuseTex.descriptorSet, 0, nullptr);
     } else {
-      vkCmdBindDescriptorSets(renderData.rdCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      vkCmdBindDescriptorSets(renderData.rdCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         renderData.rdAssimpLevelPipelineLayout, 0, 1, &mPlaceholderTexture.descriptorSet, 0, nullptr);
     }
 
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(renderData.rdCommandBuffer, 0, 1, &mVertexBuffers.at(i).buffer, &offset);
-    vkCmdBindIndexBuffer(renderData.rdCommandBuffer, mIndexBuffers.at(i).buffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(renderData.rdCommandBuffer, static_cast<uint32_t>(mesh.indices.size()), 1, 0, 0, 0);
+    vkCmdBindVertexBuffers(renderData.rdCommandBuffers[renderData.currentFrame], 0, 1, &mVertexBuffers.at(i).buffer, &offset);
+    vkCmdBindIndexBuffer(renderData.rdCommandBuffers[renderData.currentFrame], mIndexBuffers.at(i).buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(renderData.rdCommandBuffers[renderData.currentFrame], static_cast<uint32_t>(mesh.indices.size()), 1, 0, 0, 0);
   }
 }
 

@@ -1484,7 +1484,7 @@ bool VkRenderer::draw(float deltaTime) {
   submitInfo.pWaitSemaphores = &mRenderData.rdPresentSemaphores[mRenderData.currentFrame];
 
   submitInfo.signalSemaphoreCount = 1;
-  submitInfo.pSignalSemaphores = &mRenderData.rdRenderSemaphores[mRenderData.currentFrame];
+  submitInfo.pSignalSemaphores = &mRenderData.rdRenderSemaphores[imageIndex];
 
   submitInfo.commandBufferCount = 1;
   submitInfo.pCommandBuffers = &mRenderData.rdCommandBuffers[mRenderData.currentFrame];
@@ -1498,7 +1498,7 @@ bool VkRenderer::draw(float deltaTime) {
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
-  presentInfo.pWaitSemaphores = &mRenderData.rdRenderSemaphores[mRenderData.currentFrame];
+  presentInfo.pWaitSemaphores = &mRenderData.rdRenderSemaphores[imageIndex];
 
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mRenderData.rdVkbSwapchain.swapchain;

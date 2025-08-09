@@ -478,18 +478,18 @@ struct VkRenderData {
   VkCommandPool rdCommandPool = VK_NULL_HANDLE;
   VkCommandPool rdComputeCommandPool = VK_NULL_HANDLE;
 
-  VkCommandBuffer rdCommandBuffer = VK_NULL_HANDLE;
-  VkCommandBuffer rdComputeCommandBuffer = VK_NULL_HANDLE;
+  std::vector<VkCommandBuffer> rdCommandBuffers{};
+  std::vector<VkCommandBuffer> rdComputeCommandBuffers{};
 
-  VkSemaphore rdPresentSemaphore = VK_NULL_HANDLE;
-  VkSemaphore rdRenderSemaphore = VK_NULL_HANDLE;
-  VkSemaphore rdGraphicSemaphore = VK_NULL_HANDLE;
-  VkSemaphore rdComputeSemaphore = VK_NULL_HANDLE;
-  VkSemaphore rdCollisionSemaphore = VK_NULL_HANDLE;
+  std::vector<VkSemaphore> rdPresentSemaphores{};
+  std::vector<VkSemaphore> rdRenderSemaphores{};
+  std::vector<VkSemaphore> rdGraphicSemaphores{};
+  std::vector<VkSemaphore> rdComputeSemaphores{};
+  std::vector<VkSemaphore> rdCollisionSemaphores{};
 
-  VkFence rdRenderFence = VK_NULL_HANDLE;
-  VkFence rdComputeFence = VK_NULL_HANDLE;
-  VkFence rdCollisionFence = VK_NULL_HANDLE;
+  std::vector<VkFence> rdRenderFences{};
+  std::vector<VkFence> rdComputeFences{};
+  std::vector<VkFence> rdCollisionFences{};
 
   VkDescriptorSetLayout rdAssimpDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdAssimpSkinningDescriptorLayout = VK_NULL_HANDLE;

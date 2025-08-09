@@ -332,14 +332,19 @@ bool VkHelper::createCommandPools(VkRenderData& renderData) {
 }
 
 bool VkHelper::createCommandBuffers(VkRenderData& renderData) {
-  if (!CommandBuffer::init(renderData,renderData.rdCommandPool, renderData.rdCommandBuffer)) {
-    Logger::log(1, "%s error: could not create command buffers\n", __FUNCTION__);
-    return false;
-  }
+  renderData.rdCommandBuffers.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdComputeCommandBuffers.resize(renderData.MAX_FRAMES_IN_FLIGHT);
 
-  if (!CommandBuffer::init(renderData,renderData.rdComputeCommandPool, renderData.rdComputeCommandBuffer)) {
-    Logger::log(1, "%s error: could not create compute command buffers\n", __FUNCTION__);
-    return false;
+  for (int i = 0; i < renderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+    if (!CommandBuffer::init(renderData,renderData.rdCommandPool, renderData.rdCommandBuffers[i])) {
+      Logger::log(1, "%s error: could not create command buffers\n", __FUNCTION__);
+      return false;
+    }
+
+    if (!CommandBuffer::init(renderData,renderData.rdComputeCommandPool, renderData.rdComputeCommandBuffers[i])) {
+      Logger::log(1, "%s error: could not create compute command buffers\n", __FUNCTION__);
+      return false;
+    }
   }
 
   return true;
@@ -3625,26 +3630,26 @@ void VkHelper::runComputeShaders(VkRenderData& renderData, std::shared_ptr<Assim
 
   /* node transformation */
   if (model->hasHeadMovementAnimationsMapped()) {
-    vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+    vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       renderData.rdAssimpComputeHeadMoveTransformPipeline);
   } else {
-    vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+    vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       renderData.rdAssimpComputeTransformPipeline);
   }
 
   VkDescriptorSet &modelTransformDescriptorSet = model->getTransformDescriptorSet();
   std::vector<VkDescriptorSet> transformComputeSets = { renderData.rdAssimpComputeTransformDescriptorSet, modelTransformDescriptorSet };
-  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeTransformaPipelineLayout, 0, static_cast<uint32_t>(transformComputeSets.size()), transformComputeSets.data(), 0, 0);
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = modelOffset;
   renderData.rdComputeModelData.pkInstanceOffset = instanceOffset;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeTransformaPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeTransformaPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier between the compute shaders
    * wait for TRS buffer to be written  */
@@ -3653,35 +3658,35 @@ void VkHelper::runComputeShaders(VkRenderData& renderData, std::shared_ptr<Assim
   trsBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   trsBufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
     &trsBufferBarrier, 0, nullptr, 0, nullptr);
 
   /* matrix multiplication */
-  vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeMatrixMultPipeline);
 
   if (useEmptyBoneOffsets) {
     VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultEmptyOffsetDescriptorSet();
     std::vector<VkDescriptorSet> matrixMultComputeSets =
       { renderData.rdAssimpComputeMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
-    vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+    vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       renderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
   } else {
     VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultDescriptorSet();
     std::vector<VkDescriptorSet> matrixMultComputeSets =
       { renderData.rdAssimpComputeMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
-    vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+    vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       renderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
   }
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = modelOffset;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeMatrixMultPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeMatrixMultPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier after compute shader
    * wait for bone matrix buffer to be written  */
@@ -3690,7 +3695,7 @@ void VkHelper::runComputeShaders(VkRenderData& renderData, std::shared_ptr<Assim
   boneMatrixBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   boneMatrixBufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
     &boneMatrixBufferBarrier, 0, nullptr, 0, nullptr);
 }
@@ -3700,22 +3705,22 @@ void VkHelper::runBoundingSphereComputeShaders(VkRenderData& renderData, std::sh
   uint32_t numberOfBones = static_cast<uint32_t>(model->getBoneList().size());
 
   /* node transformation */
-  vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeTransformPipeline);
 
   VkDescriptorSet &modelTransformDescriptorSet = model->getTransformDescriptorSet();
   std::vector<VkDescriptorSet> transformComputeSets = { renderData.rdAssimpComputeSphereTransformDescriptorSet, modelTransformDescriptorSet };
-  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeTransformaPipelineLayout, 0, static_cast<uint32_t>(transformComputeSets.size()), transformComputeSets.data(), 0, 0);
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = 0;
   renderData.rdComputeModelData.pkInstanceOffset = 0;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeTransformaPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeTransformaPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier between the compute shaders
    * wait for TRS buffer to be written  */
@@ -3724,28 +3729,28 @@ void VkHelper::runBoundingSphereComputeShaders(VkRenderData& renderData, std::sh
   trsBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   trsBufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
     &trsBufferBarrier, 0, nullptr, 0, nullptr);
 
   /* matrix multiplication */
-  vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeMatrixMultPipeline);
 
   VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultEmptyOffsetDescriptorSet();
   std::vector<VkDescriptorSet> matrixMultComputeSets =
     { renderData.rdAssimpComputeSphereMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
-  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = 0;
   renderData.rdComputeModelData.pkInstanceOffset = 0;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeMatrixMultPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeMatrixMultPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier after compute shader
    * wait for bone matrix buffer to be written  */
@@ -3754,26 +3759,26 @@ void VkHelper::runBoundingSphereComputeShaders(VkRenderData& renderData, std::sh
   boneMatrixBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   boneMatrixBufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
     &boneMatrixBufferBarrier, 0, nullptr, 0, nullptr);
 
-  vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
                     renderData.rdAssimpComputeBoundingSpheresPipeline);
 
   VkDescriptorSet &boundingSpheresDescriptorSet = model->getBoundingSphereDescriptorSet();
   std::vector<VkDescriptorSet> boundingSphereComputeSets = { renderData.rdAssimpComputeBoundingSpheresDescriptorSet, boundingSpheresDescriptorSet };
-  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeBoundingSpheresPipelineLayout, 0, static_cast<uint32_t>(boundingSphereComputeSets.size()), boundingSphereComputeSets.data(), 0, 0);
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = modelOffset;
   renderData.rdComputeModelData.pkInstanceOffset = 0;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeBoundingSpheresPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeBoundingSpheresPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier between the compute shaders
    * wait for bounding sphere buffer to be written  */
@@ -3782,7 +3787,7 @@ void VkHelper::runBoundingSphereComputeShaders(VkRenderData& renderData, std::sh
   boundingSphereBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   boundingSphereBufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
     &boundingSphereBufferBarrier, 0, nullptr, 0, nullptr);
 }
@@ -3795,38 +3800,38 @@ bool VkHelper::runIKComputeShaders(VkRenderData& renderData, std::shared_ptr<Ass
   ShaderStorageBuffer::uploadSsboData(renderData, renderData.rdIKTRSMatrixBuffer, renderData.rdTRSData, modelOffset);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  VkResult result = vkResetFences(renderData.rdVkbDevice.device, 1, &renderData.rdComputeFence);
+  VkResult result = vkResetFences(renderData.rdVkbDevice.device, 1, &renderData.rdComputeFences[renderData.currentFrame]);
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
     return false;
   }
-  if (!CommandBuffer::reset(renderData.rdComputeCommandBuffer, 0)) {
+  if (!CommandBuffer::reset(renderData.rdComputeCommandBuffers[renderData.currentFrame], 0)) {
     Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!CommandBuffer::beginSingleShot(renderData.rdComputeCommandBuffer)) {
+  if (!CommandBuffer::beginSingleShot(renderData.rdComputeCommandBuffers[renderData.currentFrame])) {
     Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
     return false;
   }
 
   /* recalculate all TRS matrices */
-  vkCmdBindPipeline(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeMatrixMultPipeline);
 
   VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultDescriptorSet();
   std::vector<VkDescriptorSet> matrixMultComputeSets =
     { renderData.rdAssimpComputeIKDescriptorSet, modelMatrixMultDescriptorSet };
-  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindDescriptorSets(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     renderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
 
   renderData.rdUploadToUBOTimer.start();
   renderData.rdComputeModelData.pkModelOffset = modelOffset;
-  vkCmdPushConstants(renderData.rdComputeCommandBuffer, renderData.rdAssimpComputeMatrixMultPipelineLayout,
+  vkCmdPushConstants(renderData.rdComputeCommandBuffers[renderData.currentFrame], renderData.rdAssimpComputeMatrixMultPipelineLayout,
     VK_SHADER_STAGE_COMPUTE_BIT, 0, static_cast<uint32_t>(sizeof(VkComputePushConstants)), &renderData.rdComputeModelData);
   renderData.rdUploadToUBOTime += renderData.rdUploadToUBOTimer.stop();
 
-  vkCmdDispatch(renderData.rdComputeCommandBuffer, numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
+  vkCmdDispatch(renderData.rdComputeCommandBuffers[renderData.currentFrame], numberOfBones, static_cast<uint32_t>(std::ceil(numInstances / 32.0f)), 1);
 
   /* memroy barrier after compute shader
    * wait for bone matrix buffer to be written  */
@@ -3835,11 +3840,11 @@ bool VkHelper::runIKComputeShaders(VkRenderData& renderData, std::shared_ptr<Ass
   boneMatrixBufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
   boneMatrixBufferBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
 
-  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+  vkCmdPipelineBarrier(renderData.rdComputeCommandBuffers[renderData.currentFrame], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
     VK_PIPELINE_STAGE_HOST_BIT, 0, 1,
      &boneMatrixBufferBarrier, 0, nullptr, 0, nullptr);
 
-  if (!CommandBuffer::end(renderData.rdComputeCommandBuffer)) {
+  if (!CommandBuffer::end(renderData.rdComputeCommandBuffers[renderData.currentFrame])) {
     Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
     return false;
   }
@@ -3848,16 +3853,16 @@ bool VkHelper::runIKComputeShaders(VkRenderData& renderData, std::shared_ptr<Ass
   VkSubmitInfo computeSubmitInfo{};
   computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   computeSubmitInfo.commandBufferCount = 1;
-  computeSubmitInfo.pCommandBuffers = &renderData.rdComputeCommandBuffer;
+  computeSubmitInfo.pCommandBuffers = &renderData.rdComputeCommandBuffers[renderData.currentFrame];
 
-  result = vkQueueSubmit(renderData.rdComputeQueue, 1, &computeSubmitInfo, renderData.rdComputeFence);
+  result = vkQueueSubmit(renderData.rdComputeQueue, 1, &computeSubmitInfo, renderData.rdComputeFences[renderData.currentFrame]);
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
     return false;
   };
 
   /* we must wait for the compute shaders to finish before we can read the data */
-  result = vkWaitForFences(renderData.rdVkbDevice.device, 1, &renderData.rdComputeFence, VK_TRUE, UINT64_MAX);
+  result = vkWaitForFences(renderData.rdVkbDevice.device, 1, &renderData.rdComputeFences[renderData.currentFrame], VK_TRUE, UINT64_MAX);
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
     return false;
@@ -3875,8 +3880,11 @@ bool VkHelper::runIKComputeShaders(VkRenderData& renderData, std::shared_ptr<Ass
 
 void VkHelper::cleanup(VkRenderData& renderData) {
   SyncObjects::cleanup(renderData);
-  CommandBuffer::cleanup(renderData, renderData.rdCommandPool, renderData.rdCommandBuffer);
-  CommandBuffer::cleanup(renderData, renderData.rdComputeCommandPool, renderData.rdComputeCommandBuffer);
+
+  for (int i = 0; i < renderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+    CommandBuffer::cleanup(renderData, renderData.rdCommandPool, renderData.rdCommandBuffers[i]);
+    CommandBuffer::cleanup(renderData, renderData.rdComputeCommandPool, renderData.rdComputeCommandBuffers[i]);
+  }
   CommandPool::cleanup(renderData, renderData.rdCommandPool);
   CommandPool::cleanup(renderData, renderData.rdComputeCommandPool);
 

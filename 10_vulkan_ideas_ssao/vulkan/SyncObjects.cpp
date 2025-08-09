@@ -10,27 +10,40 @@ bool SyncObjects::init(VkRenderData &renderData) {
 
   VkSemaphoreCreateInfo semaphoreInfo{};
   semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  renderData.rdPresentSemaphores.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdRenderSemaphores.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdComputeSemaphores.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdGraphicSemaphores.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdCollisionSemaphores.resize(renderData.MAX_FRAMES_IN_FLIGHT);
 
-  if (vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdPresentSemaphore) != VK_SUCCESS ||
-      vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdRenderSemaphore) != VK_SUCCESS ||
-      vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdComputeSemaphore) != VK_SUCCESS ||
-      vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdGraphicSemaphore) != VK_SUCCESS ||
+  renderData.rdRenderFences.resize(renderData.MAX_FRAMES_IN_FLIGHT);
+  renderData.rdComputeFences.resize(renderData.MAX_FRAMES_IN_FLIGHT);
 
-      vkCreateFence(renderData.rdVkbDevice.device, &fenceInfo, nullptr, &renderData.rdRenderFence) != VK_SUCCESS ||
-      vkCreateFence(renderData.rdVkbDevice.device, &fenceInfo, nullptr, &renderData.rdComputeFence) != VK_SUCCESS) {
-    Logger::log(1, "%s error: failed to init sync objects\n", __FUNCTION__);
-    return false;
+  for (int i = 0; i < renderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+    if (vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdPresentSemaphores[i]) != VK_SUCCESS ||
+       vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdRenderSemaphores[i]) != VK_SUCCESS ||
+       vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdComputeSemaphores[i]) != VK_SUCCESS ||
+       vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdGraphicSemaphores[i]) != VK_SUCCESS ||
+       vkCreateSemaphore(renderData.rdVkbDevice.device, &semaphoreInfo, nullptr, &renderData.rdCollisionSemaphores[i]) != VK_SUCCESS ||
+
+       vkCreateFence(renderData.rdVkbDevice.device, &fenceInfo, nullptr, &renderData.rdRenderFences[i]) != VK_SUCCESS ||
+       vkCreateFence(renderData.rdVkbDevice.device, &fenceInfo, nullptr, &renderData.rdComputeFences[i]) != VK_SUCCESS) {
+       Logger::log(1, "%s error: failed to init sync objects\n", __FUNCTION__);
+       return false;
+    }
   }
-
   return true;
 }
 
 void SyncObjects::cleanup(VkRenderData &renderData) {
-  vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdPresentSemaphore, nullptr);
-  vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdRenderSemaphore, nullptr);
-  vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdComputeSemaphore, nullptr);
-  vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdGraphicSemaphore, nullptr);
+  for (int i = 0; i < renderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+    vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdPresentSemaphores[i], nullptr);
+    vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdRenderSemaphores[i], nullptr);
+    vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdComputeSemaphores[i], nullptr);
+    vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdGraphicSemaphores[i], nullptr);
+    vkDestroySemaphore(renderData.rdVkbDevice.device, renderData.rdCollisionSemaphores[i], nullptr);
 
-  vkDestroyFence(renderData.rdVkbDevice.device, renderData.rdRenderFence, nullptr);
-  vkDestroyFence(renderData.rdVkbDevice.device, renderData.rdComputeFence, nullptr);
+    vkDestroyFence(renderData.rdVkbDevice.device, renderData.rdRenderFences[i], nullptr);
+    vkDestroyFence(renderData.rdVkbDevice.device, renderData.rdComputeFences[i], nullptr);
+  }
 }

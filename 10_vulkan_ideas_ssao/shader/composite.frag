@@ -51,7 +51,7 @@ float linearDepth(float depth) {
 }
 
 void main() {
-  // Read G-Buffer values from previous sub pass
+  /* Read G-Buffer values from previous sub pass */
   float fragDepth = getPosFromDepth(inUV).z;
   vec3 normal = normalize(subpassLoad(inputNormal).rgb * 2.0 - 1.0);
   vec3 albedo = subpassLoad(inputColor).rgb;
@@ -68,7 +68,13 @@ void main() {
   float diff = max(dot(normalize(normal), normalize(vec3(lightDir))), 0.0);
   vec3 diffuse = diff * vec3(lightColor) * albedo.rgb;
 
-  float fogAmount = 1.0 - clamp(exp(-pow(fogDensity * fragDepth, 2.0)), 0.0, 1.0);
+  float fogAmount;
+  /* Fog makes no sense in orthographic projection */
+  if (farPlane == 0.0) {
+    fogAmount = 0.0;
+  } else {
+    fogAmount = 1.0 - clamp(exp(-pow(fogDensity * fragDepth, 2.0)), 0.0, 1.0);
+  }
   vec4 fogColor = 0.25 * vec4(vec3(lightColor), 1.0);
 
   switch (compositeDebug) {

@@ -1607,6 +1607,14 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
   }
 
   if (ImGui::CollapsingHeader("Environment")) {
+    std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
+    CameraSettings camSettings = cam->getCameraSettings();
+
+    if (camSettings.csCamProjection == cameraProjection::orthogonal) {
+      ImGui::BeginDisabled();
+    }
+
+    /* Fog and skybox are not working in orthographic projection */
     ImGui::Text("Draw Skybox:    ");
     ImGui::SameLine();
     ImGui::Checkbox("##DrawSkybox", &renderData.rdDrawSkybox);
@@ -1614,6 +1622,10 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("Fog Density:    ");
     ImGui::SameLine();
     ImGui::SliderFloat("##LevelFogDensity", &renderData.rdFogDensity, 0.0f, 0.1f, "%.3f", flags);
+
+    if (camSettings.csCamProjection == cameraProjection::orthogonal) {
+      ImGui::EndDisabled();
+    }
 
     ImGui::Text("Light Angle E/W:");
     ImGui::SameLine();
@@ -3958,7 +3970,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
 
 void UserInterface::render(VkRenderData& renderData) {
   ImGui::Render();
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffer);
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers[renderData.currentFrame]);
 }
 
 void UserInterface::removeDescriptorSets(VkRenderData& renderData) {
