@@ -1,0 +1,19 @@
+caravan.ogg
+-----------
+"Desert theme" by yd (https://opengameart.org/content/desert-theme)
+Licensed under CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
+
+Factory.ogg
+-----------
+"Factory ambiance" by yd (https://opengameart.org/content/factory-ambiance)
+Licensed under CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
+
+Insistent.ogg
+-------------
+"Insistent: background loop" by yd (https://opengameart.org/content/insistent-background-loop)
+Licensed under CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
+
+ObservingTheStar.ogg
+--------------------
+"Another space background track" by yd (https://opengameart.org/content/another-space-background-track)
+Licensed under CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
