@@ -22,9 +22,12 @@ class AssimpDynLight {
     void setRotation(glm::vec3 rotation);
 
     glm::vec3 getRotation();
+    glm::vec3 getRotationRadians();
 
     glm::vec3 getLightColor();
     float getLightingDistance();
+    float getPointLightCutOffAngle();
+    float getPointLightOuterCutOffAngle();
 
     void rotateLight(float angle);
     void rotateLight(glm::vec3 angles);

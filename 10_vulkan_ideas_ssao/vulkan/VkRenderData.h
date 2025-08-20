@@ -430,11 +430,11 @@ struct VkRenderData {
   VkQueue rdPresentQueue = VK_NULL_HANDLE;
   VkQueue rdComputeQueue = VK_NULL_HANDLE;
 
-  VkImageData rdDepthBufferData = { .format = VK_FORMAT_D32_SFLOAT };
-  VkImageData rdSelectionImageData = { .format = VK_FORMAT_R32_SFLOAT };
-  VkImageData rdSSAOColorBufferData = { .format = VK_FORMAT_R32_SFLOAT };
-  VkImageData rdSSAONoiseBufferData = { .format = VK_FORMAT_R32G32B32A32_SFLOAT }; // we are missing half float support, so use 32 bit here
-  VkImageData rdSSAOBlurBufferData = { .format = VK_FORMAT_R32_SFLOAT };
+  VkImageData rdDepthBufferData{};
+  VkImageData rdSelectionImageData{};
+  VkImageData rdSSAOColorBufferData{};
+  VkImageData rdSSAONoiseBufferData{};
+  VkImageData rdSSAOBlurBufferData{};
 
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdAssimpSkinningPipelineLayout = VK_NULL_HANDLE;

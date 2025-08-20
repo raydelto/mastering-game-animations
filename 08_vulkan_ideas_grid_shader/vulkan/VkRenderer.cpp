@@ -7708,6 +7708,9 @@ bool VkRenderer::draw(float deltaTime) {
   VkClearValue colorClearValue;
   colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
 
+  VkClearValue selectionClearValue;
+  selectionClearValue.color = { { -1.0f } };
+
   /* position stores depth (z) value in a */
   VkClearValue positionClearValue;
   positionClearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -7813,7 +7816,7 @@ bool VkRenderer::draw(float deltaTime) {
   selectionAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   selectionAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   selectionAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  selectionAttachmentInfo.clearValue = colorClearValue;
+  selectionAttachmentInfo.clearValue = selectionClearValue;
 
   VkRenderingAttachmentInfo depthAttachmentInfo {};
   depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;

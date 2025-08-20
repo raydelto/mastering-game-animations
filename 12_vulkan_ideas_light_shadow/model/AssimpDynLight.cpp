@@ -90,12 +90,27 @@ glm::vec3 AssimpDynLight::getRotation() {
   return mDynLightSettings.dlsWorldRotation;
 }
 
+glm::vec3 AssimpDynLight::getRotationRadians() {
+  glm::mat4 rotationMat = glm::mat4_cast(glm::quat(glm::radians(mDynLightSettings.dlsWorldRotation)));
+
+  // rotate a world up vector
+  return glm::vec3(rotationMat * glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+}
+
 glm::vec3 AssimpDynLight::getLightColor() {
   return mDynLightSettings.dlsDiffuseColor;
 }
 
 float AssimpDynLight::getLightingDistance() {
   return mDynLightSettings.dlsLightDistance;
+}
+
+float AssimpDynLight::getPointLightCutOffAngle() {
+  return mDynLightSettings.dlsPointCutOffDegrees;
+}
+
+float AssimpDynLight::getPointLightOuterCutOffAngle() {
+  return mDynLightSettings.dlsPointOuterCutOffDegrees;
 }
 
 void AssimpDynLight::setDynLightSettings(DynamicLightSettings settings) {

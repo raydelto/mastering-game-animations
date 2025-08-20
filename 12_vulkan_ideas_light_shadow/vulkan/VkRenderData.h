@@ -152,9 +152,8 @@ struct DynamicLightData {
   glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
   float distance = 1.0f;
   uint32_t type = 0;
-  // pad for proper alignment of vec4, maybe reused later
-  float pad1;
-  float pad2;
+  float cutoff;
+  float outerCutoff;
 };
 
 struct VkTextureData {
@@ -469,13 +468,12 @@ struct VkRenderData {
   VkQueue rdPresentQueue = VK_NULL_HANDLE;
   VkQueue rdComputeQueue = VK_NULL_HANDLE;
 
-  VkImageData rdDepthBufferData =  { .format = VK_FORMAT_D16_UNORM };
-  VkImageData rdSelectionImageData = { .format = VK_FORMAT_R32_SFLOAT };
-  VkImageData rdSSAOColorBufferData = { .format = VK_FORMAT_R32_SFLOAT };
-  VkImageData rdSSAONoiseBufferData = { .format = VK_FORMAT_R32G32B32A32_SFLOAT }; // we are missing half float support, so use 32 bit here
-  VkImageData rdSSAOBlurBufferData = { .format = VK_FORMAT_R32_SFLOAT };
-  VkImageData rdShadowMapCombinedDepthBufferData = { .format = VK_FORMAT_D16_UNORM};
-
+  VkImageData rdDepthBufferData{};
+  VkImageData rdSelectionImageData{};
+  VkImageData rdSSAOColorBufferData{};
+  VkImageData rdSSAONoiseBufferData{};
+  VkImageData rdSSAOBlurBufferData{};
+  VkImageData rdShadowMapCombinedDepthBufferData{};
   VkImageData rdShadowMapDepthBufferData{};
 
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;

@@ -50,9 +50,10 @@ float computeDepth(vec3 pos) {
 
 float computeLinearDepth(vec3 pos) {
   vec4 clip_space_pos = projection * view * vec4(pos.xyz, 1.0);
-  float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0; // put back between -1 and 1
-  float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near)); // get linear value between 0.01 and 100
-  return linearDepth / far; // normalize
+  float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0;
+  float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near));
+  // normalize
+  return linearDepth / far;
 }
 
 float toSRGB(float x) {

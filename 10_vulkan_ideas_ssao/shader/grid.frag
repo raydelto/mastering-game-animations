@@ -53,7 +53,6 @@ float computeDepth(vec3 pos) {
 float computeLinearDepth(vec3 pos) {
   vec4 clipSpacePos = projectionMat * viewMat * vec4(pos.xyz, 1.0);
   float clipSpaceDepth = (clipSpacePos.z / clipSpacePos.w);
-  // get linear value between 0.01 and 100
   float linearDepth = (nearPlane * farPlane) / (farPlane + nearPlane - clipSpaceDepth * (farPlane - nearPlane));
   // normalize
   return linearDepth / farPlane;

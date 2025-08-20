@@ -59,9 +59,14 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRenderData.rdWidth = width;
   mRenderData.rdHeight = height;
 
-  // depth image format needs to be set here
-  mRenderData.rdDepthBufferData.format = VK_FORMAT_D32_SFLOAT;
+  // image formata needs to be set before Vulkan init
+  mRenderData.rdDepthBufferData.format = VK_FORMAT_D16_UNORM;
   mRenderData.rdSelectionImageData.format = VK_FORMAT_R32_SFLOAT;
+  mRenderData.rdSSAOColorBufferData.format = VK_FORMAT_R32_SFLOAT;
+  // we are missing half float support, so use 32 bit here
+  mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  mRenderData.rdSSAOBlurBufferData.format = VK_FORMAT_R32_SFLOAT;
+  mRenderData.rdShadowMapCombinedDepthBufferData.format = VK_FORMAT_D16_UNORM;
 
   if (!mRenderData.rdWindow) {
     Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
@@ -266,6 +271,15 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mGraphEditor = std::make_shared<GraphEditor>();
   Logger::log(1, "%s: graph editor initialized\n", __FUNCTION__);
 
+  // create glTF model for lights
+  mLightModel = std::make_shared<AssimpModel>();
+  std::string lightModelName = "assets/lightbulb/lightbulb.glb";
+  if (!mLightModel->loadModel(mRenderData, lightModelName)) {
+    Logger::log(1, "%s error: could not load light model '%s'\n", __FUNCTION__, lightModelName.c_str());
+    return false;
+  }
+  Logger::log(1, "%s: light mode '%s' loaded\n", __FUNCTION__, lightModelName.c_str());
+
   // signal graphics semaphore before doing anything else to be able to run compute submit
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -297,15 +311,8 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   //mRenderData.rdShadowMapCascadeData.lightViewProjectionMat.resize(mRenderData.SHADOW_MAP_LAYERS);
   //mRenderData.rdShadowMapCascadeData.splitDepth.resize(mRenderData.SHADOW_MAP_LAYERS);
 
+  // shadow maps need camera, so do after config creation
   updateShadowMapCascades();
-
-  // create glTF model for lights
-  mLightModel = std::make_shared<AssimpModel>();
-  std::string lightModelName = "assets/lightbulb/lightbulb.glb";
-  if (!mLightModel->loadModel(mRenderData, lightModelName)) {
-    Logger::log(1, "%s error: could not load light model '%s'\n", __FUNCTION__, lightModelName.c_str());
-    return false;
-  }
 
   mRenderData.rdFrameTimer.start();
 
@@ -1709,23 +1716,19 @@ void VkRenderer::assignLightIndices() {
 
 void VkRenderer::generateShaderLightData() {
   mRenderData.rdLightData.clear();
-  for (size_t i = 0; i < mModelInstCamData.micDynLights.size(); ++i) {
-    DynamicLightData lightData;
-    lightData.position = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), 1.0f);
-    lightData.rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotation(), 1.0f);
-    lightData.color = glm::vec4(mModelInstCamData.micDynLights.at(i)->getLightColor(), 1.0f);
-    lightData.distance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
+  mRenderData.rdLightData.resize(mModelInstCamData.micDynLights.size());
 
-    mRenderData.rdLightData.emplace_back(lightData);
-  }
+  updateShaderLightData();
 }
 
 void VkRenderer::updateShaderLightData() {
   for (size_t i = 0; i < mRenderData.rdLightData.size(); ++i) {
     mRenderData.rdLightData.at(i).position = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), 1.0f);
-    mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotation(), 1.0f);
+    mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotationRadians(), 1.0f);
     mRenderData.rdLightData.at(i).color = glm::vec4(mModelInstCamData.micDynLights.at(i)->getLightColor(), 1.0f);
     mRenderData.rdLightData.at(i).distance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
+    mRenderData.rdLightData.at(i).cutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightCutOffAngle()));
+    mRenderData.rdLightData.at(i).outerCutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightOuterCutOffAngle()));
   }
 }
 

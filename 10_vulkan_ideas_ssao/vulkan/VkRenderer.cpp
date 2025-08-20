@@ -59,9 +59,13 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRenderData.rdWidth = width;
   mRenderData.rdHeight = height;
 
-  // depth image format needs to be set here
-  mRenderData.rdDepthBufferData.format = VK_FORMAT_D32_SFLOAT;
+  // image formata needs to be set before Vulkan init
+  mRenderData.rdDepthBufferData.format = VK_FORMAT_D16_UNORM;
   mRenderData.rdSelectionImageData.format = VK_FORMAT_R32_SFLOAT;
+  mRenderData.rdSSAOColorBufferData.format = VK_FORMAT_R32_SFLOAT;
+  // we are missing half float support, so use 32 bit here
+  mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  mRenderData.rdSSAOBlurBufferData.format = VK_FORMAT_R32_SFLOAT;
 
   if (!mRenderData.rdWindow) {
     Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
@@ -4579,6 +4583,9 @@ bool VkRenderer::draw(float deltaTime) {
   VkClearValue colorClearValue;
   colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
 
+  VkClearValue selectionClearValue;
+  selectionClearValue.color = { { -1.0f } };
+
   VkClearValue ssaoClearValue;
   ssaoClearValue.color = { { 1.0f } };
 
@@ -4720,7 +4727,7 @@ bool VkRenderer::draw(float deltaTime) {
   selectionAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   selectionAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   selectionAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  selectionAttachmentInfo.clearValue = colorClearValue;
+  selectionAttachmentInfo.clearValue = selectionClearValue;
 
   // 5
   VkRenderingAttachmentInfo ssaoColorBufferAttachmentInfo {};

@@ -914,6 +914,26 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsLightDistance, 0.0f, 200.0f, "%.3f", flags);
 
     ImGui::AlignTextToFramePadding();
+    ImGui::Text("CutOff Angle:     ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##DynLightigCutOff", &lightSettings.dlsPointCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
+    if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
+      if (lightSettings.dlsPointCutOffDegrees > lightSettings.dlsPointOuterCutOffDegrees) {
+        lightSettings.dlsPointOuterCutOffDegrees = lightSettings.dlsPointCutOffDegrees;
+      }
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Outer CutOff:     ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##DynLightigOuterCutOff", &lightSettings.dlsPointOuterCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
+    if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
+      if (lightSettings.dlsPointOuterCutOffDegrees < lightSettings.dlsPointCutOffDegrees) {
+        lightSettings.dlsPointCutOffDegrees = lightSettings.dlsPointOuterCutOffDegrees;
+      }
+    }
+
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Reset Values##DynLight")) {

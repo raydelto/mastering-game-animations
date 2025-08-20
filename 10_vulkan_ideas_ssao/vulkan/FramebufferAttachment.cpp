@@ -12,7 +12,11 @@ bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferDa
   if (flags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
     aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   } else  if (flags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (bufferData.format == VK_FORMAT_D16_UNORM || bufferData.format == VK_FORMAT_D32_SFLOAT) {
+      aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    } else {
+      aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
   } else {
     Logger::log(1, "%s error: could not detect usage flags\n", __FUNCTION__);
     return false;
@@ -66,7 +70,7 @@ bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferDa
     .newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ,
     .image = bufferData.image,
     .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .aspectMask = aspectMask,
       .baseMipLevel = 0,
       .levelCount = 1,
       .baseArrayLayer = 0,
