@@ -50,6 +50,7 @@ struct dynamicLight {
   vec4 rotation;
   vec4 color;
   float distance;
+  float maxDistance;
   uint type;
   float cutOff;
   float outerCutOff;
@@ -196,14 +197,16 @@ void main() {
         float quadratic = 1.0 / ((lights[i].distance * lights[i].distance) / 80);
 
         float distance = length(vec3(lights[i].position) - worldPos);
-        float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
+        if (distance <= lights[i].maxDistance) {
+          float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
 
-        float theta = dot(lightDir, normalize(-vec3(lights[i].rotation)));
-        float epsilon = lights[i].cutOff - lights[i].outerCutOff;
+          float theta = dot(lightDir, normalize(-vec3(lights[i].rotation)));
+          float epsilon = lights[i].cutOff - lights[i].outerCutOff;
 
-        float intensity = clamp((theta - lights[i].outerCutOff) / epsilon, 0.0, 1.0);
+          float intensity = clamp((theta - lights[i].outerCutOff) / epsilon, 0.0, 1.0);
+          dynamicDiffuse += vec3(lights[i].color) * diff * albedo * attenuation * intensity;
+        }
 
-        dynamicDiffuse += vec3(lights[i].color) * diff * albedo * attenuation * intensity;
       }
 
       outColor = mix(vec4(clamp(ambient + diffuse * ssaoValue * shadowFactor + dynamicDiffuse, 0.0, 1.0), 1.0), fogColor, fogAmount);

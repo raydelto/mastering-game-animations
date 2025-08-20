@@ -1727,6 +1727,7 @@ void VkRenderer::updateShaderLightData() {
     mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotationRadians(), 1.0f);
     mRenderData.rdLightData.at(i).color = glm::vec4(mModelInstCamData.micDynLights.at(i)->getLightColor(), 1.0f);
     mRenderData.rdLightData.at(i).distance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
+    mRenderData.rdLightData.at(i).maxDistance = mModelInstCamData.micDynLights.at(i)->getMaxLightingDistance();
     mRenderData.rdLightData.at(i).cutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightCutOffAngle()));
     mRenderData.rdLightData.at(i).outerCutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightOuterCutOffAngle()));
   }

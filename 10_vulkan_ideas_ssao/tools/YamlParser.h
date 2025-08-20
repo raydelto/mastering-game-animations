@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <yaml-cpp/yaml.h>
 
+#include <VkRenderData.h>
 #include <YamlParserTypes.h>
 #include <ModelInstanceCamData.h>
 #include <InstanceSettings.h>
@@ -12,7 +13,6 @@
 #include <ModelSettings.h>
 #include <BehaviorData.h>
 #include <LevelSettings.h>
-#include <VkRenderData.h>
 #include <Enums.h>
 
 class YamlParser {

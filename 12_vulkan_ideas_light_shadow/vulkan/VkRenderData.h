@@ -150,10 +150,15 @@ struct DynamicLightData {
   glm::vec4 position = glm::vec4(0.0f);
   glm::vec4 rotation = glm::vec4(0.0f);
   glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
-  float distance = 1.0f;
+  float distance = 10.0f;
+  float maxDistance = 32.0f;
   uint32_t type = 0;
-  float cutoff;
-  float outerCutoff;
+  float cutoff = 12.5f;
+  float outerCutoff = 17.5f;
+  // needed for vec4 alignment
+  float pad1;
+  float pad2;
+  float pad3;
 };
 
 struct VkTextureData {

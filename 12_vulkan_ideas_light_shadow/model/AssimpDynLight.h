@@ -26,6 +26,7 @@ class AssimpDynLight {
 
     glm::vec3 getLightColor();
     float getLightingDistance();
+    float getMaxLightingDistance();
     float getPointLightCutOffAngle();
     float getPointLightOuterCutOffAngle();
 

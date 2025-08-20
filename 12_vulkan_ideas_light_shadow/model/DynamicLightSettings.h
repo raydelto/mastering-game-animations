@@ -22,6 +22,7 @@ struct DynamicLightSettings {
   // linear ~ 1.0 / distance / 2.2
   // quadratic ~ 1.0 / distance^2 * 7.5
   float dlsLightDistance = 10.0f;
+  float dlsMaxLightDistance = 12.0f;
 
   float dlsPointCutOffDegrees = 12.5f;
   float dlsPointOuterCutOffDegrees = 17.5f;

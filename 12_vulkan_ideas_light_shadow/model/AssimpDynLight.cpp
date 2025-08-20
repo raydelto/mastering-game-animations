@@ -105,6 +105,10 @@ float AssimpDynLight::getLightingDistance() {
   return mDynLightSettings.dlsLightDistance;
 }
 
+float AssimpDynLight::getMaxLightingDistance() {
+  return mDynLightSettings.dlsMaxLightDistance;
+}
+
 float AssimpDynLight::getPointLightCutOffAngle() {
   return mDynLightSettings.dlsPointCutOffDegrees;
 }

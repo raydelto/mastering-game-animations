@@ -914,6 +914,11 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsLightDistance, 0.0f, 200.0f, "%.3f", flags);
 
     ImGui::AlignTextToFramePadding();
+    ImGui::Text("Max Light Dist::  ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##DynLightightMaxDist", &lightSettings.dlsMaxLightDistance, 0.0f, 200.0f, "%.3f", flags);
+
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("CutOff Angle:     ");
     ImGui::SameLine();
     ImGui::SliderFloat("##DynLightigCutOff", &lightSettings.dlsPointCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
