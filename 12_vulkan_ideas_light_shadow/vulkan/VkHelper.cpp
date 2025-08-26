@@ -457,6 +457,11 @@ bool VkHelper::createSSBOs(VkRenderData& renderData) {
     return false;
   }
 
+  if (!ShaderStorageBuffer::init(renderData, renderData.rdDynamicLightDebugBuffer)) {
+    Logger::log(1, "%s error: could not create dynamic light debug data SSBO\n", __FUNCTION__);
+    return false;
+  }
+
   return true;
 }
 
@@ -1680,43 +1685,66 @@ bool VkHelper::createDescriptorSets(VkRenderData& renderData) {
     }
   }
 
-  // composite
-  VkDescriptorSetAllocateInfo compositeAllocInfo{};
-  compositeAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  compositeAllocInfo.descriptorPool = renderData.rdDescriptorPool;
-  compositeAllocInfo.descriptorSetCount = 1;
-  compositeAllocInfo.pSetLayouts = &renderData.rdCompositeDescriptorLayout;
+  {
+    // composite
+    VkDescriptorSetAllocateInfo compositeAllocInfo{};
+    compositeAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    compositeAllocInfo.descriptorPool = renderData.rdDescriptorPool;
+    compositeAllocInfo.descriptorSetCount = 1;
+    compositeAllocInfo.pSetLayouts = &renderData.rdCompositeDescriptorLayout;
 
-  if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &compositeAllocInfo,
-      &renderData.rdCompositeDescriptorSet) != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not allocate memory for composite descriptor set", __FUNCTION__);
-    return false;
+    if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &compositeAllocInfo,
+        &renderData.rdCompositeDescriptorSet) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate memory for composite descriptor set", __FUNCTION__);
+      return false;
+    }
   }
 
-  // SSAO
-  VkDescriptorSetAllocateInfo ssaoAllocInfo{};
-  ssaoAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  ssaoAllocInfo.descriptorPool = renderData.rdDescriptorPool;
-  ssaoAllocInfo.descriptorSetCount = 1;
-  ssaoAllocInfo.pSetLayouts = &renderData.rdSSAODescriptorLayout;
+  {
+    // SSAO
+    VkDescriptorSetAllocateInfo ssaoAllocInfo{};
+    ssaoAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ssaoAllocInfo.descriptorPool = renderData.rdDescriptorPool;
+    ssaoAllocInfo.descriptorSetCount = 1;
+    ssaoAllocInfo.pSetLayouts = &renderData.rdSSAODescriptorLayout;
 
-  if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &ssaoAllocInfo,
-      &renderData.rdSSAODescriptorSet) != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not allocate memory for ssao descriptor set", __FUNCTION__);
-    return false;
+    if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &ssaoAllocInfo,
+        &renderData.rdSSAODescriptorSet) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate memory for ssao descriptor set", __FUNCTION__);
+      return false;
+    }
   }
 
-  // SSAO blur
-  VkDescriptorSetAllocateInfo ssaoBlurAllocInfo{};
-  ssaoBlurAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  ssaoBlurAllocInfo.descriptorPool = renderData.rdDescriptorPool;
-  ssaoBlurAllocInfo.descriptorSetCount = 1;
-  ssaoBlurAllocInfo.pSetLayouts = &renderData.rdSSAOBlurDescriptorLayout;
+  {
+    // SSAO blur
+    VkDescriptorSetAllocateInfo ssaoBlurAllocInfo{};
+    ssaoBlurAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    ssaoBlurAllocInfo.descriptorPool = renderData.rdDescriptorPool;
+    ssaoBlurAllocInfo.descriptorSetCount = 1;
+    ssaoBlurAllocInfo.pSetLayouts = &renderData.rdSSAOBlurDescriptorLayout;
 
-  if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &ssaoBlurAllocInfo,
-      &renderData.rdSSAOBlurDescriptorSet) != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not allocate memory for ssao blur descriptor set", __FUNCTION__);
-    return false;
+    if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &ssaoBlurAllocInfo,
+        &renderData.rdSSAOBlurDescriptorSet) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate memory for ssao blur descriptor set", __FUNCTION__);
+      return false;
+    }
+  }
+
+  {
+    // dyn light debug sphere-drawing
+    VkDescriptorSetAllocateInfo sphereAllocateInfo{};
+    sphereAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    sphereAllocateInfo.descriptorPool = renderData.rdDescriptorPool;
+    sphereAllocateInfo.descriptorSetCount = 1;
+    sphereAllocateInfo.pSetLayouts = &renderData.rdSphereDescriptorLayout;
+
+    VkResult result = vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &sphereAllocateInfo,
+      &renderData.rdDynLightDebugSphereDescriptorSet);
+
+    if (result != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate Assimp dyn light debug sphere-drawing descriptor set (error: %i)\n", __FUNCTION__, result);
+      return false;
+    }
   }
 
   updateDescriptorSets(renderData);
@@ -2845,6 +2873,43 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
 
     vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeSets.size()), writeSets.data(), 0, nullptr);
   }
+
+  {
+    // sphere-drawing shader
+    VkDescriptorBufferInfo matrixInfo{};
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.offset = 0;
+    matrixInfo.range = VK_WHOLE_SIZE;
+
+    VkDescriptorBufferInfo debugSpheresInfo{};
+    debugSpheresInfo.buffer = renderData.rdDynamicLightDebugBuffer.buffer;
+    debugSpheresInfo.offset = 0;
+    debugSpheresInfo.range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet matrixWriteDescriptorSet{};
+    matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matrixWriteDescriptorSet.dstSet = renderData.rdDynLightDebugSphereDescriptorSet;
+    matrixWriteDescriptorSet.dstBinding = 0;
+    matrixWriteDescriptorSet.descriptorCount = 1;
+    matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
+
+    VkWriteDescriptorSet debugSpheresWriteDescriptorSet{};
+    debugSpheresWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    debugSpheresWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    debugSpheresWriteDescriptorSet.dstSet = renderData.rdDynLightDebugSphereDescriptorSet;
+    debugSpheresWriteDescriptorSet.dstBinding = 1;
+    debugSpheresWriteDescriptorSet.descriptorCount = 1;
+    debugSpheresWriteDescriptorSet.pBufferInfo = &debugSpheresInfo;
+
+    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+      matrixWriteDescriptorSet,
+      debugSpheresWriteDescriptorSet
+    };
+
+    vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),
+      writeDescriptorSets.data(), 0, nullptr);
+  }
 }
 
 bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
@@ -3293,23 +3358,10 @@ bool VkHelper::createVertexBuffers(VkRenderData& renderData) {
     return false;
   }
 
-  // Fullscreen qaud to draw buffer to screen
-  VkFullscreenQuadMesh fullQuadMesh{};
-  VkFullscreenQuadVertex vert1 { {-1.0f, -1.0f, 0.0f, 1.0f}, {0.0f, 1.0f} };
-  VkFullscreenQuadVertex vert2 { {-1.0f,  1.0f, 0.0f, 1.0f}, {0.0f, 0.0f} };
-  VkFullscreenQuadVertex vert3 { { 1.0f, -1.0f, 0.0f, 1.0f}, {1.0f, 1.0f} };
-  VkFullscreenQuadVertex vert4 { { 1.0f,  1.0f, 0.0f, 1.0f}, {1.0f, 0.0f} };
-
-  fullQuadMesh.vertices.emplace_back(vert1);
-  fullQuadMesh.vertices.emplace_back(vert3);
-  fullQuadMesh.vertices.emplace_back(vert2);
-
-  fullQuadMesh.vertices.emplace_back(vert2);
-  fullQuadMesh.vertices.emplace_back(vert3);
-  fullQuadMesh.vertices.emplace_back(vert4);
-
-  VertexBuffer::init(renderData, renderData.rdFullscreenQuadBufferData, 6);
-  VertexBuffer::uploadData(renderData, renderData.rdFullscreenQuadBufferData, fullQuadMesh.vertices);
+  if (!VertexBuffer::init(renderData, renderData.rdDynamicLightDebugVertexBuffer, 1024)) {
+    Logger::log(1, "%s error: could not create light vertex buffer\n", __FUNCTION__);
+    return false;
+  }
 
   return true;
 }
@@ -4217,7 +4269,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   VertexBuffer::cleanup(renderData, renderData.rdGroundMeshNeighborVertexBuffer);
   VertexBuffer::cleanup(renderData, renderData.rdInstancePathVertexBuffer);
   VertexBuffer::cleanup(renderData, renderData.rdSkyboxBuffer);
-  VertexBuffer::cleanup(renderData, renderData.rdFullscreenQuadBufferData);
+  VertexBuffer::cleanup(renderData, renderData.rdDynamicLightDebugVertexBuffer);
 
   ShaderStorageBuffer::cleanup(renderData, renderData.rdShaderTRSMatrixBuffer);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdPerInstanceAnimDataBuffer);
@@ -4235,6 +4287,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ShaderStorageBuffer::cleanup(renderData, renderData.rdIKTRSMatrixBuffer);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdShadowMapCascadeDataBuffer);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdDynamicLightBuffer);
+  ShaderStorageBuffer::cleanup(renderData, renderData.rdDynamicLightDebugBuffer);
 
   Texture::cleanup(renderData, renderData.rdSkyboxTexture);
 
@@ -4270,6 +4323,8 @@ void VkHelper::cleanup(VkRenderData& renderData) {
     &renderData.rdSSAODescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdSSAOBlurDescriptorSet);
+  vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
+    &renderData.rdDynLightDebugSphereDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdAssimpComputeSphereTransformDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,

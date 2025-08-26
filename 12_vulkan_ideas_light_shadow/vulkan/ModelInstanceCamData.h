@@ -77,6 +77,7 @@ struct ModelInstanceCamData {
   dynLightAddCallback micDynLightAddCallbackFunction;
   dynLightDeleteCallback micDynLightDeleteCallbackFunction;
   dynLightCloneCallback micDynLightCloneCallbackFunction;
+  dynLightCenterCallback micdynLightCenterCallbackFunction;
 
   undoRedoCallback micUndoCallbackFunction;
   undoRedoCallback micRedoCallbackFunction;

@@ -44,6 +44,7 @@
 #include <PathFinder.h>
 #include <SkyboxModel.h>
 #include <AssimpDynLight.h>
+#include <DynamicLightDebugModel.h>
 
 #include <VkRenderData.h>
 #include <ModelInstanceCamData.h>
@@ -100,6 +101,7 @@ class VkRenderer {
     std::shared_ptr<AssimpDynLight> addDynLight();
     void deleteDynLight(std::shared_ptr<AssimpDynLight> light);
     void cloneDynLight(std::shared_ptr<AssimpDynLight> light);
+    void centerDynLight(std::shared_ptr<AssimpDynLight> light);
 
     void requestExitApplication();
     void doExitApplication();
@@ -114,7 +116,6 @@ class VkRenderer {
     const int LIGHT_OBJECT_OFFSET = 1'000'000;
 
     void drawScene(bool shadowMapPass = false, uint32_t shadowMapLayer = 0);
-    void drawLightBulbs();
 
     VkRenderData mRenderData{};
     ModelInstanceCamData mModelInstCamData{};
@@ -297,4 +298,6 @@ class VkRenderer {
     void assignLightIndices();
     void generateShaderLightData();
     void updateShaderLightData();
+
+    DynamicLightDebugModel mDynLightModel{};
 };

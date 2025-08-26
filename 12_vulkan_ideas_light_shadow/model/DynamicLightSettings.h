@@ -11,19 +11,17 @@ struct DynamicLightSettings {
 
   int dlsIndexPosition = -1;
 
-  bool dlsLightEnabled = false;
-  bool dlsLightDebugEnabled = false;
+  bool dlsLightEnabled = true;
 
   dynamicLightType dlsLightType = dynamicLightType::point;
   glm::vec3 dlsDiffuseColor = glm::vec3(1.0f);
 
-  // constant, linear, quadratic attenuations:
-  // constant = 1.0
-  // linear ~ 1.0 / distance / 2.2
-  // quadratic ~ 1.0 / distance^2 * 7.5
-  float dlsLightDistance = 10.0f;
-  float dlsMaxLightDistance = 12.0f;
+  float dlsLightDistance = 75.0f;
+  float dlsMaxLightDistance = 100.0f;
 
-  float dlsPointCutOffDegrees = 12.5f;
-  float dlsPointOuterCutOffDegrees = 17.5f;
+  float dlsPointCutOffDegrees = 20.0f;
+  float dlsPointOuterCutOffDegrees = 30.0f;
+
+  static constexpr float MIN_LIGHT_DIST = 0.0f;
+  static constexpr float MAX_LIGHT_DIST = 500.0f;
 };

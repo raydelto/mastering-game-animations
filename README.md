@@ -17,3 +17,6 @@ Note: The examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMAGE\_LAYO
 
 ### Dynamic Lights
 ![Example Image with Dynamic Lights](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_lights.png)
+
+### Dynamic Spotlights
+![Example Image with Dynamic Spotlights](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_spotlights.png)

@@ -56,6 +56,7 @@ using instanceGetBoundingBoxCallback = std::function<BoundingBox3D(int)>;
 using dynLightAddCallback = std::function<std::shared_ptr<AssimpDynLight>(void)>;
 using dynLightDeleteCallback = std::function<void(std::shared_ptr<AssimpDynLight>)>;
 using dynLightCloneCallback = std::function<void(std::shared_ptr<AssimpDynLight>)>;
+using dynLightCenterCallback = std::function<void(std::shared_ptr<AssimpDynLight>)>;
 
 using undoRedoCallback = std::function<void(void)>;
 using newConfigCallback = std::function<void(void)>;

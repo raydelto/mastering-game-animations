@@ -155,10 +155,9 @@ struct DynamicLightData {
   uint32_t type = 0;
   float cutoff = 12.5f;
   float outerCutoff = 17.5f;
-  // needed for vec4 alignment
-  float pad1;
-  float pad2;
-  float pad3;
+  float constantAttFactor = 1.0f;
+  float linearAttFactor = 0.045f;
+  float quadraticAttFactor = 0.0075f;
 };
 
 struct VkTextureData {
@@ -270,6 +269,8 @@ struct VkRenderData {
   ShadowMapCascadeData rdShadowMapCascadeData{};
 
   std::vector<DynamicLightData> rdLightData{};
+  bool rdEnableLightDebug = false;
+  std::vector<glm::vec4> rdLightDebugData{};
 
   compositeDebugDisplay rdCompositeDebug = compositeDebugDisplay::composite;
 
@@ -431,6 +432,7 @@ struct VkRenderData {
   VkVertexBufferData rdGroundMeshNeighborVertexBuffer{};
   VkVertexBufferData rdInstancePathVertexBuffer{};
   VkVertexBufferData rdSkyboxBuffer{};
+  VkVertexBufferData rdDynamicLightDebugVertexBuffer{};
 
   VkShaderStorageBufferData rdShaderModelRootMatrixBuffer{};
   VkShaderStorageBufferData rdSelectedInstanceBuffer{};
@@ -448,6 +450,7 @@ struct VkRenderData {
   VkShaderStorageBufferData rdIKTRSMatrixBuffer{};
   VkShaderStorageBufferData rdShadowMapCascadeDataBuffer{};
   VkShaderStorageBufferData rdDynamicLightBuffer{};
+  VkShaderStorageBufferData rdDynamicLightDebugBuffer{};
 
   // Vulkan specific stuff
   const int MAX_FRAMES_IN_FLIGHT = 3;
@@ -585,6 +588,7 @@ struct VkRenderData {
   VkDescriptorSet rdCompositeDescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdSSAODescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdSSAOBlurDescriptorSet = VK_NULL_HANDLE;
+  VkDescriptorSet rdDynLightDebugSphereDescriptorSet = VK_NULL_HANDLE;
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

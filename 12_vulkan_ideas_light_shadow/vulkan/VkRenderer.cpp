@@ -110,6 +110,7 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mModelInstCamData.micDynLightAddCallbackFunction = [this]() { return addDynLight(); };
   mModelInstCamData.micDynLightDeleteCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { deleteDynLight(light); };
   mModelInstCamData.micDynLightCloneCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { cloneDynLight(light); };
+  mModelInstCamData.micdynLightCenterCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { centerDynLight(light); };
 
   mModelInstCamData.micUndoCallbackFunction = [this]() { undoLastOperation(); };
   mModelInstCamData.micRedoCallbackFunction = [this]() { redoLastOperation(); };
@@ -259,6 +260,10 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   }
 
   Logger::log(1, "%s: skybox successfully loaded\n", __FUNCTION__);
+
+  VkLineMesh lightDebugMesh = mDynLightModel.getVertexData();
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdDynamicLightDebugVertexBuffer, lightDebugMesh.vertices);
+  Logger::log(1, "%s: Dynamic light debug line mesh storage initialized\n", __FUNCTION__);
 
   mBehaviorManager = std::make_shared<BehaviorManager>();
   mInstanceNodeActionCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, graphNodeType nodeType,
@@ -954,6 +959,12 @@ std::shared_ptr<AssimpInstance> VkRenderer::addInstance(std::shared_ptr<AssimpMo
   assignInstanceIndices();
   updateTriangleCount();
 
+  // select new instance
+  mModelInstCamData.micSelectedInstance = mModelInstCamData.micAssimpInstances.size() - 1;
+
+  // deselect light
+  mModelInstCamData.micSelectedDynLight = 0;
+
   return newInstance;
 }
 
@@ -1004,6 +1015,9 @@ void VkRenderer::addInstances(std::shared_ptr<AssimpModel> model, int numInstanc
   mModelInstCamData.micSelectedInstance = mModelInstCamData.micAssimpInstances.size() - 1;
   mModelInstCamData.micSettingsContainer->applyNewMultiInstance(newInstances, mModelInstCamData.micSelectedInstance, prevSelectedInstanceId);
 
+  // deselect light
+  mModelInstCamData.micSelectedDynLight = 0;
+
   assignInstanceIndices();
   updateTriangleCount();
 }
@@ -1031,6 +1045,8 @@ void VkRenderer::deleteInstance(std::shared_ptr<AssimpInstance> instance, bool w
   // reset to previous instance
   if (mModelInstCamData.micSelectedInstance > 0) {
     mModelInstCamData.micSelectedInstance -= 1;
+    // deselect light
+    mModelInstCamData.micSelectedDynLight = 0;
   }
 
   if (withUndo) {
@@ -1058,6 +1074,9 @@ void VkRenderer::cloneInstance(std::shared_ptr<AssimpInstance> instance) {
   // select new instance
   mModelInstCamData.micSelectedInstance = mModelInstCamData.micAssimpInstances.size() - 1;
   mModelInstCamData.micSettingsContainer->applyNewInstance(newInstance, mModelInstCamData.micSelectedInstance, prevSelectedInstanceId);
+
+  // deselect light
+  mModelInstCamData.micSelectedDynLight = 0;
 
   assignInstanceIndices();
 
@@ -1110,6 +1129,9 @@ void VkRenderer::cloneInstances(std::shared_ptr<AssimpInstance> instance, int nu
   // select new instance
   mModelInstCamData.micSelectedInstance = mModelInstCamData.micAssimpInstances.size() - 1;
   mModelInstCamData.micSettingsContainer->applyNewMultiInstance(newInstances, mModelInstCamData.micSelectedInstance, prevSelectedInstanceId);
+
+  // deselect light
+  mModelInstCamData.micSelectedDynLight = 0;
 
   updateTriangleCount();
 }
@@ -1407,6 +1429,12 @@ std::shared_ptr<AssimpDynLight> VkRenderer::addDynLight() {
   assignLightIndices();
   generateShaderLightData();
 
+  // select new instance
+  mModelInstCamData.micSelectedDynLight = mModelInstCamData.micDynLights.size() - 1;
+
+  // deselect instance
+  mModelInstCamData.micSelectedInstance = 0;
+
   return newLight;
 }
 
@@ -1421,6 +1449,8 @@ void VkRenderer::deleteDynLight(std::shared_ptr<AssimpDynLight> light) {
 
   if (mModelInstCamData.micSelectedDynLight > 0) {
     mModelInstCamData.micSelectedDynLight -= 1;
+    // deselect instance
+    mModelInstCamData.micSelectedInstance = 0;
   }
 
   assignLightIndices();
@@ -1440,8 +1470,16 @@ void VkRenderer::cloneDynLight(std::shared_ptr<AssimpDynLight> light) {
   // select new light
   mModelInstCamData.micSelectedDynLight = mModelInstCamData.micDynLights.size() - 1;
 
+  // deselect instance
+  mModelInstCamData.micSelectedInstance = 0;
+
   assignLightIndices();
   generateShaderLightData();
+}
+
+void VkRenderer::centerDynLight(std::shared_ptr<AssimpDynLight> light) {
+  DynamicLightSettings lightSettings = light->getDynLightSettings();
+  mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera)->moveCameraTo(lightSettings.dlsWorldPosition + glm::vec3(5.0f, 0.0f, 5.0f));
 }
 
 void VkRenderer::generateLevelVertexData() {
@@ -1717,19 +1755,45 @@ void VkRenderer::assignLightIndices() {
 void VkRenderer::generateShaderLightData() {
   mRenderData.rdLightData.clear();
   mRenderData.rdLightData.resize(mModelInstCamData.micDynLights.size());
+  mRenderData.rdLightDebugData.clear();
+  mRenderData.rdLightDebugData.resize(mModelInstCamData.micDynLights.size());
 
   updateShaderLightData();
 }
 
 void VkRenderer::updateShaderLightData() {
-  for (size_t i = 0; i < mRenderData.rdLightData.size(); ++i) {
+  for (size_t i = 1; i < mRenderData.rdLightData.size(); ++i) {
+    float lightDistance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
+    float maxLightDistance = mModelInstCamData.micDynLights.at(i)->getMaxLightingDistance();
+
+    float constantFactor = 1.0f;
+    float linearFactor = 1.0f / (lightDistance / 45.0f);
+    float quadraticFactor = 1.0f / ((lightDistance * lightDistance) / 750.0f);
+
+    glm::vec3 lightColor = mModelInstCamData.micDynLights.at(i)->getLightColor();
+    float maxLightColor = glm::max(glm::max(lightColor.r, lightColor.g), lightColor.b);
+
+    float lightVolumeRadius = lightDistance * maxLightColor;
+
+    // debug sphere radius is min of attenuation light and max light distance
+    mRenderData.rdLightDebugData.at(i) = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), glm::min(lightVolumeRadius, maxLightDistance));
+
+    mRenderData.rdLightData.at(i).type = static_cast<uint32_t>(mModelInstCamData.micDynLights.at(i)->getLightType());
     mRenderData.rdLightData.at(i).position = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), 1.0f);
     mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotationRadians(), 1.0f);
-    mRenderData.rdLightData.at(i).color = glm::vec4(mModelInstCamData.micDynLights.at(i)->getLightColor(), 1.0f);
-    mRenderData.rdLightData.at(i).distance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
-    mRenderData.rdLightData.at(i).maxDistance = mModelInstCamData.micDynLights.at(i)->getMaxLightingDistance();
+    mRenderData.rdLightData.at(i).color = glm::vec4(lightColor, 1.0f);
+    if (mModelInstCamData.micDynLights.at(i)->getLightEnabled()) {
+      mRenderData.rdLightData.at(i).distance = lightDistance;
+      mRenderData.rdLightData.at(i).maxDistance = maxLightDistance;
+    } else {
+      mRenderData.rdLightData.at(i).distance = 0.0f;
+      mRenderData.rdLightData.at(i).maxDistance = 0.0f;
+    }
     mRenderData.rdLightData.at(i).cutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightCutOffAngle()));
     mRenderData.rdLightData.at(i).outerCutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightOuterCutOffAngle()));
+    mRenderData.rdLightData.at(i).constantAttFactor = constantFactor;
+    mRenderData.rdLightData.at(i).linearAttFactor = linearFactor;
+    mRenderData.rdLightData.at(i).quadraticAttFactor = quadraticFactor;
   }
 }
 
@@ -2179,6 +2243,7 @@ void VkRenderer::handleMousePositionEvents(double xPos, double yPos) {
             currentLight->rotateLight(lightRot);
             break;
           case instanceEditMode::scale:
+            currentLight->setLightingDistance(currentLight->getLightingDistance() - mouseYScaled);
             // do nothing here
             break;
         }
@@ -3973,37 +4038,6 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
   }
 }
 
-void VkRenderer::drawLightBulbs() {
-  size_t numberOfLights = mModelInstCamData.micDynLights.size() - 1;
-
-  if (mMousePick) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositeSelectionPipeline);
-
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSet, 0, nullptr);
-  } else {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositePipeline);
-
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
-  }
-
-  mRenderData.rdUploadToUBOTimer.start();
-  mRenderData.rdModelData.pkWorldPosOffset = mWorldPosOffset;
-  if (mMousePick) {
-    vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSelectionPipelineLayout,
-      VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
-  } else {
-    vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpPipelineLayout,
-      VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
-  }
-  mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
-
-  mLightModel->drawInstanced(mRenderData, numberOfLights, mMousePick);
-}
-
 bool VkRenderer::draw(float deltaTime) {
   if (!mApplicationRunning) {
     return false;
@@ -4950,6 +4984,8 @@ bool VkRenderer::draw(float deltaTime) {
 
   // light data uses different descriptors
   bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
+  // reuse the sphere drawing shader for light debug
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffer, mRenderData.rdLightDebugData);
 
   if (bufferResized) {
     VkHelper::updateImageDescriptorSets(mRenderData);
@@ -5612,9 +5648,10 @@ bool VkRenderer::draw(float deltaTime) {
 
   vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
 
-  // draw skybox into swapchain image, depth writes are disabled
+  // do not draw lines etc in debug modes
   if (mRenderData.rdCompositeDebug == compositeDebugDisplay::composite) {
 
+  // draw skybox into swapchain image, depth writes are disabled
     // XXX: sybox doest not work in ortho projection, disable for now
     if (mRenderData.rdDrawSkybox && camSettings.csCamProjection == cameraProjection::perspective) {
       vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -5735,7 +5772,47 @@ bool VkRenderer::draw(float deltaTime) {
 
   // draw in forward rendering after composite pass to avoid model light problems
   if (mRenderData.rdApplicationMode == appMode::edit) {
-    drawLightBulbs();
+    size_t numberOfLights = mModelInstCamData.micDynLights.size() - 1;
+
+    if (mMousePick) {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+        VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositeSelectionPipeline);
+
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSet, 0, nullptr);
+    } else {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+        VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositePipeline);
+
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+    }
+
+    mRenderData.rdUploadToUBOTimer.start();
+    mRenderData.rdModelData.pkWorldPosOffset = mWorldPosOffset;
+    if (mMousePick) {
+      vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSelectionPipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+    } else {
+      vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpPipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+    }
+    mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
+
+    mLightModel->drawInstanced(mRenderData, numberOfLights, mMousePick);
+
+    if (mRenderData.rdEnableLightDebug) {
+      size_t dynLightVertexCount = mDynLightModel.getVertexData().vertices.size();
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
+
+      VkDeviceSize offset = 0;
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdDynamicLightDebugVertexBuffer.buffer, &offset);
+      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
+    }
   }
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);

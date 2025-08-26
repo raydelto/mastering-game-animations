@@ -838,6 +838,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::EndDisabled();
     }
 
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("Color Cascades:   ");
     ImGui::SameLine();
     ImGui::Checkbox("##EnableShadowMapColorCascadeDebug", &renderData.rdEnableShadowMapColorCascadeDebug);
@@ -849,21 +850,71 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
   if (ImGui::CollapsingHeader("Dynamic Light")) {
     size_t numberOfLights = modInstCamData.micDynLights.size() - 1;
+    bool nullLightSelected = modInstCamData.micSelectedDynLight == 0;
     int selectedLight = modInstCamData.micSelectedDynLight;
     mCurrentDynLight = modInstCamData.micDynLights.at(selectedLight);
     DynamicLightSettings lightSettings = mCurrentDynLight->getDynLightSettings();
 
     ImGui::Text("Total Lights:      %ld", numberOfLights);
 
+    if (numberOfLights == 0) {
+     ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Select Light:     ");
+    ImGui::SameLine();
+    ImGui::PushButtonRepeat(true);
+    if (ImGui::ArrowButton("##LightLeft", ImGuiDir_Left) &&
+      modInstCamData.micSelectedDynLight > 1) {
+      modInstCamData.micSelectedDynLight--;
+      // deselect instance
+      modInstCamData.micSelectedInstance = 0;
+    }
+
+    if (nullLightSelected) {
+     ImGui::BeginDisabled();
+    }
+
+    ImGui::SameLine();
+    ImGui::PushItemWidth(30);
+    ImGui::DragInt("##SelLight", &modInstCamData.micSelectedDynLight, 1, 1,
+      modInstCamData.micDynLights.size() - 1, "%3d", flags);
+    ImGui::PopItemWidth();
+
+    // DragInt does not like clamp flag
+    modInstCamData.micSelectedDynLight = std::clamp(modInstCamData.micSelectedDynLight, 0,
+      static_cast<int>(modInstCamData.micDynLights.size() - 1));
+
+    if (nullLightSelected) {
+      ImGui::EndDisabled();
+    }
+
+    ImGui::SameLine();
+    if (ImGui::ArrowButton("##LightRight", ImGuiDir_Right) &&
+      modInstCamData.micSelectedDynLight < (modInstCamData.micDynLights.size() - 1)) {
+      modInstCamData.micSelectedDynLight++;
+      // deselect instance
+      modInstCamData.micSelectedInstance = 0;
+    }
+    ImGui::PopButtonRepeat();
+
+    if (numberOfLights == 0) {
+     ImGui::EndDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Light Debug:      ");
+    ImGui::SameLine();
+    ImGui::Checkbox("##EnableLightDebug", &renderData.rdEnableLightDebug);
+
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Create New Light")) {
       modInstCamData.micDynLightAddCallbackFunction();
-      // select new instance
-      modInstCamData.micSelectedDynLight = modInstCamData.micDynLights.size() - 1;
     }
 
-    if (numberOfLights < 1 || selectedLight == 0) {
+    if (numberOfLights < 1 || nullLightSelected) {
       ImGui::BeginDisabled();
     }
 
@@ -883,12 +934,36 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       lightSettings = mCurrentDynLight->getDynLightSettings();
     }
 
-    if (numberOfLights < 1 || selectedLight == 0) {
+    ImGui::Text("                  ");
+    ImGui::SameLine();
+    if (ImGui::Button("Center This Light##LightCenter")) {
+      modInstCamData.micdynLightCenterCallbackFunction(mCurrentDynLight);
+    }
+
+    if (numberOfLights < 1 || nullLightSelected) {
       ImGui::EndDisabled();
     }
 
-    if (selectedLight == 0) {
+    if (nullLightSelected) {
       ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Enable Light:     ");
+    ImGui::SameLine();
+    ImGui::Checkbox("##EnableLight", &lightSettings.dlsLightEnabled);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Light Type:       ");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Point",
+      lightSettings.dlsLightType == dynamicLightType::point)) {
+      lightSettings.dlsLightType = dynamicLightType::point;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Spot",
+      lightSettings.dlsLightType == dynamicLightType::spot)) {
+      lightSettings.dlsLightType = dynamicLightType::spot;
     }
 
     ImGui::AlignTextToFramePadding();
@@ -911,12 +986,16 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Lighting Distance:");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsLightDistance, 0.0f, 200.0f, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsLightDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
 
     ImGui::AlignTextToFramePadding();
-    ImGui::Text("Max Light Dist::  ");
+    ImGui::Text("Max Light Dist:   ");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightightMaxDist", &lightSettings.dlsMaxLightDistance, 0.0f, 200.0f, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightightMaxDist", &lightSettings.dlsMaxLightDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
+
+    if (lightSettings.dlsLightType == dynamicLightType::point) {
+      ImGui::BeginDisabled();
+    }
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("CutOff Angle:     ");
@@ -938,6 +1017,10 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       }
     }
 
+    if (lightSettings.dlsLightType == dynamicLightType::point) {
+      ImGui::EndDisabled();
+    }
+
     ImGui::AlignTextToFramePadding();
     ImGui::Text("                  ");
     ImGui::SameLine();
@@ -950,7 +1033,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       lightSettings.dlsIndexPosition = instanceIndex;
     }
 
-    if (selectedLight == 0) {
+    if (nullLightSelected) {
       ImGui::EndDisabled();
     }
 
@@ -1941,8 +2024,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     if (ImGui::Button("Create New Instance")) {
       std::shared_ptr<AssimpModel> currentModel = modInstCamData.micModelList[modInstCamData.micSelectedModel];
       modInstCamData.micInstanceAddCallbackFunction(currentModel);
-      // select new instance
-      modInstCamData.micSelectedInstance = modInstCamData.micAssimpInstances.size() - 1;
     }
 
     ImGui::SameLine();
@@ -3230,6 +3311,8 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     if (ImGui::ArrowButton("##Left", ImGuiDir_Left) &&
       modInstCamData.micSelectedInstance > 1) {
       modInstCamData.micSelectedInstance--;
+      // deselect light
+      modInstCamData.micSelectedDynLight = 0;
     }
 
     if (modelListEmtpy || nullInstanceSelected) {
@@ -3247,13 +3330,15 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       static_cast<int>(modInstCamData.micAssimpInstances.size() - 1));
 
     if (modelListEmtpy || nullInstanceSelected) {
-     ImGui::EndDisabled();
+      ImGui::EndDisabled();
     }
 
     ImGui::SameLine();
     if (ImGui::ArrowButton("##Right", ImGuiDir_Right) &&
       modInstCamData.micSelectedInstance < (modInstCamData.micAssimpInstances.size() - 1)) {
       modInstCamData.micSelectedInstance++;
+      // deselect light
+      modInstCamData.micSelectedDynLight = 0;
     }
     ImGui::PopButtonRepeat();
 
