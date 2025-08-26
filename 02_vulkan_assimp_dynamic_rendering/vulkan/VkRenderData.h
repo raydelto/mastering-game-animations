@@ -130,8 +130,6 @@ struct VkRenderData {
   VkFormat rdDepthFormat = VK_FORMAT_UNDEFINED;
   VmaAllocation rdDepthImageAlloc = VK_NULL_HANDLE;
 
-  VkRenderPass rdRenderpass = VK_NULL_HANDLE;
-
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdAssimpSkinningPipelineLayout = VK_NULL_HANDLE;
 
