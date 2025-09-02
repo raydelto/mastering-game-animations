@@ -3,11 +3,12 @@
 layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputColor;
 layout (input_attachment_index = 1, set = 0, binding = 3) uniform subpassInput inputDepth;
 layout (input_attachment_index = 2, set = 0, binding = 4) uniform subpassInput inputNormal;
+layout (input_attachment_index = 3, set = 0, binding = 5) uniform subpassInput lightVolumes;
 
-layout (set = 0, binding = 5) uniform sampler2D ssao;
-layout (set = 0, binding = 6) uniform sampler2D ssaoBlur;
-layout (set = 0, binding = 7) uniform sampler2DArray shadowMapDepth;
-layout (set = 0, binding = 8) uniform sampler2D shadowMapCombinedDepth;
+layout (set = 0, binding = 6) uniform sampler2D ssao;
+layout (set = 0, binding = 7) uniform sampler2D ssaoBlur;
+layout (set = 0, binding = 8) uniform sampler2DArray shadowMapDepth;
+layout (set = 0, binding = 9) uniform sampler2D shadowMapCombinedDepth;
 
 layout (location = 0) in vec2 inUV;
 
@@ -38,6 +39,7 @@ layout (std140, set = 0, binding = 0) uniform Matrices {
   int shadowMapPCFRange;
   int colorCascadeDebugEnabled;
   int numDynamicLights;
+  int useLightVolumes;
 };
 
 layout (std430, set = 0, binding = 1) readonly restrict buffer ShadowMapCascadeParameters {
@@ -59,7 +61,7 @@ struct dynamicLight {
   float quadraticAttFactor;
 };
 
-layout (std430, set = 0, binding = 9) readonly restrict buffer DynamicLights {
+layout (std430, set = 0, binding = 10) readonly restrict buffer DynamicLights {
   dynamicLight lights[];
 };
 
@@ -190,27 +192,30 @@ void main() {
 
       vec3 dynamicDiffuse = vec3(0.0);
 
-      // we always have a null light added
-      for(int i = 1; i < numDynamicLights; ++i) {
-        vec3 lightDir = normalize(vec3(lights[i].position) - worldPos);
-        float diff = max(dot(normal, lightDir), 0.0);
+      if (useLightVolumes == 0) {
+        // we always have a null light added
+        for(int i = 1; i < numDynamicLights; ++i) {
+          vec3 lightDir = normalize(vec3(lights[i].position) - worldPos);
+          float diff = max(dot(normal, lightDir), 0.0);
 
-        float distance = length(vec3(lights[i].position) - worldPos);
-        if (distance < lights[i].maxDistance) {
-          float attenuation = 1.0 / (lights[i].constantAttFactor + lights[i].linearAttFactor * distance + lights[i].quadraticAttFactor * (distance * distance));
+          float distance = length(vec3(lights[i].position) - worldPos);
+          if (distance < lights[i].maxDistance) {
+            float attenuation = 1.0 / (lights[i].constantAttFactor + lights[i].linearAttFactor * distance + lights[i].quadraticAttFactor * (distance * distance));
 
-          vec3 lightDynDiff = vec3(lights[i].color) * diff * albedo * attenuation;
-          if (lights[i].type == 1) {
-            float theta = dot(lightDir, normalize(-vec3(lights[i].rotation)));
-            float epsilon = lights[i].cutOff - lights[i].outerCutOff;
+            vec3 lightDynDiff = vec3(lights[i].color) * diff * albedo * attenuation;
+            if (lights[i].type == 1) {
+              float theta = dot(lightDir, normalize(-vec3(lights[i].rotation)));
+              float epsilon = lights[i].cutOff - lights[i].outerCutOff;
 
-            float intensity = clamp((theta - lights[i].outerCutOff) / epsilon, 0.0, 1.0);
+              float intensity = clamp((theta - lights[i].outerCutOff) / epsilon, 0.0, 1.0);
 
-            lightDynDiff *= intensity;
+              lightDynDiff *= intensity;
+            }
+            dynamicDiffuse += lightDynDiff;
           }
-
-          dynamicDiffuse += lightDynDiff;
         }
+      } else {
+        dynamicDiffuse = subpassLoad(lightVolumes).rgb * albedo;
       }
 
       outColor = mix(vec4(clamp(ambient + diffuse * ssaoValue * shadowFactor + dynamicDiffuse, 0.0, 1.0), 1.0), fogColor, fogAmount);
@@ -253,6 +258,9 @@ void main() {
       outColor = vec4(vec3(aoBlur), 1.0);
       break;
     case 7:
+      outColor = vec4(subpassLoad(lightVolumes).rgb, 1.0);
+      break;
+    case 8:
       outColor = vec4(vec3(texture(shadowMapCombinedDepth, inUV).r), 1.0);
       break;
   }

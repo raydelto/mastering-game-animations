@@ -1,11 +1,15 @@
 # Application viewer config file
-version: 8.0
+version: 12.0
 
 settings:
+  near-clip-plane: 1
+  far-clip-plane: 600
+  orth-nearfar-clip-plane: 40
   selected-model: 2
-  selected-instance: 8
+  selected-instance: 0
   selected-camera: 0
   selected-level: 1
+  selected-dynamic-light: 0
   highlight-selection: false
   collision-enabled: 2
   interaction-enabled: true
@@ -16,6 +20,30 @@ settings:
   level-collision-ground-slope: 40
   level-collision-max-stairstep-height: 1.75
   inverse-kinematics-enabled: true
+  inverse-kinematics-iterations: 10
+  navigation-enabled: false
+  skybox-enabled: false
+  fog-density: 0
+  light-source-angle-east-west: 40
+  light-source-angle-north-south: 40
+  light-source-intensity: 0
+  light-source-color: [1, 1, 1]
+  time-of-day-enabled: false
+  time-of-day-scaling: 10
+  time-of-day-preset: 7
+  ssao-enabled: false
+  ssao-radius: 5
+  ssao-bias: 0.200000003
+  ssao-exponent: 4
+  ssao-blur-enabled: false
+  ssao-blur-radius: 3
+  shadowmap-enabled: false
+  shadowmap-split-lambda: 0.949999988
+  shadowmap-constant-bias: 1.25
+  shadowmap-slope-bias: 1.75
+  shadowmap-pcf-enabled: false
+  shadowmap-pcf-scale: 0.100000001
+  shadowmap-pcf-range: 3
 
 levels:
   - level-name: level5_zone1_level_design_2002.glb
@@ -27,9 +55,9 @@ levels:
 
 cameras:
   - camera-name: FreeCam
-    position: [3.14916277, 11.1933651, -40.3920288]
-    view-azimuth: 309.296387
-    view-elevation: -29.6994209
+    position: [-67.8407211, 18.4755554, -67.8343353]
+    view-azimuth: 117.793228
+    view-elevation: -25.1997013
     camera-type: 0
     camera-projection: 0
     field-of-view: 90
@@ -71,6 +99,7 @@ cameras:
 models:
   - model-name: Woman.gltf
     model-file: assets/woman/Woman.gltf
+    is-nav-target: false
     idle-walk-run-clips:
       - 255:
           idle-clip: 0
@@ -147,6 +176,7 @@ models:
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
+    forward-speed-factor: 4
     left-foot-ik-chain:
       - 33
       - 32
@@ -157,6 +187,7 @@ models:
       - 36
   - model-name: Man.gltf
     model-file: assets/man/Man.gltf
+    is-nav-target: false
     idle-walk-run-clips:
       - 0:
           idle-clip: 4
@@ -277,6 +308,7 @@ models:
       - [-0.100000001, -0.200000003, 0, 1]
       - [0, 0.25, 0, 0.699999988]
       - [0, 0.25, 0, 0.699999988]
+    forward-speed-factor: 4
     head-movement-mappings:
       - 0: 25
       - 1: 26
@@ -523,19 +555,29 @@ node-trees:
           - instance-random-rotation: 0
           - instance-relative-rotation: 1
     links:
-      - 10040: [43200, 39000]
-      - 10011: [3200, 11000]
-      - 10024: [27200, 3000]
-      - 10041: [38200, 43000]
-      - 10012: [2201, 25000]
-      - 10038: [36200, 37000]
-      - 10009: [1200, 10000]
-      - 10003: [23200, 24000]
-      - 10032: [20200, 34000]
-      - 10018: [13200, 17000]
       - 10017: [28200, 31000]
-      - 10030: [11200, 32000]
       - 10001: [22200, 16000]
+      - 10030: [11200, 32000]
+      - 10013: [2202, 26000]
+      - 10026: [0, 1000]
+      - 10000: [21200, 22000]
+      - 10029: [32200, 15000]
+      - 10021: [18200, 20000]
+      - 10004: [4200, 5000]
+      - 10033: [34200, 35000]
+      - 10020: [15200, 28000]
+      - 10019: [29200, 31000]
+      - 10008: [14200, 2000]
+      - 10018: [13200, 17000]
+      - 10032: [20200, 34000]
+      - 10003: [23200, 24000]
+      - 10009: [1200, 10000]
+      - 10038: [36200, 37000]
+      - 10012: [2201, 25000]
+      - 10041: [38200, 43000]
+      - 10024: [27200, 3000]
+      - 10011: [3200, 11000]
+      - 10040: [43200, 39000]
       - 10014: [12200, 21000]
       - 10027: [17200, 33000]
       - 10039: [37200, 38000]
@@ -555,16 +597,6 @@ node-trees:
       - 10006: [7200, 8000]
       - 10022: [26200, 18000]
       - 10037: [41200, 44000]
-      - 10008: [14200, 2000]
-      - 10019: [29200, 31000]
-      - 10020: [15200, 28000]
-      - 10033: [34200, 35000]
-      - 10004: [4200, 5000]
-      - 10021: [18200, 20000]
-      - 10000: [21200, 22000]
-      - 10029: [32200, 15000]
-      - 10026: [0, 1000]
-      - 10013: [2202, 26000]
   - node-tree-name: AllRunCollisionWoman
     editor-settings: "[editor]\npanning=-612,98\n\n[node.0]\norigin=-144,33\n\n[node.9]\norigin=1014,520\n\n[node.8]\norigin=798,405\n\n[node.7]\norigin=614,896\n\n[node.6]\norigin=331,884\n\n[node.5]\norigin=557,461\n\n[node.4]\norigin=241,662\n\n[node.3]\norigin=988,-270\n\n[node.2]\norigin=530,-123\n\n[node.1]\norigin=-17,25\n\n[node.10]\norigin=157,-125\n\n[node.11]\norigin=1205,-267\n\n[node.14]\norigin=332,-131\n\n[node.17]\norigin=1218,11\n\n[node.13]\norigin=994,13\n\n[node.16]\norigin=1207,-126\n\n[node.12]\norigin=994,-128\n\n[node.30]\norigin=2075,-208\n\n[node.29]\norigin=1794,34\n\n[node.28]\norigin=1790,-183\n\n[node.27]\norigin=1785,-390\n\n[node.25]\norigin=1615,11\n\n[node.24]\norigin=1611,-131\n\n[node.19]\norigin=1603,-315\n\n[node.23]\norigin=1390,30\n\n[node.22]\norigin=1404,-124\n\n[node.21]\norigin=727,74\n\n[node.15]\norigin=1374,-284\n\n[node.20]\norigin=723,-133\n\n[node.18]\norigin=709,-345\n\n[node.26]\norigin=1009,267\n\n[node.31]\norigin=1643,243\n\n[node.32]\norigin=1265,355\n\n[node.33]\norigin=1433,393\n"
     nodes:
@@ -743,29 +775,19 @@ node-trees:
           - instance-random-rotation: 1
           - instance-relative-rotation: 1
     links:
-      - 10028: [29200, 30000]
-      - 10010: [2201, 20000]
+      - 10025: [22200, 24000]
+      - 10022: [24200, 28000]
+      - 10024: [23200, 25000]
       - 10023: [15200, 19000]
-      - 10001: [2200, 18000]
       - 10030: [32200, 31000]
+      - 10001: [2200, 18000]
       - 10020: [25200, 29000]
       - 10007: [7201, 9000]
       - 10021: [19200, 27000]
       - 10008: [14200, 2000]
       - 10029: [26200, 32000]
       - 10000: [18200, 3000]
-      - 10015: [13200, 17000]
       - 10013: [12200, 16000]
-      - 10026: [27200, 30000]
-      - 10017: [11200, 15000]
-      - 10004: [4200, 5000]
-      - 10018: [16200, 22000]
-      - 10005: [6200, 7000]
-      - 10031: [32201, 33000]
-      - 10002: [20200, 12000]
-      - 10024: [23200, 25000]
-      - 10022: [24200, 28000]
-      - 10025: [22200, 24000]
       - 10009: [1200, 10000]
       - 10006: [7200, 8000]
       - 10011: [3200, 11000]
@@ -775,21 +797,57 @@ node-trees:
       - 10027: [28200, 30000]
       - 10014: [2202, 21000]
       - 10012: [21200, 13000]
+      - 10010: [2201, 20000]
+      - 10015: [13200, 17000]
+      - 10028: [29200, 30000]
+      - 10026: [27200, 30000]
+      - 10017: [11200, 15000]
+      - 10004: [4200, 5000]
+      - 10018: [16200, 22000]
+      - 10005: [6200, 7000]
+      - 10031: [32201, 33000]
+      - 10002: [20200, 12000]
 
 instances:
-  - model-file: Woman.gltf
-    position: [7.11842012, -6.27049971, -37.1393127]
-    rotation: [0, 98.300293, 0]
+  - model-file: Man.gltf
+    position: [62.2175827, 1.93525004, 15.5984774]
+    rotation: [0, 4.9420166, 0]
     scale: 1
     swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 9
-    anim-clip-speed: 2
-    anim-blend-factor: 0
-    node-tree: AllRunCollisionWoman
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0.865477562
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
   - model-file: Man.gltf
-    position: [63.8091927, 1.93525004, 18.0236759]
-    rotation: [0, -82.1098633, 0]
+    position: [9.17634392, 19.9354992, 41.1198769]
+    rotation: [0, -73.6498718, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-3.65678048, -6.27049971, -43.5202866]
+    rotation: [1.99172044, 111.232086, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-30.989706, 19.9354992, 1.86497939]
+    rotation: [0, -139.414093, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
@@ -797,49 +855,11 @@ instances:
     anim-clip-speed: 1.5
     anim-blend-factor: 0
     node-tree: AllRunCollisionMan
-  - model-file: Woman.gltf
-    position: [55.5570374, 12.4352503, 39.0235519]
-    rotation: [0, 2.03001404, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 9
-    anim-clip-speed: 8
-    anim-blend-factor: 1
-    node-tree: AllRunCollisionWoman
-  - model-file: Woman.gltf
-    position: [62.4834328, 12.4352503, -24.8930645]
-    rotation: [0, 85.0101471, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 9
-    anim-clip-speed: 8
-    anim-blend-factor: 1
-    node-tree: AllRunCollisionWoman
-  - model-file: Woman.gltf
-    position: [-19.2945557, -6.27049971, -50.0162735]
-    rotation: [-0.197720066, -87.7600708, -0.293098599]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 9
-    anim-clip-speed: 8
-    anim-blend-factor: 1
-    node-tree: AllRunCollisionWoman
-  - model-file: Woman.gltf
-    position: [36.4092865, 4.93524981, 15.2104073]
-    rotation: [0, 30.2700806, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 9
-    anim-clip-speed: 8
-    anim-blend-factor: 1
-    node-tree: AllRunCollisionWoman
+    enable-navigation: false
+    path-target-instance: -1
   - model-file: Man.gltf
-    position: [8.73327351, 19.9354992, 41.2498703]
-    rotation: [0, 106.350128, 0]
+    position: [13.6781015, -6.27049971, -58.6169815]
+    rotation: [1.99172044, -10.0784607, 0.309111625]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
@@ -847,9 +867,11 @@ instances:
     anim-clip-speed: 2
     anim-blend-factor: 1
     node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
   - model-file: Man.gltf
-    position: [-23.4286404, -6.27049971, -51.779171]
-    rotation: [1.99172044, 87.3300781, 0.309111625]
+    position: [108.097229, 23.9354992, -24.6214619]
+    rotation: [1.99172044, 115.342682, 0.309111625]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
@@ -857,9 +879,11 @@ instances:
     anim-clip-speed: 2
     anim-blend-factor: 1
     node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
   - model-file: Man.gltf
-    position: [-37.6343002, 19.9354992, 30.6175079]
-    rotation: [0, 87.900116, 0]
+    position: [5.66535711, -6.27049971, -58.893959]
+    rotation: [1.99172044, 50.2133179, 0.309111625]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
@@ -867,3 +891,403 @@ instances:
     anim-clip-speed: 2
     anim-blend-factor: 1
     node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Woman.gltf
+    position: [36.6161575, -10.2398577, -21.6394272]
+    rotation: [0, -78.4900055, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 0
+    2nd-anim-clip-number: 9
+    anim-clip-speed: 8
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionWoman
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [93.4137115, 23.9354992, 6.21539259]
+    rotation: [1.99172044, 9.32525635, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [96.3542175, 32.4355011, -20.3991184]
+    rotation: [1.99172044, -137.599182, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-75.1530838, 19.9354992, 32.8084602]
+    rotation: [0, 58.3306885, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0.799837589
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-46.0650673, -17.4967499, 13.3013868]
+    rotation: [0, -55.8577881, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    head-anim-left-right-timestamp: 0.302553773
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-17.8329811, 19.9358482, 60.7174721]
+    rotation: [0, 115.100922, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-20.3679695, -17.496563, -0.640301883]
+    rotation: [1.99172044, 106.373734, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [9.35472393, -17.4967499, 6.66354799]
+    rotation: [1.99172044, 120.378296, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-9.46877193, -17.4967499, -6.23351479]
+    rotation: [1.99172044, -3.08590698, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [-6.0024972, -17.4967499, -8.8511467]
+    rotation: [1.99172044, -50.3261566, 0.309111625]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 2
+    anim-blend-factor: 1
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+
+dynamic-lights:
+  - position: [-16.6924553, 23.5941849, -62.4782372]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 20
+    spot-outer-cutoff-angle: 180
+  - position: [-21.7464371, 23.5941849, -62.4691162]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 20
+    spot-outer-cutoff-angle: 180
+  - position: [-16.8848572, 23.5941849, -57.7095222]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 20
+    spot-outer-cutoff-angle: 180
+  - position: [-21.7714138, 23.5941849, -57.7609978]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 20
+    spot-outer-cutoff-angle: 175.604996
+  - position: [-22.6707611, 23.5941849, -42.7863388]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 41.0820007
+  - position: [-22.5917397, 23.5941849, -38.0269966]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 34.7130013
+  - position: [-17.6096573, 23.5941849, -37.8399086]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 26.7509995
+  - position: [-17.6247253, 23.5941849, -42.4036713]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 33.1199989
+  - position: [-46.8261108, 23.5941849, -42.8950195]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 138.535004
+    max-distance: 29.9360008
+    spot-cutoff-angle: 114.013
+    spot-outer-cutoff-angle: 179.044998
+  - position: [-46.884552, 23.5941849, -38.1109085]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 213.376007
+    max-distance: 31.5279999
+    spot-cutoff-angle: 80.7649994
+    spot-outer-cutoff-angle: 180
+  - position: [-51.7569046, 23.5941849, -37.9414749]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 82.961998
+    max-distance: 20.3810005
+    spot-cutoff-angle: 94.012001
+    spot-outer-cutoff-angle: 180
+  - position: [-51.7365036, 23.5941849, -42.8149033]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 74.8410034
+    max-distance: 31.5279999
+    spot-cutoff-angle: 103.758003
+    spot-outer-cutoff-angle: 180
+  - position: [-51.4230156, 23.5941849, -56.6775322]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 49.0439987
+  - position: [-51.606823, 23.5941849, -61.3377113]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 49.0439987
+  - position: [-46.9174309, 23.5941849, -61.3556557]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 49.0439987
+  - position: [-46.8728905, 23.5941849, -56.6112671]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 304.299011
+    max-distance: 49.0439987
+  - position: [6.68499756, 23.5941849, -42.6510658]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 33.1199989
+  - position: [12.1041765, 23.5941849, -42.9102516]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 33.1199989
+  - position: [7.67446613, 23.5941849, -38.7559242]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 26.7509995
+  - position: [12.4292088, 23.5941849, -38.6933937]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 26.7509995
+  - position: [6.38321495, 23.5941849, -57.585537]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 90
+    spot-outer-cutoff-angle: 180
+  - position: [11.5800905, 23.5941849, -56.9609489]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 90
+    spot-outer-cutoff-angle: 180
+  - position: [6.10460186, 23.5941849, -62.4260674]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 90
+    spot-outer-cutoff-angle: 180
+  - position: [10.9317598, 23.5941849, -62.364872]
+    rotation: [0, 0, 180]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 1]
+    distance: 50
+    max-distance: 49.0439987
+    spot-cutoff-angle: 90
+    spot-outer-cutoff-angle: 180
+  - position: [-57.6500549, 6.48929501, -73.0590515]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-52.4640923, 6.48929501, -27.6115551]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-57.3193436, 6.48929501, -27.6495533]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-52.8067513, 6.48929501, -73.0884552]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-28.8949718, 6.48929501, -73.4577255]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-22.7601223, 6.48929501, -73.1254501]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-27.2972412, 6.48929501, -27.4694252]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [-22.6518421, 6.48929501, -27.2616787]
+    rotation: [0, 0, 0]
+    enabled: true
+    type: 0
+    diffuse-color: [0, 0, 1]
+    distance: 500
+    max-distance: 12
+  - position: [24.8793087, 11.3680172, -50.9848366]
+    rotation: [0, 0, 90]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 42.4830017
+    max-distance: 16.3689995
+    spot-cutoff-angle: 94.0130005
+    spot-outer-cutoff-angle: 105.476997
+  - position: [24.8990402, 11.4274578, -49.6399651]
+    rotation: [0, 0, 90]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 60.5089989
+    max-distance: 16.3689995
+    spot-cutoff-angle: 96.3059998
+    spot-outer-cutoff-angle: 104.331001
+  - position: [24.9015903, 11.4528408, -50.2942085]
+    rotation: [0, 0, 90]
+    enabled: true
+    type: 1
+    diffuse-color: [1, 1, 0]
+    distance: 60.5089989
+    max-distance: 16.3689995
+    spot-cutoff-angle: 96.3059998
+    spot-outer-cutoff-angle: 104.331001

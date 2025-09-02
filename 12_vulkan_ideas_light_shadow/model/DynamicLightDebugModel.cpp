@@ -1,7 +1,7 @@
 #include <DynamicLightDebugModel.h>
 #include <Logger.h>
 
-VkLineMesh DynamicLightDebugModel::getVertexData() {
+VkSimpleMesh DynamicLightDebugModel::getVertexData() {
   if (mVertexData.vertices.empty()) {
     init();
   }
@@ -17,8 +17,8 @@ void DynamicLightDebugModel::init() {
   }
 
   int endIndex = circleValues.size();
-  VkLineVertex startVert;
-  VkLineVertex endVert;
+  VkSimpleVertex startVert;
+  VkSimpleVertex endVert;
 
   // X axis
   for (int i = 0; i < endIndex; ++i) {

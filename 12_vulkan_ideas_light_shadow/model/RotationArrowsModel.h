@@ -7,9 +7,9 @@
 
 class RotationArrowsModel {
   public:
-    VkLineMesh getVertexData();
+    VkSimpleMesh getVertexData();
 
   private:
     void init();
-    VkLineMesh mVertexData{};
+    VkSimpleMesh mVertexData{};
 };

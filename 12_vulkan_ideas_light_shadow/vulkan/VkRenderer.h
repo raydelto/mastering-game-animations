@@ -29,7 +29,7 @@
 #include <CoordArrowsModel.h>
 #include <RotationArrowsModel.h>
 #include <ScaleArrowsModel.h>
-#include <SphereModel.h>
+#include <SimpleSphereModel.h>
 #include <AssimpModel.h>
 #include <AssimpInstance.h>
 #include <Octree.h>
@@ -45,6 +45,7 @@
 #include <SkyboxModel.h>
 #include <AssimpDynLight.h>
 #include <DynamicLightDebugModel.h>
+#include <FullSphereModel.h>
 
 #include <VkRenderData.h>
 #include <ModelInstanceCamData.h>
@@ -134,7 +135,7 @@ class VkRenderer {
     std::vector<glm::mat4> mShaderBoneMatrices{};
 
     std::vector<AABB> mPerInstanceAABB{};
-    std::shared_ptr<VkLineMesh> mAABBMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mAABBMesh = nullptr;
 
     // bounding sphere compute shader
     std::vector<glm::mat4> mSphereWorldPosMatrices{};
@@ -144,13 +145,17 @@ class VkRenderer {
     RotationArrowsModel mRotationArrowsModel{};
     ScaleArrowsModel mScaleArrowsModel{};
 
-    VkLineMesh mCoordArrowsMesh{};
-    std::shared_ptr<VkLineMesh> mLineMesh = nullptr;
+    VkSimpleMesh mCoordArrowsMesh{};
+    std::shared_ptr<VkSimpleMesh> mLineMesh = nullptr;
 
-    SphereModel mSphereModel{};
-    SphereModel mCollidingSphereModel{};
-    VkLineMesh mSphereMesh{};
-    VkLineMesh mCollidingSphereMesh{};
+    SimpleSphereModel mSphereModel{};
+    SimpleSphereModel mCollidingSphereModel{};
+    FullSphereModel mFullSphereModel{};
+    SimpleSphereModel mFullSphereDebugModel{};
+    VkSimpleMesh mSphereMesh{};
+    VkSimpleMesh mCollidingSphereMesh{};
+    VkSimpleMesh mFullSphereMesh{};
+    VkSimpleMesh mFullSphereDebugMesh{};
 
     unsigned int mLineIndexCount = 0;
     uint32_t mCollidingSphereCount = 0;
@@ -264,21 +269,21 @@ class VkRenderer {
     const float GRAVITY_CONSTANT = 9.81f;
 
     AABB mAllLevelAABB{};
-    std::shared_ptr<VkLineMesh> mLevelAABBMesh = nullptr;
-    std::shared_ptr<VkLineMesh> mLevelOctreeMesh = nullptr;
-    std::shared_ptr<VkLineMesh> mLevelWireframeMesh = nullptr;
-    std::shared_ptr<VkLineMesh> mLevelCollidingTriangleMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelAABBMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelOctreeMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelWireframeMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelCollidingTriangleMesh = nullptr;
 
     IKSolver mIKSolver{};
-    std::shared_ptr<VkLineMesh> mIKFootPointMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mIKFootPointMesh = nullptr;
     std::array<std::vector<glm::vec3>, 2> mNewNodePositions{};
     std::vector<glm::mat4> mIKWorldPositionsToSolve{};
     std::vector<glm::vec3> mIKSolvedPositions{};
 
     PathFinder mPathFinder{};
     void generateGroundTriangleData();
-    std::shared_ptr<VkLineMesh> mLevelGroundNeighborsMesh = nullptr;
-    std::shared_ptr<VkLineMesh> mInstancePathMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelGroundNeighborsMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mInstancePathMesh = nullptr;
 
     uint32_t mGroundMeshVertexCount = 0;
 

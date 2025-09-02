@@ -1,7 +1,7 @@
 #include <ScaleArrowsModel.h>
 #include <Logger.h>
 
-VkLineMesh ScaleArrowsModel::getVertexData() {
+VkSimpleMesh ScaleArrowsModel::getVertexData() {
   if (mVertexData.vertices.empty()) {
     init();
   }

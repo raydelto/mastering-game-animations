@@ -8,6 +8,7 @@
 #include <GraphNodeBase.h>
 #include <BehaviorManager.h>
 #include <AssimpLevel.h>
+#include <AssimpDynLight.h>
 #include <Logger.h>
 
 // overloads
@@ -345,6 +346,31 @@ YAML::Emitter& operator<<(YAML::Emitter& out, const LevelSettings& settings) {
   return out;
 }
 
+YAML::Emitter& operator<<(YAML::Emitter& out, const DynamicLightSettings& settings) {
+  out << YAML::Key << "position";
+  out << YAML::Value << settings.dlsWorldPosition;
+  out << YAML::Key << "rotation";
+  out << YAML::Value << settings.dlsWorldRotation;
+  out << YAML::Key << "enabled";
+  out << YAML::Value << settings.dlsEnabled;
+  out << YAML::Key << "type";
+  out << YAML::Value << static_cast<int>(settings.dlsType);
+  out << YAML::Key << "diffuse-color";
+  out << YAML::Value << settings.dlsDiffuseColor;
+  out << YAML::Key << "distance";
+  out << YAML::Value << settings.dlsDistance;
+  out << YAML::Key << "max-distance";
+  out << YAML::Value << settings.dlsMaxDistance;
+  if (settings.dlsType == dynamicLightType::spot) {
+    out << YAML::Key << "spot-cutoff-angle";
+    out << YAML::Value << settings.dlsSpotCutOffDegrees;
+    out << YAML::Key << "spot-outer-cutoff-angle";
+    out << YAML::Value << settings.dlsSpotOuterCutOffDegrees;
+  }
+
+  return out;
+}
+
 bool YamlParser::loadYamlFile(const std::string fileName) {
   try {
     mYamlNode = YAML::LoadFile(fileName);
@@ -529,6 +555,28 @@ std::vector<LevelSettings> YamlParser::getLevelConfigs() {
   return levelSettings;
 }
 
+std::vector<DynamicLightSettings> YamlParser::getDynLightConfigs() {
+  std::vector<DynamicLightSettings> lightSettings;
+  if (!hasKey("dynamic-lights")) {
+    Logger::log(1, "%s info: no dynamic lights found in config file '%s'\n", __FUNCTION__, mYamlFileName.c_str());
+    return lightSettings;
+  }
+
+  YAML::Node lightNode = mYamlNode["dynamic-lights"];
+  DynamicLightSettings settings;
+  for (size_t i = 0; i < lightNode.size(); ++i) {
+    try {
+      settings = lightNode[i].as<DynamicLightSettings>();
+    } catch (...) {
+      Logger::log(1, "%s error: could not parse file '%s'\n", __FUNCTION__, mYamlFileName.c_str());
+      continue;
+    }
+    lightSettings.emplace_back(settings);
+  }
+
+  return lightSettings;
+}
+
 
 int YamlParser::getSelectedInstanceNum() {
   int selectedInstanceNum = 0;
@@ -594,6 +642,28 @@ int YamlParser::getSelectedLevelNum() {
   }
 
   return selectedLevelNum;
+}
+
+int YamlParser::getSelectedDynLightNum() {
+  int selectedDynLightNum = 0;
+  if (!hasKey("settings")) {
+    Logger::log(1, "%s error: no settings found in config file '%s'\n", __FUNCTION__, mYamlFileName.c_str());
+    return 0;
+  }
+
+  YAML::Node settingsNode = mYamlNode["settings"];
+  try {
+    for(auto it = settingsNode.begin(); it != settingsNode.end(); ++it) {
+      if (it->first.as<std::string>() == "selected-dynamic-light") {
+        selectedDynLightNum = it->second.as<int>();
+      }
+    }
+  } catch (...) {
+    Logger::log(1, "%s error: could not parse file '%s'\n", __FUNCTION__, mYamlFileName.c_str());
+    return 0;
+  }
+
+  return selectedDynLightNum;
 }
 
 bool YamlParser::getHighlightActivated() {
@@ -1516,6 +1586,8 @@ bool YamlParser::createConfigFile(VkRenderData renderData, ModelInstanceCamData 
   mYamlEmit << YAML::Value << modInstCamData.micSelectedCamera;
   mYamlEmit << YAML::Key << "selected-level";
   mYamlEmit << YAML::Value << modInstCamData.micSelectedLevel;
+  mYamlEmit << YAML::Key << "selected-dynamic-light";
+  mYamlEmit << YAML::Value << modInstCamData.micSelectedDynLight;
   mYamlEmit << YAML::Key << "highlight-selection";
   mYamlEmit << YAML::Value << renderData.rdHighlightSelectedInstance;
   mYamlEmit << YAML::Key << "collision-enabled";
@@ -1687,6 +1759,31 @@ bool YamlParser::createConfigFile(VkRenderData renderData, ModelInstanceCamData 
   mYamlEmit << YAML::EndMap;
 
   mYamlEmit << YAML::Newline;
+
+  // dynamic lights
+  if (modInstCamData.micDynLights.size() > 1) {
+    mYamlEmit << YAML::BeginMap;
+    mYamlEmit << YAML::Key << "dynamic-lights";
+    mYamlEmit << YAML::Value;
+    mYamlEmit << YAML::BeginSeq;
+
+    for (const auto& light : modInstCamData.micDynLights) {
+      DynamicLightSettings lightSettings = light->getDynLightSettings();
+      // skip null light
+      if (lightSettings.dlsIndexPosition == 0) {
+        continue;
+      }
+
+      mYamlEmit << YAML::BeginMap;
+      mYamlEmit << lightSettings;
+      mYamlEmit << YAML::EndMap;
+    }
+
+    mYamlEmit << YAML::EndSeq;
+    mYamlEmit << YAML::EndMap;
+
+    mYamlEmit << YAML::Newline;
+  }
 
   Logger::log(2, "%s: --- emitter output ---\n", __FUNCTION__);
   Logger::log(2, "%s\n", mYamlEmit.c_str());

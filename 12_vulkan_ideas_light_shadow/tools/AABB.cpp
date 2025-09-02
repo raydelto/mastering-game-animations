@@ -2,7 +2,7 @@
 #include <AABB.h>
 
 AABB::AABB() {
-  mAabbMesh = std::make_shared<VkLineMesh>();
+  mAabbMesh = std::make_shared<VkSimpleMesh>();
   mAabbMesh->vertices.resize(24);
 
   clear();
@@ -53,7 +53,7 @@ void AABB::setExtents(glm::vec3 minPos, glm::vec3 maxPos) {
   mMaxPos = maxPos;
 }
 
-std::shared_ptr<VkLineMesh> AABB::getAABBLines(glm::vec3 color) {
+std::shared_ptr<VkSimpleMesh> AABB::getAABBLines(glm::vec3 color) {
   mAabbMesh->vertices.at(0) = {{mMinPos.x, mMinPos.y, mMinPos.z}, color};
   mAabbMesh->vertices.at(1) = {{mMaxPos.x, mMinPos.y, mMinPos.z}, color};
 

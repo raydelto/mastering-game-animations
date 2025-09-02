@@ -1,18 +1,18 @@
-#include <SphereModel.h>
+#include <SimpleSphereModel.h>
 
 #include <vector>
 #include <cmath>
 
 #include <Logger.h>
 
-VkLineMesh SphereModel::getVertexData() {
+VkSimpleMesh SimpleSphereModel::getVertexData() {
   if (mVertexData.vertices.empty()) {
     init();
   }
   return mVertexData;
 }
 
-void SphereModel::init() {
+void SimpleSphereModel::init() {
   std::vector<std::vector<glm::vec3>> constructionVertexData;
 
   // construct rings with position data

@@ -7,7 +7,7 @@
 void PathFinder::generateGroundTriangles(VkRenderData& renderData, std::shared_ptr<TriangleOctree> octree, BoundingBox3D worldbox) {
   mNavTriangles.clear();
 
-  mLevelGroundMesh = std::make_shared<VkLineMesh>();
+  mLevelGroundMesh = std::make_shared<VkSimpleMesh>();
 
   // get all triangles frm octree
   std::vector<MeshTriangle> levelTris = octree->query(worldbox);
@@ -31,7 +31,7 @@ void PathFinder::generateGroundTriangles(VkRenderData& renderData, std::shared_p
 
   Logger::log(1, "%s: level has %i (%i) possible ground triangles\n", __FUNCTION__, groundTris.size(), mNavTriangles.size());
 
-  VkLineVertex vert;
+  VkSimpleVertex vert;
   vert.color = glm::vec3(0.0f, 0.2f, 0.8f);
 
   for (const auto& tri : groundTris) {
@@ -224,7 +224,7 @@ std::vector<int> PathFinder::findPath(int startTriIndex, int targetTriIndex) {
   return foundPath;
 }
 
-std::shared_ptr<VkLineMesh> PathFinder::getGroundLevelMesh() {
+std::shared_ptr<VkSimpleMesh> PathFinder::getGroundLevelMesh() {
   return mLevelGroundMesh;
 }
 
@@ -237,15 +237,15 @@ glm::vec3 PathFinder::getTriangleCenter(int index) {
 }
 
 
-std::shared_ptr<VkLineMesh> PathFinder::getAsLineMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 offset) {
-  std::shared_ptr<VkLineMesh> pointMesh = std::make_shared<VkLineMesh>();
+std::shared_ptr<VkSimpleMesh> PathFinder::getAsLineMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 offset) {
+  std::shared_ptr<VkSimpleMesh> pointMesh = std::make_shared<VkSimpleMesh>();
 
   // we need at least two vertices to draw a line
   if (indices.size() < 2) {
     return pointMesh;
   }
 
-  VkLineVertex vert{};
+  VkSimpleVertex vert{};
   vert.color = color;
 
   for (int i = 0; i < indices.size() - 1; ++i) {
@@ -265,11 +265,11 @@ std::shared_ptr<VkLineMesh> PathFinder::getAsLineMesh(std::vector<int> indices, 
   return pointMesh;
 }
 
-std::shared_ptr<VkLineMesh> PathFinder::getAsTriangleMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 normalColor, glm::vec3 offset) {
-  std::shared_ptr<VkLineMesh> pointMesh = std::make_shared<VkLineMesh>();
+std::shared_ptr<VkSimpleMesh> PathFinder::getAsTriangleMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 normalColor, glm::vec3 offset) {
+  std::shared_ptr<VkSimpleMesh> pointMesh = std::make_shared<VkSimpleMesh>();
 
-  VkLineVertex vert;
-  VkLineVertex normalVert;
+  VkSimpleVertex vert;
+  VkSimpleVertex normalVert;
 
   for (const auto index : indices) {
     NavTriangle tri = mNavTriangles.at(index);

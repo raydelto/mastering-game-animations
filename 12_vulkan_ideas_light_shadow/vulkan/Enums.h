@@ -227,6 +227,7 @@ enum class compositeDebugDisplay : uint8_t {
   position,
   ssao,
   ssaoBlur,
+  lightVolumes,
   shadowMap
 };
 

@@ -36,11 +36,11 @@ class PathFinder {
 
     glm::vec3 getTriangleCenter(int index);
 
-    std::shared_ptr<VkLineMesh> getGroundLevelMesh();
-    std::shared_ptr<VkLineMesh> getAsLineMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 offset);
-    std::shared_ptr<VkLineMesh> getAsTriangleMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 normalColor, glm::vec3 offset);
+    std::shared_ptr<VkSimpleMesh> getGroundLevelMesh();
+    std::shared_ptr<VkSimpleMesh> getAsLineMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 offset);
+    std::shared_ptr<VkSimpleMesh> getAsTriangleMesh(std::vector<int> indices, glm::vec3 color, glm::vec3 normalColor, glm::vec3 offset);
 
   private:
     std::unordered_map<int, NavTriangle> mNavTriangles{};
-    std::shared_ptr<VkLineMesh> mLevelGroundMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mLevelGroundMesh = nullptr;
 };

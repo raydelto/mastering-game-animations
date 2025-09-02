@@ -4,12 +4,12 @@
 
 #include <VkRenderData.h>
 
-class SphereModel {
+class SimpleSphereModel {
   public:
-    SphereModel(const float radius = 1.0f, const float verticalDiv = 5, const float horizontalDiv = 8, const glm::vec3 color = glm::vec3(1.0f)) :
+    SimpleSphereModel(const float radius = 1.0f, const float verticalDiv = 5, const float horizontalDiv = 8, const glm::vec3 color = glm::vec3(1.0f)) :
       mRadius(radius), mVertDiv(verticalDiv), mHorDiv(horizontalDiv), mColor(color) {};
 
-    VkLineMesh getVertexData();
+    VkSimpleMesh getVertexData();
 
   private:
     void init();
@@ -20,5 +20,5 @@ class SphereModel {
 
     glm::vec3 mColor = glm::vec3(1.0f);
 
-    VkLineMesh mVertexData{};
+    VkSimpleMesh mVertexData{};
 };

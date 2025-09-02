@@ -2,11 +2,11 @@
 
 #include <VkBootstrap.h>
 
-#include <GroundMeshPipeline.h>
+#include <LightVolumePipeline.h>
 #include <Logger.h>
 #include <Shader.h>
 
-bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> colorAttachmentFormats,
+bool LightVolumePipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAttachmentFormats,
     VkPipelineLayout& pipelineLayout, VkPipeline& pipeline, std::string vertexShaderFilename, std::string fragmentShaderFilename) {
   // shader
   VkShaderModule vertexModule = Shader::loadShader(renderData.rdVkbDevice.device, vertexShaderFilename);
@@ -81,7 +81,7 @@ bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> col
   rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
   rasterizerInfo.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizerInfo.lineWidth = 1.0f;
-  rasterizerInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+  rasterizerInfo.cullMode = VK_CULL_MODE_FRONT_BIT;
   // use CCW winding
   rasterizerInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterizerInfo.depthBiasEnable = VK_FALSE;
@@ -91,16 +91,15 @@ bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> col
   multisamplingInfo.sampleShadingEnable = VK_FALSE;
   multisamplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-  // ground mesh should be blended into the level
   std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments{};
-
   for (size_t i = 0; i < colorAttachmentFormats.size(); ++i) {
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_TRUE;
+    // additive blending
     colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
     colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
     colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
@@ -122,8 +121,8 @@ bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> col
   VkPipelineDepthStencilStateCreateInfo depthStencilInfo{};
   depthStencilInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
   depthStencilInfo.depthTestEnable = VK_TRUE;
-  depthStencilInfo.depthWriteEnable = VK_TRUE;
-  depthStencilInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+  depthStencilInfo.depthWriteEnable = VK_FALSE;
+  depthStencilInfo.depthCompareOp = VK_COMPARE_OP_GREATER;
   depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
   depthStencilInfo.minDepthBounds = 0.0f;
   depthStencilInfo.maxDepthBounds = 1.0f;
@@ -178,6 +177,6 @@ bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> col
   return true;
 }
 
-void GroundMeshPipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
+void LightVolumePipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
   vkDestroyPipeline(renderData.rdVkbDevice.device, pipeline, nullptr);
 }

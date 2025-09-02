@@ -9,6 +9,7 @@
 #include <CameraSettings.h>
 #include <BehaviorData.h>
 #include <LevelSettings.h>
+#include <DynamicLightSettings.h>
 #include <Enums.h>
 #include <Logger.h>
 
@@ -217,8 +218,28 @@ namespace YAML {
       try {
         rhs = static_cast<timeOfDay>(node.as<int>());
       } catch (...) {
-        Logger::log(1, "%s warning: could not parse head move direction type, using default 'noon'\n", __FUNCTION__);
+        Logger::log(1, "%s warning: could not parse time of day type, using default 'noon'\n", __FUNCTION__);
         rhs = timeOfDay::noon;
+      }
+      return true;
+    }
+  };
+
+  // read and write dynamic light type
+  template<>
+  struct convert<dynamicLightType> {
+    static Node encode(const dynamicLightType& rhs) {
+      Node node;
+      node = static_cast<int>(rhs);
+      return node;
+    }
+
+    static bool decode(const Node& node, dynamicLightType& rhs) {
+      try {
+        rhs = static_cast<dynamicLightType>(node.as<int>());
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse dynamic light type, using default 'point'\n", __FUNCTION__);
+        rhs = dynamicLightType::point;
       }
       return true;
     }
@@ -784,6 +805,87 @@ namespace YAML {
         Logger::log(1, "%s warning: could not parse Y-Z axis swappin of level '%s', init with a default value\n", __FUNCTION__, rhs.lsLevelFilename.c_str());
         rhs.lsSwapYZAxis = defaultSettings.lsSwapYZAxis;
       }
+      return true;
+    }
+  };
+
+  template<>
+  struct convert<DynamicLightSettings> {
+    static Node encode(const DynamicLightSettings& rhs) {
+      Node node;
+      node["position"] = rhs.dlsWorldPosition;
+      node["rotation"] = rhs.dlsWorldRotation;
+      node["enabled"] = rhs.dlsEnabled;
+      node["type"] = rhs.dlsType;
+      node["diffuse-color"] = rhs.dlsDiffuseColor;
+      node["distance"] = rhs.dlsDistance;
+      node["max-distance"] = rhs.dlsMaxDistance;
+      if (rhs.dlsType == dynamicLightType::spot) {
+        node["spot-cutoff-angle"] = rhs.dlsSpotCutOffDegrees;
+        node["spot-outer-cutoff-angle"] = rhs.dlsSpotOuterCutOffDegrees;
+      }
+      return node;
+    }
+
+    static bool decode(const Node& node, DynamicLightSettings& rhs) {
+      DynamicLightSettings defaultSettings;
+      try {
+        rhs.dlsWorldPosition = node["position"].as<glm::vec3>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse position of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsWorldPosition = defaultSettings.dlsWorldPosition;
+      }
+      try {
+        rhs.dlsWorldRotation = node["rotation"].as<glm::vec3>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse rotation of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsWorldRotation = defaultSettings.dlsWorldRotation;
+      }
+      try {
+        rhs.dlsEnabled = node["enabled"].as<bool>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse enable status of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsEnabled = true;
+      }
+      try {
+        rhs.dlsType = node["type"].as<dynamicLightType>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse type of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsType = defaultSettings.dlsType;
+      }
+      try {
+        rhs.dlsDiffuseColor = node["diffuse-color"].as<glm::vec3>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse diffuse color of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsDiffuseColor = defaultSettings.dlsDiffuseColor;
+      }
+      try {
+        rhs.dlsDistance = node["distance"].as<float>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse light distance, init with a default value\n", __FUNCTION__);
+        rhs.dlsDistance = defaultSettings.dlsDistance;
+      }
+      try {
+        rhs.dlsMaxDistance = node["max-distance"].as<float>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse max light distance, init with a default value\n", __FUNCTION__);
+        rhs.dlsMaxDistance = defaultSettings.dlsMaxDistance;
+      }
+      if (rhs.dlsType == dynamicLightType::spot) {
+        try {
+          rhs.dlsSpotCutOffDegrees = node["spot-cutoff-angle"].as<float>();
+        } catch (...) {
+          Logger::log(1, "%s warning: could not parse spot light cut off angle, init with a default value\n", __FUNCTION__);
+          rhs.dlsSpotCutOffDegrees = defaultSettings.dlsSpotCutOffDegrees;
+        }
+        try {
+          rhs.dlsSpotOuterCutOffDegrees = node["spot-outer-cutoff-angle"].as<float>();
+        } catch (...) {
+          Logger::log(1, "%s warning: could not parse spot light cut off angle, init with a default value\n", __FUNCTION__);
+          rhs.dlsSpotOuterCutOffDegrees = defaultSettings.dlsSpotOuterCutOffDegrees;
+        }
+      }
+
       return true;
     }
   };

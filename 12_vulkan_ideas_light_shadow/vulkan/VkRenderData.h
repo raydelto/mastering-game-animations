@@ -52,16 +52,16 @@ struct VkMesh {
   std::vector<VkMorphMesh> morphMeshes{};
 };
 
-struct VkLineVertex {
+struct VkSimpleVertex {
   glm::vec3 position = glm::vec3(0.0f);
   glm::vec3 color = glm::vec3(0.0f);
 
-  VkLineVertex() {};
-  VkLineVertex(glm::vec3 pos, glm::vec3 col) : position(pos), color(col) {};
+  VkSimpleVertex() {};
+  VkSimpleVertex(glm::vec3 pos, glm::vec3 col) : position(pos), color(col) {};
 };
 
-struct VkLineMesh {
-  std::vector<VkLineVertex> vertices{};
+struct VkSimpleMesh {
+  std::vector<VkSimpleVertex> vertices{};
 };
 
 struct VkSkyboxVertex {
@@ -70,15 +70,6 @@ struct VkSkyboxVertex {
 
 struct VkSkyboxMesh {
   std::vector<VkSkyboxVertex> vertices{};
-};
-
-struct VkFullscreenQuadVertex {
-  glm::vec4 position = glm::vec4(0.0f);
-  glm::vec2 uv = glm::vec2(0.0f);
-};
-
-struct VkFullscreenQuadMesh {
-  std::vector<VkFullscreenQuadVertex> vertices{};
 };
 
 struct PerInstanceAnimData {
@@ -139,6 +130,7 @@ struct VkRenderUploadData {
   int32_t shadowMapPCFRange = 1;
   int32_t colorCascadeDebug = 0;
   int32_t numDynamicLights = 0;
+  int32_t useLightVolumes = 0;
 };
 
 struct ShadowMapCascadeData {
@@ -271,6 +263,8 @@ struct VkRenderData {
   std::vector<DynamicLightData> rdLightData{};
   bool rdEnableLightDebug = false;
   std::vector<glm::vec4> rdLightDebugData{};
+  bool rdEnableLightVolumes = false;
+  bool rdEnableLightVolumeDebug = false;
 
   compositeDebugDisplay rdCompositeDebug = compositeDebugDisplay::composite;
 
@@ -345,7 +339,7 @@ struct VkRenderData {
   bool rdDrawLevelCollisionTriangles = false;
 
   bool rdDrawLevelWireframeMiniMap = false;
-  std::shared_ptr<VkLineMesh> rdLevelWireframeMiniMapMesh = nullptr;
+  std::shared_ptr<VkSimpleMesh> rdLevelWireframeMiniMapMesh = nullptr;
 
   float rdMaxLevelGroundSlopeAngle = 0.0f;
   float rdMaxStairstepHeight = 1.0f;
@@ -433,6 +427,8 @@ struct VkRenderData {
   VkVertexBufferData rdInstancePathVertexBuffer{};
   VkVertexBufferData rdSkyboxBuffer{};
   VkVertexBufferData rdDynamicLightDebugVertexBuffer{};
+  VkVertexBufferData rdLightVolumeVertexBuffer{};
+  VkVertexBufferData rdLightVolumeDebugVertexBuffer{};
 
   VkShaderStorageBufferData rdShaderModelRootMatrixBuffer{};
   VkShaderStorageBufferData rdSelectedInstanceBuffer{};
@@ -483,6 +479,7 @@ struct VkRenderData {
   VkImageData rdSSAOBlurBufferData{};
   VkImageData rdShadowMapCombinedDepthBufferData{};
   VkImageData rdShadowMapDepthBufferData{};
+  VkImageData rdLightVolumesBufferData{};
 
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdAssimpSkinningPipelineLayout = VK_NULL_HANDLE;
@@ -501,6 +498,7 @@ struct VkRenderData {
   VkPipelineLayout rdCompositePipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdSSAOPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdSSAOBlurPipelineLayout = VK_NULL_HANDLE;
+  VkPipelineLayout rdLightVolumePipelineLayout = VK_NULL_HANDLE;
 
   VkPipeline rdAssimpPipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpSkinningPipeline = VK_NULL_HANDLE;
@@ -528,6 +526,7 @@ struct VkRenderData {
   VkPipeline rdShadowMapAssimpLevelPipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpPostCompositePipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpPostCompositeSelectionPipeline = VK_NULL_HANDLE;
+  VkPipeline rdLightVolumePipeline = VK_NULL_HANDLE;
 
   VkCommandPool rdCommandPool = VK_NULL_HANDLE;
   VkCommandPool rdComputeCommandPool = VK_NULL_HANDLE;
@@ -567,6 +566,7 @@ struct VkRenderData {
   VkDescriptorSetLayout rdCompositeDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdSSAODescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdSSAOBlurDescriptorLayout = VK_NULL_HANDLE;
+  VkDescriptorSetLayout rdLightVolumeDescriptorLayout = VK_NULL_HANDLE;
 
   VkDescriptorSet rdAssimpDescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdAssimpSkinningDescriptorSet = VK_NULL_HANDLE;
@@ -589,6 +589,7 @@ struct VkRenderData {
   VkDescriptorSet rdSSAODescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdSSAOBlurDescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdDynLightDebugSphereDescriptorSet = VK_NULL_HANDLE;
+  VkDescriptorSet rdLightVolumeDescriptorSet = VK_NULL_HANDLE;
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

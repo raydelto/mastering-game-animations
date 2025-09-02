@@ -133,6 +133,7 @@ void UserInterface::createDescriptorSets(VkRenderData& renderData) {
   renderData.rdSSAONoiseBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAONoiseBufferData.sampler, renderData.rdSSAONoiseBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOColorBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOColorBufferData.sampler, renderData.rdSSAOColorBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOBlurBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOBlurBufferData.sampler, renderData.rdSSAOBlurBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  renderData.rdLightVolumesBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightVolumesBufferData.sampler, renderData.rdLightVolumesBufferData.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
 
   renderData.rdShadowMapCombinedDepthBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdShadowMapCombinedDepthBufferData.sampler, renderData.rdShadowMapCombinedDepthBufferData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
@@ -718,6 +719,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       renderData.rdCompositeDebug == compositeDebugDisplay::position)) {
       renderData.rdCompositeDebug = compositeDebugDisplay::position;
     }
+
     ImGui::AlignTextToFramePadding();
     ImGui::Text("                 ");
     ImGui::SameLine();
@@ -735,8 +737,14 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       renderData.rdCompositeDebug == compositeDebugDisplay::ssaoBlur)) {
       renderData.rdCompositeDebug = compositeDebugDisplay::ssaoBlur;
     }
+
     ImGui::AlignTextToFramePadding();
     ImGui::Text("                 ");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Light Volumes##CompositeLightVolumes",
+      renderData.rdCompositeDebug == compositeDebugDisplay::lightVolumes)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::lightVolumes;
+    }
     ImGui::SameLine();
     if (ImGui::RadioButton("Shadow Map##CompositeShadowMap",
       renderData.rdCompositeDebug == compositeDebugDisplay::shadowMap)) {
@@ -908,6 +916,24 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SameLine();
     ImGui::Checkbox("##EnableLightDebug", &renderData.rdEnableLightDebug);
 
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Use Light Volumes:");
+    ImGui::SameLine();
+    ImGui::Checkbox("##UseLightVolumes", &renderData.rdEnableLightVolumes);
+
+    if (!renderData.rdEnableLightVolumes) {
+      ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Light Vol. Debug: ");
+    ImGui::SameLine();
+    ImGui::Checkbox("##LightVolumesDebug", &renderData.rdEnableLightVolumeDebug);
+
+    if (!renderData.rdEnableLightVolumes) {
+      ImGui::EndDisabled();
+    }
+
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Create New Light")) {
@@ -951,19 +977,19 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Enable Light:     ");
     ImGui::SameLine();
-    ImGui::Checkbox("##EnableLight", &lightSettings.dlsLightEnabled);
+    ImGui::Checkbox("##EnableLight", &lightSettings.dlsEnabled);
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Light Type:       ");
     ImGui::SameLine();
     if (ImGui::RadioButton("Point",
-      lightSettings.dlsLightType == dynamicLightType::point)) {
-      lightSettings.dlsLightType = dynamicLightType::point;
+      lightSettings.dlsType == dynamicLightType::point)) {
+      lightSettings.dlsType = dynamicLightType::point;
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("Spot",
-      lightSettings.dlsLightType == dynamicLightType::spot)) {
-      lightSettings.dlsLightType = dynamicLightType::spot;
+      lightSettings.dlsType == dynamicLightType::spot)) {
+      lightSettings.dlsType = dynamicLightType::spot;
     }
 
     ImGui::AlignTextToFramePadding();
@@ -986,38 +1012,38 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Lighting Distance:");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsLightDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightightDist", &lightSettings.dlsDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Max Light Dist:   ");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightightMaxDist", &lightSettings.dlsMaxLightDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightightMaxDist", &lightSettings.dlsMaxDistance, DynamicLightSettings::MIN_LIGHT_DIST, DynamicLightSettings::MAX_LIGHT_DIST, "%.3f", flags);
 
-    if (lightSettings.dlsLightType == dynamicLightType::point) {
+    if (lightSettings.dlsType == dynamicLightType::point) {
       ImGui::BeginDisabled();
     }
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("CutOff Angle:     ");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightigCutOff", &lightSettings.dlsPointCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightigCutOff", &lightSettings.dlsSpotCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
     if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
-      if (lightSettings.dlsPointCutOffDegrees > lightSettings.dlsPointOuterCutOffDegrees) {
-        lightSettings.dlsPointOuterCutOffDegrees = lightSettings.dlsPointCutOffDegrees;
+      if (lightSettings.dlsSpotCutOffDegrees > lightSettings.dlsSpotOuterCutOffDegrees) {
+        lightSettings.dlsSpotOuterCutOffDegrees = lightSettings.dlsSpotCutOffDegrees;
       }
     }
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Outer CutOff:     ");
     ImGui::SameLine();
-    ImGui::SliderFloat("##DynLightigOuterCutOff", &lightSettings.dlsPointOuterCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
+    ImGui::SliderFloat("##DynLightigOuterCutOff", &lightSettings.dlsSpotOuterCutOffDegrees, 0.0f, 180.0f, "%.3f", flags);
     if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
-      if (lightSettings.dlsPointOuterCutOffDegrees < lightSettings.dlsPointCutOffDegrees) {
-        lightSettings.dlsPointCutOffDegrees = lightSettings.dlsPointOuterCutOffDegrees;
+      if (lightSettings.dlsSpotOuterCutOffDegrees < lightSettings.dlsSpotCutOffDegrees) {
+        lightSettings.dlsSpotCutOffDegrees = lightSettings.dlsSpotOuterCutOffDegrees;
       }
     }
 
-    if (lightSettings.dlsLightType == dynamicLightType::point) {
+    if (lightSettings.dlsType == dynamicLightType::point) {
       ImGui::EndDisabled();
     }
 
@@ -4047,6 +4073,9 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
   ImGui::Text("SSAO Blur");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAOBlurBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
 
+  ImGui::Text("Light Volumes");
+  ImGui::Image(static_cast<ImTextureID>(renderData.rdLightVolumesBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
+
   ImGui::Text("Shadow Map");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet), ImVec2(300, 300));
 
@@ -4101,7 +4130,7 @@ void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanc
     boxAABB.create(box.getFrontTopLeft());
     boxAABB.addPoint(box.getFrontTopLeft() + box.getSize());
 
-    std::shared_ptr<VkLineMesh> instanceLines = boxAABB.getAABBLines(white);
+    std::shared_ptr<VkSimpleMesh> instanceLines = boxAABB.getAABBLines(white);
     mOctreeLines.vertices.insert(mOctreeLines.vertices.end(), instanceLines->vertices.begin(), instanceLines->vertices.end());
   }
 
@@ -4121,7 +4150,7 @@ void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanc
         return instanceId == values.first || instanceId == values.second;
       });
 
-    std::shared_ptr<VkLineMesh> instanceLines = nullptr;
+    std::shared_ptr<VkSimpleMesh> instanceLines = nullptr;
     if (iter != modInstCamData.micInstanceCollisions.end()) {
       // colliding instances in red
       instanceLines = instanceAABB.getAABBLines(red);
@@ -4157,8 +4186,8 @@ void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanc
   mOctreeViewMat = glm::rotate(mRotationMat, glm::radians(mOctreeRotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
 
   for (int i = 0; i < mOctreeLines.vertices.size(); i += 2) {
-    VkLineVertex startVert = mOctreeLines.vertices.at(i);
-    VkLineVertex endVert = mOctreeLines.vertices.at(i+1);
+    VkSimpleVertex startVert = mOctreeLines.vertices.at(i);
+    VkSimpleVertex endVert = mOctreeLines.vertices.at(i+1);
 
     glm::vec3 startPos = mOctreeViewMat * startVert.position;
     glm::vec3 endPos = mOctreeViewMat * endVert.position;
@@ -4174,8 +4203,8 @@ void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanc
 
   if (renderData.rdDrawLevelWireframeMiniMap) {
     for (int i = 0; i <  renderData.rdLevelWireframeMiniMapMesh->vertices.size(); i += 2) {
-      VkLineVertex startVert = renderData.rdLevelWireframeMiniMapMesh->vertices.at(i);
-      VkLineVertex endVert = renderData.rdLevelWireframeMiniMapMesh->vertices.at(i+1);
+      VkSimpleVertex startVert = renderData.rdLevelWireframeMiniMapMesh->vertices.at(i);
+      VkSimpleVertex endVert = renderData.rdLevelWireframeMiniMapMesh->vertices.at(i+1);
 
       glm::vec3 startPos = mOctreeViewMat * startVert.position;
       glm::vec3 endPos = mOctreeViewMat * endVert.position;
@@ -4272,6 +4301,7 @@ void UserInterface::removeDescriptorSets(VkRenderData& renderData) {
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAONoiseBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAOColorBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAOBlurBufferData.descriptorSet);
+  ImGui_ImplVulkan_RemoveTexture(renderData.rdLightVolumesBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet);
 }
 

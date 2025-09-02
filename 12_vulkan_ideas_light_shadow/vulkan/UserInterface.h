@@ -142,7 +142,7 @@ class UserInterface {
 
     static int nameInputFilter(ImGuiInputTextCallbackData* data);
 
-    VkLineMesh mOctreeLines{};
+    VkSimpleMesh mOctreeLines{};
     float mOctreeZoomFactor = 1.0f;
     glm::vec3 mOctreeRotation = glm::vec3(0.0f);
     glm::vec3 mOctreeTranslation = glm::vec3(0.0f);

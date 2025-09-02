@@ -7,9 +7,9 @@
 
 class ScaleArrowsModel {
   public:
-    VkLineMesh getVertexData();
+    VkSimpleMesh getVertexData();
 
   private:
     void init();
-    VkLineMesh mVertexData{};
+    VkSimpleMesh mVertexData{};
 };

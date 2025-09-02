@@ -13,6 +13,7 @@
 #include <ModelSettings.h>
 #include <BehaviorData.h>
 #include <LevelSettings.h>
+#include <DynamicLightSettings.h>
 #include <Enums.h>
 
 class YamlParser {
@@ -27,11 +28,13 @@ class YamlParser {
     std::vector<CameraSettings> getCameraConfigs();
     std::vector<ExtendedBehaviorData> getBehaviorData();
     std::vector<LevelSettings> getLevelConfigs();
+    std::vector<DynamicLightSettings> getDynLightConfigs();
 
     int getSelectedModelNum();
     int getSelectedInstanceNum();
     int getSelectedCameraNum();
     int getSelectedLevelNum();
+    int getSelectedDynLightNum();
     bool getHighlightActivated();
 
     float getNearPlane();

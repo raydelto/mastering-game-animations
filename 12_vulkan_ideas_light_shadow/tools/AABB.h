@@ -22,11 +22,11 @@ class AABB {
     void setMaxPos(glm::vec3 pos);
     void setExtents(glm::vec3 minPos, glm::vec3 maxPos);
 
-    std::shared_ptr<VkLineMesh> getAABBLines(glm::vec3 color);
+    std::shared_ptr<VkSimpleMesh> getAABBLines(glm::vec3 color);
 
   private:
     glm::vec3 mMinPos;
     glm::vec3 mMaxPos;
 
-    std::shared_ptr<VkLineMesh> mAabbMesh = nullptr;
+    std::shared_ptr<VkSimpleMesh> mAabbMesh = nullptr;
 };

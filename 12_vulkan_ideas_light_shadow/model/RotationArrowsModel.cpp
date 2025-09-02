@@ -1,7 +1,7 @@
 #include <RotationArrowsModel.h>
 #include <Logger.h>
 
-VkLineMesh RotationArrowsModel::getVertexData() {
+VkSimpleMesh RotationArrowsModel::getVertexData() {
   if (mVertexData.vertices.empty()) {
     init();
   }
@@ -17,8 +17,8 @@ void RotationArrowsModel::init() {
   }
 
   int endIndex = circleValues.size() - 2;
-  VkLineVertex startVert;
-  VkLineVertex endVert;
+  VkSimpleVertex startVert;
+  VkSimpleVertex endVert;
 
   // X axis - red
   for (int i = 0; i <= endIndex; ++i) {

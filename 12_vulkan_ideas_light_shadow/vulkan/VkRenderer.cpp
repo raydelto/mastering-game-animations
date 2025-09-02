@@ -30,6 +30,7 @@
 #include <CompositePipeline.h>
 #include <SSAOPipeline.h>
 #include <ShadowMapPipeline.h>
+#include <LightVolumePipeline.h>
 
 #include <InstanceSettings.h>
 #include <DynamicLightSettings.h>
@@ -67,6 +68,7 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
   mRenderData.rdSSAOBlurBufferData.format = VK_FORMAT_R32_SFLOAT;
   mRenderData.rdShadowMapCombinedDepthBufferData.format = VK_FORMAT_D16_UNORM;
+  mRenderData.rdLightVolumesBufferData.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
   if (!mRenderData.rdWindow) {
     Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
@@ -226,28 +228,38 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   Logger::log(1, "%s: enum to string maps initialized\n", __FUNCTION__);
 
   // valid, but empty line meshes
-  mLineMesh = std::make_shared<VkLineMesh>();
-  mAABBMesh = std::make_shared<VkLineMesh>();
-  mLevelAABBMesh = std::make_shared<VkLineMesh>();
-  mLevelOctreeMesh = std::make_shared<VkLineMesh>();
-  mLevelWireframeMesh = std::make_shared<VkLineMesh>();
-  mLevelCollidingTriangleMesh = std::make_shared<VkLineMesh>();
-  mIKFootPointMesh = std::make_shared<VkLineMesh>();
-  mRenderData.rdLevelWireframeMiniMapMesh = std::make_shared<VkLineMesh>();
-  mLevelGroundNeighborsMesh = std::make_shared<VkLineMesh>();
-  mInstancePathMesh = std::make_shared<VkLineMesh>();
+  mLineMesh = std::make_shared<VkSimpleMesh>();
+  mAABBMesh = std::make_shared<VkSimpleMesh>();
+  mLevelAABBMesh = std::make_shared<VkSimpleMesh>();
+  mLevelOctreeMesh = std::make_shared<VkSimpleMesh>();
+  mLevelWireframeMesh = std::make_shared<VkSimpleMesh>();
+  mLevelCollidingTriangleMesh = std::make_shared<VkSimpleMesh>();
+  mIKFootPointMesh = std::make_shared<VkSimpleMesh>();
+  mRenderData.rdLevelWireframeMiniMapMesh = std::make_shared<VkSimpleMesh>();
+  mLevelGroundNeighborsMesh = std::make_shared<VkSimpleMesh>();
+  mInstancePathMesh = std::make_shared<VkSimpleMesh>();
   Logger::log(1, "%s: line mesh storages initialized\n", __FUNCTION__);
 
-  mAABBMesh = std::make_shared<VkLineMesh>();
+  mAABBMesh = std::make_shared<VkSimpleMesh>();
   Logger::log(1, "%s: AABB line mesh storage initialized\n", __FUNCTION__);
 
-  mSphereModel = SphereModel(1.0, 5, 8, glm::vec3(1.0f, 1.0f, 1.0f));
+  mSphereModel = SimpleSphereModel(1.0, 5, 8, glm::vec3(1.0f, 1.0f, 1.0f));
   mSphereMesh = mSphereModel.getVertexData();
   Logger::log(1, "%s: Sphere line mesh storage initialized\n", __FUNCTION__);
 
-  mCollidingSphereModel = SphereModel(1.0, 5, 8, glm::vec3(1.0f, 0.0f, 0.0f));
+  mCollidingSphereModel = SimpleSphereModel(1.0, 5, 8, glm::vec3(1.0f, 0.0f, 0.0f));
   mCollidingSphereMesh = mCollidingSphereModel.getVertexData();
   Logger::log(1, "%s: Colliding sphere line mesh storage initialized\n", __FUNCTION__);
+
+  mFullSphereModel = FullSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
+  mFullSphereMesh = mFullSphereModel.getVertexData();
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightVolumeVertexBuffer, mFullSphereMesh.vertices);
+
+  mFullSphereDebugModel = SimpleSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
+  mFullSphereDebugMesh = mFullSphereDebugModel.getVertexData();
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightVolumeDebugVertexBuffer, mFullSphereDebugMesh.vertices);
+
+  Logger::log(1, "%s: Light sphere line mesh storage initialized\n", __FUNCTION__);
 
   mSkyboxModel.init();
   VkSkyboxMesh skyboxMesh = mSkyboxModel.getVertexData();
@@ -261,7 +273,7 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   Logger::log(1, "%s: skybox successfully loaded\n", __FUNCTION__);
 
-  VkLineMesh lightDebugMesh = mDynLightModel.getVertexData();
+  VkSimpleMesh lightDebugMesh = mDynLightModel.getVertexData();
   VertexBuffer::uploadData(mRenderData, mRenderData.rdDynamicLightDebugVertexBuffer, lightDebugMesh.vertices);
   Logger::log(1, "%s: Dynamic light debug line mesh storage initialized\n", __FUNCTION__);
 
@@ -545,6 +557,33 @@ bool VkRenderer::loadConfigFile(std::string configFileName) {
 
   // reset light data
   resetLightData();
+
+  // load light data
+  std::vector<DynamicLightSettings> savedLightSettings = parser.getDynLightConfigs();
+  if (savedLevelSettings.empty()) {
+    Logger::log(1, "%s info: no light data in file '%s', skipping\n", __FUNCTION__, parser.getFileName().c_str());
+  } else {
+    for (auto& lightSetting : savedLightSettings) {
+      std::shared_ptr<AssimpDynLight> light = addDynLight();
+      if (!light) {
+        return false;
+      }
+
+      light->setDynLightSettings(lightSetting);
+    }
+
+    // re-index after all ligths were added
+    assignLightIndices();
+
+    // restore selected level num
+    int selectedLight = parser.getSelectedDynLightNum();
+    if (selectedLight < mModelInstCamData.micDynLights.size()) {
+      mModelInstCamData.micSelectedDynLight = selectedLight;
+    } else {
+      mModelInstCamData.micSelectedDynLight = 0;
+    }
+  }
+
 
   // restore hightlight status, set default edit mode
   mRenderData.rdHighlightSelectedInstance = parser.getHighlightActivated();
@@ -1494,7 +1533,7 @@ void VkRenderer::generateLevelVertexData() {
 void VkRenderer::generateGroundTriangleData() {
   mPathFinder.generateGroundTriangles(mRenderData, mTriangleOctree, *getWorldBoundaries());
 
-  std::shared_ptr<VkLineMesh> groundMesh = mPathFinder.getGroundLevelMesh();
+  std::shared_ptr<VkSimpleMesh> groundMesh = mPathFinder.getGroundLevelMesh();
   mGroundMeshVertexCount = groundMesh->vertices.size();
 
   mRenderData.rdUploadToVBOTimer.start();
@@ -1593,7 +1632,7 @@ void VkRenderer::generateLevelOctree() {
     boxAABB.create(box.getFrontTopLeft());
     boxAABB.addPoint(box.getFrontTopLeft() + box.getSize());
 
-    std::shared_ptr<VkLineMesh> instanceLines = boxAABB.getAABBLines(octreeColor);
+    std::shared_ptr<VkSimpleMesh> instanceLines = boxAABB.getAABBLines(octreeColor);
     mLevelOctreeMesh->vertices.insert(mLevelOctreeMesh->vertices.end(), instanceLines->vertices.begin(), instanceLines->vertices.end());
   }
 
@@ -1622,8 +1661,8 @@ void VkRenderer::generateLevelWireframe() {
     glm::mat3 normalMat = level->getNormalTransformMatrix();
 
     for (const auto& mesh : levelMeshes) {
-      VkLineVertex vert;
-      VkLineVertex normalVert;
+      VkSimpleVertex vert;
+      VkSimpleVertex normalVert;
 
       // generate different colors per mesh
       r = std::fmod(r + 0.66f, 1.0f);
@@ -1684,7 +1723,7 @@ void VkRenderer::generateLevelWireframe() {
   std::transform(mRenderData.rdLevelWireframeMiniMapMesh->vertices.begin(),
     mRenderData.rdLevelWireframeMiniMapMesh->vertices.end(),
     mRenderData.rdLevelWireframeMiniMapMesh->vertices.begin(),
-    [](VkLineVertex& v) {
+    [](VkSimpleVertex& v) {
       v.color = glm::vec3(0.0f, 1.0f, 1.0f);
       return v;
     }
@@ -1747,7 +1786,7 @@ void VkRenderer::assignInstanceIndices() {
 void VkRenderer::assignLightIndices() {
   for (size_t i = 0; i < mModelInstCamData.micDynLights.size(); ++i) {
     DynamicLightSettings lightSettings = mModelInstCamData.micDynLights.at(i)->getDynLightSettings();
-    lightSettings.dlsIndexPosition = i + LIGHT_OBJECT_OFFSET;
+    lightSettings.dlsIndexPosition = i;
     mModelInstCamData.micDynLights.at(i)->setDynLightSettings(lightSettings);
   }
 }
@@ -2856,7 +2895,7 @@ void VkRenderer::checkForLevelCollisions() {
       }
 
       if (mRenderData.rdDrawLevelCollisionTriangles) {
-        VkLineVertex vert;
+        VkSimpleVertex vert;
         vert.color = vertexColor;
         // move wireframe overdraw a bit above the planes
         vert.position = glm::vec4(tri.points.at(0) + tri.normal * 0.01f, 1.0f);
@@ -3091,8 +3130,8 @@ void VkRenderer::createInteractionDebug() {
 
   glm::vec4 aabbColor = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
-  VkLineMesh InteractionMesh;
-  VkLineVertex vertex;
+  VkSimpleMesh InteractionMesh;
+  VkSimpleVertex vertex;
   vertex.color = aabbColor;
 
   std::shared_ptr<AssimpInstance> instance = mModelInstCamData.micAssimpInstances.at(mModelInstCamData.micSelectedInstance);
@@ -3209,7 +3248,7 @@ void VkRenderer::createInteractionDebug() {
 }
 
 void VkRenderer::createAABBDebugLiness(std::vector<std::shared_ptr<AssimpInstance>> instances, glm::vec4 aabbColor) {
-  std::shared_ptr<VkLineMesh> aabbLineMesh = nullptr;;
+  std::shared_ptr<VkSimpleMesh> aabbLineMesh = nullptr;;
 
   mAABBMesh->vertices.clear();
   AABB instanceAABB;
@@ -3299,6 +3338,11 @@ void VkRenderer::resetLevelData() {
   mRenderData.rdEnableShadowMapPCF = false;
   mRenderData.rdShadowMapPCFScale = 1.0f;
   mRenderData.rdShadowMapPCFRange = 1;
+
+  mRenderData.rdEnableLightVolumes = false;
+  mRenderData.rdEnableLightDebug = false;
+  mRenderData.rdEnableLightVolumes = false;
+  mRenderData.rdEnableLightVolumeDebug = false;
 
   // add loaded levels to pending delete list
   for (const auto& level : mModelInstCamData.micLevels) {
@@ -3857,6 +3901,8 @@ void VkRenderer::resetLightData() {
   addDynLight();
 
   mModelInstCamData.micSelectedDynLight = 0;
+
+  mRenderData.rdEnableLightDebug = false;
 }
 
 void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
@@ -4363,7 +4409,7 @@ bool VkRenderer::draw(float deltaTime) {
                 glm::vec3 pathColor = glm::vec3(0.4f, 1.0f, 0.4f);
                 glm::vec3 pathYOffset = glm::vec3(0.0f, 1.0f, 0.0f);
 
-                VkLineVertex vert;
+                VkSimpleVertex vert;
                 vert.color = pathColor;
 
                 vert.position = instSettings.isWorldPosition + pathYOffset;
@@ -4373,7 +4419,7 @@ bool VkRenderer::draw(float deltaTime) {
                   vert.position = mPathFinder.getTriangleCenter(pathToTarget.at(0)) + pathYOffset;
                   mInstancePathMesh->vertices.emplace_back(vert);
 
-                  std::shared_ptr<VkLineMesh> pathMesh =
+                  std::shared_ptr<VkSimpleMesh> pathMesh =
                   mPathFinder.getAsLineMesh(pathToTarget, pathColor, pathYOffset);
 
                   mInstancePathMesh->vertices.insert(mInstancePathMesh->vertices.end(), pathMesh->vertices.begin(), pathMesh->vertices.end());
@@ -4395,7 +4441,7 @@ bool VkRenderer::draw(float deltaTime) {
             std::vector<int> neighborIndices = mPathFinder.getGroundTriangleNeighbors(groundTri);
             instances.at(i)->setNeighborGroundTriangleIndices(neighborIndices);
 
-            std::shared_ptr<VkLineMesh> neighborMesh =
+            std::shared_ptr<VkSimpleMesh> neighborMesh =
             mPathFinder.getAsTriangleMesh(neighborIndices, glm::vec3(1.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.8f), glm::vec3(0.0f, 0.01f, 0.0f));
             mLevelGroundNeighborsMesh->vertices.insert(mLevelGroundNeighborsMesh->vertices.end(),
               neighborMesh->vertices.begin(), neighborMesh->vertices.end());
@@ -4521,7 +4567,7 @@ bool VkRenderer::draw(float deltaTime) {
     mWorldPosMatrices.at(instanceToStore + i - 1) = mModelInstCamData.micDynLights.at(i)  ->getWorldTransformMatrix();
 
     if (mMousePick) {
-      mSelectedInstance.at(instanceToStore + i - 1).y = static_cast<float>(lightSettings.dlsIndexPosition);
+      mSelectedInstance.at(instanceToStore + i - 1).y = static_cast<float>(lightSettings.dlsIndexPosition) + LIGHT_OBJECT_OFFSET;
     }
     mSelectedInstance.at(instanceToStore + i - 1).x = 1.0f;
   }
@@ -4722,7 +4768,7 @@ bool VkRenderer::draw(float deltaTime) {
               float instanceHeight = instanceAABB.getMaxPos().y - instanceAABB.getMinPos().y;
               float instanceHalfHeight = instanceHeight / 2.0f;
 
-              VkLineVertex vert;
+              VkSimpleVertex vert;
               glm::vec3 hitPoint = footWorldPos;
               for (const auto& tri : instSettings.isCollidingTriangles) {
                 std::optional<glm::vec3> result{};
@@ -4958,6 +5004,7 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderUploadData.shadowMapPCFScale = mRenderData.rdShadowMapPCFScale;
   mRenderUploadData.shadowMapPCFRange = mRenderData.rdShadowMapPCFRange;
   mRenderUploadData.colorCascadeDebug = mRenderData.rdEnableShadowMapColorCascadeDebug;
+  mRenderUploadData.useLightVolumes = mRenderData.rdEnableLightVolumes;
 
   mRenderUploadData.ssaoRadius = mRenderData.rdSSAORadius;
   mRenderUploadData.ssaoBias = mRenderData.rdSSAOBias;
@@ -5161,6 +5208,9 @@ bool VkRenderer::draw(float deltaTime) {
 
   VkClearValue colorClearValue;
   colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
+
+  VkClearValue blackClearValue;
+  blackClearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
   VkClearValue selectionClearValue;
   selectionClearValue.color = { { -1.0f } };
@@ -5454,6 +5504,19 @@ bool VkRenderer::draw(float deltaTime) {
     1, &firstImageMemoryBarrier // pImageMemoryBarriers
   );
 
+  // light volume image
+  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+  firstImageMemoryBarrier.image = mRenderData.rdLightVolumesBufferData.image;
+  vkCmdPipelineBarrier(
+    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+    0,
+    0, nullptr, 0, nullptr,
+    1, &firstImageMemoryBarrier // pImageMemoryBarriers
+  );
+
   // Shadowmap depth, image conversion happens already in shadow map combined blitting if enabled 
   if (!mRenderData.rdEnableShadowMap) {
     firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -5536,6 +5599,15 @@ bool VkRenderer::draw(float deltaTime) {
   ssaoBlurBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   ssaoBlurBufferAttachmentInfo.clearValue = ssaoBlurClearValue;
 
+  // 7
+  VkRenderingAttachmentInfo lightVolumeBufferAttachmentInfo {};
+  lightVolumeBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  lightVolumeBufferAttachmentInfo.imageView = mRenderData.rdLightVolumesBufferData.imageView;
+  lightVolumeBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+  lightVolumeBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  lightVolumeBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  lightVolumeBufferAttachmentInfo.clearValue = blackClearValue;
+
   VkRenderingAttachmentInfo depthAttachmentInfo {};
   depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   depthAttachmentInfo.imageView = mRenderData.rdDepthBufferData.imageView;
@@ -5552,6 +5624,7 @@ bool VkRenderer::draw(float deltaTime) {
     selectionAttachmentInfo,
     ssaoColorBufferAttachmentInfo,
     ssaoBlurBufferAttachmentInfo,
+    lightVolumeBufferAttachmentInfo,
   };
 
   VkRenderingInfo renderInfo {
@@ -5603,6 +5676,18 @@ bool VkRenderer::draw(float deltaTime) {
   );
 
   VkDeviceSize offset = 0;
+
+  // light volume pass
+  uint32_t numberOfLights = static_cast<uint32_t>(mModelInstCamData.micDynLights.size() - 1);
+
+  if (numberOfLights > 0 && mRenderData.rdEnableLightVolumes) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightVolumePipeline);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightVolumePipelineLayout, 0, 1,
+      &mRenderData.rdLightVolumeDescriptorSet, 0, nullptr);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightVolumeVertexBuffer.buffer, &offset);
+
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), numberOfLights, 0, 1);
+  }
 
   // SSAO pass
   if (mRenderData.rdEnableSSAO) {
@@ -5687,7 +5772,6 @@ bool VkRenderer::draw(float deltaTime) {
       vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
 
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLineVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
@@ -5700,7 +5784,6 @@ bool VkRenderer::draw(float deltaTime) {
       vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSet, 0, nullptr);
 
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSphereVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], sphereVertexCount, mCollidingSphereCount, 0, 0);
@@ -5720,38 +5803,32 @@ bool VkRenderer::draw(float deltaTime) {
 
     mRenderData.rdLevelCollisionTimer.start();
     if (mRenderData.rdDrawLevelAABB && !mLevelAABBMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelAABBVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
     }
 
     if (mRenderData.rdDrawLevelWireframe && !mLevelWireframeMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelWireframeVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
     }
 
     if (mRenderData.rdDrawLevelOctree && !mLevelOctreeMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelOctreeVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
     }
 
     if (mRenderData.rdDrawIKDebugLines && !mIKFootPointMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdIKLinesVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
     }
     mRenderData.rdLevelCollisionTime += mRenderData.rdLevelCollisionTimer.stop();
 
     if (mRenderData.rdDrawInstancePaths && !mInstancePathMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdInstancePathVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
     }
 
     if (mRenderData.rdDrawNeighborTriangles && !mLevelGroundNeighborsMesh->vertices.empty()) {
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshNeighborVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
     }
@@ -5763,7 +5840,6 @@ bool VkRenderer::draw(float deltaTime) {
       vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSet, 0, nullptr);
 
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshVertexBuffer.buffer, &offset);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mGroundMeshVertexCount, 1, 0, 0);
     }
@@ -5802,15 +5878,26 @@ bool VkRenderer::draw(float deltaTime) {
     mLightModel->drawInstanced(mRenderData, numberOfLights, mMousePick);
 
     if (mRenderData.rdEnableLightDebug) {
-      size_t dynLightVertexCount = mDynLightModel.getVertexData().vertices.size();
+      uint32_t dynLightVertexCount = static_cast<uint32_t>(mDynLightModel.getVertexData().vertices.size());
       vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
       vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
 
-      VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdDynamicLightDebugVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
+    }
+
+    if (mRenderData.rdEnableLightVolumes && mRenderData.rdEnableLightVolumeDebug) {
+      uint32_t dynLightVertexCount = static_cast<uint32_t>(mFullSphereDebugMesh.vertices.size());
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
+
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightVolumeDebugVertexBuffer.buffer, &offset);
+      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
     }
   }

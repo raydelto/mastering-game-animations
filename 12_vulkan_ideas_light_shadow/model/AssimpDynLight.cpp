@@ -49,7 +49,7 @@ void AssimpDynLight::setRotation(glm::vec3 rotation) {
 }
 
 bool AssimpDynLight::getLightEnabled() {
-  return mDynLightSettings.dlsLightEnabled;
+  return mDynLightSettings.dlsEnabled;
 }
 
 void AssimpDynLight::rotateLight(float angle) {
@@ -106,33 +106,33 @@ glm::vec3 AssimpDynLight::getLightColor() {
 }
 
 float AssimpDynLight::getLightingDistance() {
-  return mDynLightSettings.dlsLightDistance;
+  return mDynLightSettings.dlsDistance;
 }
 
 void AssimpDynLight::setLightingDistance(float value) {
-  mDynLightSettings.dlsLightDistance = value;
-  if (mDynLightSettings.dlsLightDistance < DynamicLightSettings::MIN_LIGHT_DIST) {
-    mDynLightSettings.dlsLightDistance = DynamicLightSettings::MIN_LIGHT_DIST;
+  mDynLightSettings.dlsDistance = value;
+  if (mDynLightSettings.dlsDistance < DynamicLightSettings::MIN_LIGHT_DIST) {
+    mDynLightSettings.dlsDistance = DynamicLightSettings::MIN_LIGHT_DIST;
   }
-  if (mDynLightSettings.dlsLightDistance > DynamicLightSettings::MAX_LIGHT_DIST) {
-    mDynLightSettings.dlsLightDistance = DynamicLightSettings::MAX_LIGHT_DIST;
+  if (mDynLightSettings.dlsDistance > DynamicLightSettings::MAX_LIGHT_DIST) {
+    mDynLightSettings.dlsDistance = DynamicLightSettings::MAX_LIGHT_DIST;
   }
 }
 
 float AssimpDynLight::getMaxLightingDistance() {
-  return mDynLightSettings.dlsMaxLightDistance;
+  return mDynLightSettings.dlsMaxDistance;
 }
 
 float AssimpDynLight::getPointLightCutOffAngle() {
-  return mDynLightSettings.dlsPointCutOffDegrees;
+  return mDynLightSettings.dlsSpotCutOffDegrees;
 }
 
 float AssimpDynLight::getPointLightOuterCutOffAngle() {
-  return mDynLightSettings.dlsPointOuterCutOffDegrees;
+  return mDynLightSettings.dlsSpotOuterCutOffDegrees;
 }
 
 dynamicLightType AssimpDynLight::getLightType() {
-  return mDynLightSettings.dlsLightType;
+  return mDynLightSettings.dlsType;
 }
 
 void AssimpDynLight::setDynLightSettings(DynamicLightSettings settings) {
