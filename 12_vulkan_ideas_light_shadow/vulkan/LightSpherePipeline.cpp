@@ -2,11 +2,11 @@
 
 #include <VkBootstrap.h>
 
-#include <LightVolumePipeline.h>
+#include <LightSpherePipeline.h>
 #include <Logger.h>
 #include <Shader.h>
 
-bool LightVolumePipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAttachmentFormats,
+bool LightSpherePipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAttachmentFormats,
     VkPipelineLayout& pipelineLayout, VkPipeline& pipeline, std::string vertexShaderFilename, std::string fragmentShaderFilename) {
   // shader
   VkShaderModule vertexModule = Shader::loadShader(renderData.rdVkbDevice.device, vertexShaderFilename);
@@ -177,6 +177,6 @@ bool LightVolumePipeline::init(VkRenderData& renderData, std::vector<VkFormat> c
   return true;
 }
 
-void LightVolumePipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
+void LightSpherePipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
   vkDestroyPipeline(renderData.rdVkbDevice.device, pipeline, nullptr);
 }

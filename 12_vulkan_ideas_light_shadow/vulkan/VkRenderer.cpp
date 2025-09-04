@@ -30,7 +30,7 @@
 #include <CompositePipeline.h>
 #include <SSAOPipeline.h>
 #include <ShadowMapPipeline.h>
-#include <LightVolumePipeline.h>
+#include <LightSpherePipeline.h>
 
 #include <InstanceSettings.h>
 #include <DynamicLightSettings.h>
@@ -68,7 +68,7 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
   mRenderData.rdSSAOBlurBufferData.format = VK_FORMAT_R32_SFLOAT;
   mRenderData.rdShadowMapCombinedDepthBufferData.format = VK_FORMAT_D16_UNORM;
-  mRenderData.rdLightVolumesBufferData.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+  mRenderData.rdLightSpheresBufferData.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
   if (!mRenderData.rdWindow) {
     Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
@@ -253,11 +253,11 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   mFullSphereModel = FullSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
   mFullSphereMesh = mFullSphereModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightVolumeVertexBuffer, mFullSphereMesh.vertices);
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereVertexBuffer, mFullSphereMesh.vertices);
 
   mFullSphereDebugModel = SimpleSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
   mFullSphereDebugMesh = mFullSphereDebugModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightVolumeDebugVertexBuffer, mFullSphereDebugMesh.vertices);
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereDebugVertexBuffer, mFullSphereDebugMesh.vertices);
 
   Logger::log(1, "%s: Light sphere line mesh storage initialized\n", __FUNCTION__);
 
@@ -1812,10 +1812,10 @@ void VkRenderer::updateShaderLightData() {
     glm::vec3 lightColor = mModelInstCamData.micDynLights.at(i)->getLightColor();
     float maxLightColor = glm::max(glm::max(lightColor.r, lightColor.g), lightColor.b);
 
-    float lightVolumeRadius = lightDistance * maxLightColor;
+    float lightSphereRadius = lightDistance * maxLightColor;
 
     // debug sphere radius is min of attenuation light and max light distance
-    mRenderData.rdLightDebugData.at(i) = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), glm::min(lightVolumeRadius, maxLightDistance));
+    mRenderData.rdLightDebugData.at(i) = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), glm::min(lightSphereRadius, maxLightDistance));
 
     mRenderData.rdLightData.at(i).type = static_cast<uint32_t>(mModelInstCamData.micDynLights.at(i)->getLightType());
     mRenderData.rdLightData.at(i).position = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), 1.0f);
@@ -3339,10 +3339,10 @@ void VkRenderer::resetLevelData() {
   mRenderData.rdShadowMapPCFScale = 1.0f;
   mRenderData.rdShadowMapPCFRange = 1;
 
-  mRenderData.rdEnableLightVolumes = false;
+  mRenderData.rdEnableLightSpheres = false;
   mRenderData.rdEnableLightDebug = false;
-  mRenderData.rdEnableLightVolumes = false;
-  mRenderData.rdEnableLightVolumeDebug = false;
+  mRenderData.rdEnableLightSpheres = false;
+  mRenderData.rdEnableLightSphereDebug = false;
 
   // add loaded levels to pending delete list
   for (const auto& level : mModelInstCamData.micLevels) {
@@ -5004,7 +5004,7 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderUploadData.shadowMapPCFScale = mRenderData.rdShadowMapPCFScale;
   mRenderUploadData.shadowMapPCFRange = mRenderData.rdShadowMapPCFRange;
   mRenderUploadData.colorCascadeDebug = mRenderData.rdEnableShadowMapColorCascadeDebug;
-  mRenderUploadData.useLightVolumes = mRenderData.rdEnableLightVolumes;
+  mRenderUploadData.useLightSpheres = mRenderData.rdEnableLightSpheres;
 
   mRenderUploadData.ssaoRadius = mRenderData.rdSSAORadius;
   mRenderUploadData.ssaoBias = mRenderData.rdSSAOBias;
@@ -5504,10 +5504,10 @@ bool VkRenderer::draw(float deltaTime) {
     1, &firstImageMemoryBarrier // pImageMemoryBarriers
   );
 
-  // light volume image
+  // light sphere image
   firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
   firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  firstImageMemoryBarrier.image = mRenderData.rdLightVolumesBufferData.image;
+  firstImageMemoryBarrier.image = mRenderData.rdLightSpheresBufferData.image;
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers[mRenderData.currentFrame],
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
@@ -5600,13 +5600,13 @@ bool VkRenderer::draw(float deltaTime) {
   ssaoBlurBufferAttachmentInfo.clearValue = ssaoBlurClearValue;
 
   // 7
-  VkRenderingAttachmentInfo lightVolumeBufferAttachmentInfo {};
-  lightVolumeBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  lightVolumeBufferAttachmentInfo.imageView = mRenderData.rdLightVolumesBufferData.imageView;
-  lightVolumeBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  lightVolumeBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  lightVolumeBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  lightVolumeBufferAttachmentInfo.clearValue = blackClearValue;
+  VkRenderingAttachmentInfo lightSphereBufferAttachmentInfo {};
+  lightSphereBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  lightSphereBufferAttachmentInfo.imageView = mRenderData.rdLightSpheresBufferData.imageView;
+  lightSphereBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+  lightSphereBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  lightSphereBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  lightSphereBufferAttachmentInfo.clearValue = blackClearValue;
 
   VkRenderingAttachmentInfo depthAttachmentInfo {};
   depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -5624,7 +5624,7 @@ bool VkRenderer::draw(float deltaTime) {
     selectionAttachmentInfo,
     ssaoColorBufferAttachmentInfo,
     ssaoBlurBufferAttachmentInfo,
-    lightVolumeBufferAttachmentInfo,
+    lightSphereBufferAttachmentInfo,
   };
 
   VkRenderingInfo renderInfo {
@@ -5677,14 +5677,14 @@ bool VkRenderer::draw(float deltaTime) {
 
   VkDeviceSize offset = 0;
 
-  // light volume pass
+  // light sphere pass
   uint32_t numberOfLights = static_cast<uint32_t>(mModelInstCamData.micDynLights.size() - 1);
 
-  if (numberOfLights > 0 && mRenderData.rdEnableLightVolumes) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightVolumePipeline);
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightVolumePipelineLayout, 0, 1,
-      &mRenderData.rdLightVolumeDescriptorSet, 0, nullptr);
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightVolumeVertexBuffer.buffer, &offset);
+  if (numberOfLights > 0 && mRenderData.rdEnableLightSpheres) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipeline);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipelineLayout, 0, 1,
+      &mRenderData.rdLightSphereDescriptorSet, 0, nullptr);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereVertexBuffer.buffer, &offset);
 
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), numberOfLights, 0, 1);
   }
@@ -5889,14 +5889,14 @@ bool VkRenderer::draw(float deltaTime) {
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
     }
 
-    if (mRenderData.rdEnableLightVolumes && mRenderData.rdEnableLightVolumeDebug) {
+    if (mRenderData.rdEnableLightSpheres && mRenderData.rdEnableLightSphereDebug) {
       uint32_t dynLightVertexCount = static_cast<uint32_t>(mFullSphereDebugMesh.vertices.size());
       vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
       vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
 
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightVolumeDebugVertexBuffer.buffer, &offset);
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereDebugVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
       vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
     }

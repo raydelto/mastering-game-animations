@@ -3,7 +3,7 @@
 layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputColor;
 layout (input_attachment_index = 1, set = 0, binding = 3) uniform subpassInput inputDepth;
 layout (input_attachment_index = 2, set = 0, binding = 4) uniform subpassInput inputNormal;
-layout (input_attachment_index = 3, set = 0, binding = 5) uniform subpassInput lightVolumes;
+layout (input_attachment_index = 3, set = 0, binding = 5) uniform subpassInput lightSpheres;
 
 layout (set = 0, binding = 6) uniform sampler2D ssao;
 layout (set = 0, binding = 7) uniform sampler2D ssaoBlur;
@@ -39,7 +39,7 @@ layout (std140, set = 0, binding = 0) uniform Matrices {
   int shadowMapPCFRange;
   int colorCascadeDebugEnabled;
   int numDynamicLights;
-  int useLightVolumes;
+  int useLightSpheres;
 };
 
 layout (std430, set = 0, binding = 1) readonly restrict buffer ShadowMapCascadeParameters {
@@ -192,7 +192,7 @@ void main() {
 
       vec3 dynamicDiffuse = vec3(0.0);
 
-      if (useLightVolumes == 0) {
+      if (useLightSpheres == 0) {
         // we always have a null light added
         for(int i = 1; i < numDynamicLights; ++i) {
           vec3 lightDir = normalize(vec3(lights[i].position) - worldPos);
@@ -215,7 +215,7 @@ void main() {
           }
         }
       } else {
-        dynamicDiffuse = subpassLoad(lightVolumes).rgb * albedo;
+        dynamicDiffuse = subpassLoad(lightSpheres).rgb * albedo;
       }
 
       outColor = mix(vec4(clamp(ambient + diffuse * ssaoValue * shadowFactor + dynamicDiffuse, 0.0, 1.0), 1.0), fogColor, fogAmount);
@@ -258,7 +258,7 @@ void main() {
       outColor = vec4(vec3(aoBlur), 1.0);
       break;
     case 7:
-      outColor = vec4(subpassLoad(lightVolumes).rgb, 1.0);
+      outColor = vec4(subpassLoad(lightSpheres).rgb, 1.0);
       break;
     case 8:
       outColor = vec4(vec3(texture(shadowMapCombinedDepth, inUV).r), 1.0);

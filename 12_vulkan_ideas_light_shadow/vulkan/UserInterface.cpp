@@ -133,7 +133,7 @@ void UserInterface::createDescriptorSets(VkRenderData& renderData) {
   renderData.rdSSAONoiseBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAONoiseBufferData.sampler, renderData.rdSSAONoiseBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOColorBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOColorBufferData.sampler, renderData.rdSSAOColorBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOBlurBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOBlurBufferData.sampler, renderData.rdSSAOBlurBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  renderData.rdLightVolumesBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightVolumesBufferData.sampler, renderData.rdLightVolumesBufferData.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  renderData.rdLightSpheresBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightSpheresBufferData.sampler, renderData.rdLightSpheresBufferData.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
 
   renderData.rdShadowMapCombinedDepthBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdShadowMapCombinedDepthBufferData.sampler, renderData.rdShadowMapCombinedDepthBufferData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
@@ -741,9 +741,9 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::AlignTextToFramePadding();
     ImGui::Text("                 ");
     ImGui::SameLine();
-    if (ImGui::RadioButton("Light Volumes##CompositeLightVolumes",
-      renderData.rdCompositeDebug == compositeDebugDisplay::lightVolumes)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::lightVolumes;
+    if (ImGui::RadioButton("Light Spheres##CompositeLightSpheres",
+      renderData.rdCompositeDebug == compositeDebugDisplay::lightSpheres)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::lightSpheres;
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("Shadow Map##CompositeShadowMap",
@@ -917,20 +917,20 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Checkbox("##EnableLightDebug", &renderData.rdEnableLightDebug);
 
     ImGui::AlignTextToFramePadding();
-    ImGui::Text("Use Light Volumes:");
+    ImGui::Text("Use Light Spheres:");
     ImGui::SameLine();
-    ImGui::Checkbox("##UseLightVolumes", &renderData.rdEnableLightVolumes);
+    ImGui::Checkbox("##UseLightSpheres", &renderData.rdEnableLightSpheres);
 
-    if (!renderData.rdEnableLightVolumes) {
+    if (!renderData.rdEnableLightSpheres) {
       ImGui::BeginDisabled();
     }
 
     ImGui::AlignTextToFramePadding();
-    ImGui::Text("Light Vol. Debug: ");
+    ImGui::Text("Light Sph. Debug: ");
     ImGui::SameLine();
-    ImGui::Checkbox("##LightVolumesDebug", &renderData.rdEnableLightVolumeDebug);
+    ImGui::Checkbox("##LightSpheresDebug", &renderData.rdEnableLightSphereDebug);
 
-    if (!renderData.rdEnableLightVolumes) {
+    if (!renderData.rdEnableLightSpheres) {
       ImGui::EndDisabled();
     }
 
@@ -4073,8 +4073,8 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
   ImGui::Text("SSAO Blur");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAOBlurBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
 
-  ImGui::Text("Light Volumes");
-  ImGui::Image(static_cast<ImTextureID>(renderData.rdLightVolumesBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
+  ImGui::Text("Light Spheres");
+  ImGui::Image(static_cast<ImTextureID>(renderData.rdLightSpheresBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
 
   ImGui::Text("Shadow Map");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet), ImVec2(300, 300));
@@ -4301,7 +4301,7 @@ void UserInterface::removeDescriptorSets(VkRenderData& renderData) {
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAONoiseBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAOColorBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAOBlurBufferData.descriptorSet);
-  ImGui_ImplVulkan_RemoveTexture(renderData.rdLightVolumesBufferData.descriptorSet);
+  ImGui_ImplVulkan_RemoveTexture(renderData.rdLightSpheresBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet);
 }
 

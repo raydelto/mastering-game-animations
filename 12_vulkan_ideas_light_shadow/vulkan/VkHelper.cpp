@@ -22,7 +22,7 @@
 #include <CompositePipeline.h>
 #include <SSAOPipeline.h>
 #include <ShadowMapPipeline.h>
-#include <LightVolumePipeline.h>
+#include <LightSpherePipeline.h>
 #include <UniformBuffer.h>
 #include <ShaderStorageBuffer.h>
 #include <VertexBuffer.h>
@@ -1243,12 +1243,12 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
     normalBinding.pImmutableSamplers = nullptr;
     normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutBinding lightVolumeBinding{};
-    lightVolumeBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    lightVolumeBinding.binding = 5;
-    lightVolumeBinding.descriptorCount = 1;
-    lightVolumeBinding.pImmutableSamplers = nullptr;
-    lightVolumeBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutBinding lightSphereBinding{};
+    lightSphereBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    lightSphereBinding.binding = 5;
+    lightSphereBinding.descriptorCount = 1;
+    lightSphereBinding.pImmutableSamplers = nullptr;
+    lightSphereBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutBinding ssaoColorBinding{};
     ssaoColorBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1291,7 +1291,7 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
       colorBinding,
       positionBinding,
       normalBinding,
-      lightVolumeBinding,
+      lightSphereBinding,
       ssaoColorBinding,
       ssaoBlurBinding,
       shadowMapDepthBinding,
@@ -1418,7 +1418,7 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
   }
 
   {
-    // Light volume shader
+    // Light sphere shader
     VkDescriptorSetLayoutBinding renderDataUboBind{};
     renderDataUboBind.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     renderDataUboBind.binding = 0;
@@ -1454,13 +1454,13 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
       normalBinding,
     };
 
-    VkDescriptorSetLayoutCreateInfo lightVolumeLayoutInfo{};
-    lightVolumeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    lightVolumeLayoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-    lightVolumeLayoutInfo.pBindings = layoutBindings.data();
+    VkDescriptorSetLayoutCreateInfo lightSphereLayoutInfo{};
+    lightSphereLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    lightSphereLayoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    lightSphereLayoutInfo.pBindings = layoutBindings.data();
 
-    if (vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &lightVolumeLayoutInfo,
-        nullptr, &renderData.rdLightVolumeDescriptorLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &lightSphereLayoutInfo,
+        nullptr, &renderData.rdLightSphereDescriptorLayout) != VK_SUCCESS) {
       Logger::log(1, "%s error: could not create ssao descriptor set layout\n", __FUNCTION__);
       return false;
      }
@@ -1805,18 +1805,18 @@ bool VkHelper::createDescriptorSets(VkRenderData& renderData) {
     }
 
     {
-      // light volume drawing
-      VkDescriptorSetAllocateInfo lightVolumeAllocateInfo{};
-      lightVolumeAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-      lightVolumeAllocateInfo.descriptorPool = renderData.rdDescriptorPool;
-      lightVolumeAllocateInfo.descriptorSetCount = 1;
-      lightVolumeAllocateInfo.pSetLayouts = &renderData.rdLightVolumeDescriptorLayout;
+      // light sphere drawing
+      VkDescriptorSetAllocateInfo lightSphereAllocateInfo{};
+      lightSphereAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+      lightSphereAllocateInfo.descriptorPool = renderData.rdDescriptorPool;
+      lightSphereAllocateInfo.descriptorSetCount = 1;
+      lightSphereAllocateInfo.pSetLayouts = &renderData.rdLightSphereDescriptorLayout;
 
-      VkResult result = vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &lightVolumeAllocateInfo,
-        &renderData.rdLightVolumeDescriptorSet);
+      VkResult result = vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &lightSphereAllocateInfo,
+        &renderData.rdLightSphereDescriptorSet);
 
       if (result != VK_SUCCESS) {
-        Logger::log(1, "%s error: could not allocate light volume descriptor set (error: %i)\n", __FUNCTION__, result);
+        Logger::log(1, "%s error: could not allocate light sphere descriptor set (error: %i)\n", __FUNCTION__, result);
         return false;
       }
     }
@@ -2687,10 +2687,10 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalInfo.imageView = renderData.rdGBuffer.normal.imageView;
     normalInfo.sampler = VK_NULL_HANDLE;
 
-    VkDescriptorImageInfo lightVolumeInfo{};
-    lightVolumeInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-    lightVolumeInfo.imageView = renderData.rdLightVolumesBufferData.imageView;
-    lightVolumeInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo lightSphereInfo{};
+    lightSphereInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    lightSphereInfo.imageView = renderData.rdLightSpheresBufferData.imageView;
+    lightSphereInfo.sampler = VK_NULL_HANDLE;
 
     VkDescriptorImageInfo ssaoColorInfo{};
     ssaoColorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -2757,13 +2757,13 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalWrite.dstBinding = 4;
     normalWrite.pImageInfo = &normalInfo;
 
-    VkWriteDescriptorSet lightVolumeWrite{};
-    lightVolumeWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    lightVolumeWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    lightVolumeWrite.descriptorCount = 1;
-    lightVolumeWrite.dstSet = renderData.rdCompositeDescriptorSet;
-    lightVolumeWrite.dstBinding = 5;
-    lightVolumeWrite.pImageInfo = &lightVolumeInfo;
+    VkWriteDescriptorSet lightSphereWrite{};
+    lightSphereWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    lightSphereWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    lightSphereWrite.descriptorCount = 1;
+    lightSphereWrite.dstSet = renderData.rdCompositeDescriptorSet;
+    lightSphereWrite.dstBinding = 5;
+    lightSphereWrite.pImageInfo = &lightSphereInfo;
 
     VkWriteDescriptorSet ssaoColorWrite{};
     ssaoColorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2811,7 +2811,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
       colorWrite,
       positionWrite,
       normalWrite,
-      lightVolumeWrite,
+      lightSphereWrite,
       ssaoColorWrite,
       ssaoBlurWrite,
       shadowMapDepthWrite,
@@ -3002,7 +3002,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   }
 
   {
-    // light volume drawing shader
+    // light sphere drawing shader
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
     matrixInfo.offset = 0;
@@ -3026,7 +3026,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = renderData.rdLightVolumeDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -3034,7 +3034,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     VkWriteDescriptorSet lightDataWriteDescriptorSet{};
     lightDataWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     lightDataWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    lightDataWriteDescriptorSet.dstSet = renderData.rdLightVolumeDescriptorSet;
+    lightDataWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
     lightDataWriteDescriptorSet.dstBinding = 1;
     lightDataWriteDescriptorSet.descriptorCount = 1;
     lightDataWriteDescriptorSet.pBufferInfo = &lightDataInfo;
@@ -3042,7 +3042,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     VkWriteDescriptorSet depthImageWriteDescriptorSet{};
     depthImageWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     depthImageWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    depthImageWriteDescriptorSet.dstSet = renderData.rdLightVolumeDescriptorSet;
+    depthImageWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
     depthImageWriteDescriptorSet.dstBinding = 2;
     depthImageWriteDescriptorSet.descriptorCount = 1;
     depthImageWriteDescriptorSet.pImageInfo = &depthImageInfo;
@@ -3050,7 +3050,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     VkWriteDescriptorSet normalWriteDescriptorSet{};
     normalWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     normalWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    normalWriteDescriptorSet.dstSet = renderData.rdLightVolumeDescriptorSet;
+    normalWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
     normalWriteDescriptorSet.dstBinding = 3;
     normalWriteDescriptorSet.descriptorCount = 1;
     normalWriteDescriptorSet.pImageInfo = &normalInfo;
@@ -3238,12 +3238,12 @@ bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
     return false;
   }
 
-  // light volume pass pass
-  std::vector<VkDescriptorSetLayout> lightVolumeLayout = {
-    renderData.rdLightVolumeDescriptorLayout };
+  // light sphere pass pass
+  std::vector<VkDescriptorSetLayout> lightSphereLayout = {
+    renderData.rdLightSphereDescriptorLayout };
 
-  if (!PipelineLayout::init(renderData, renderData.rdLightVolumePipelineLayout, lightVolumeLayout)) {
-    Logger::log(1, "%s error: could not init light volume pipeline layout\n", __FUNCTION__);
+  if (!PipelineLayout::init(renderData, renderData.rdLightSpherePipelineLayout, lightSphereLayout)) {
+    Logger::log(1, "%s error: could not init light sphere pipeline layout\n", __FUNCTION__);
     return false;
   }
 
@@ -3259,7 +3259,7 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
     renderData.rdSelectionImageData.format,
     renderData.rdSSAOColorBufferData.format,
     renderData.rdSSAOBlurBufferData.format,
-    renderData.rdLightVolumesBufferData.format,
+    renderData.rdLightSpheresBufferData.format,
   };
 
   std::string vertexShaderFile = "shader/assimp.vert.spv";
@@ -3462,9 +3462,9 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
 
   vertexShaderFile = "shader/light_sphere.vert.spv";
   fragmentShaderFile = "shader/light_sphere.frag.spv";
-  if (!LightVolumePipeline::init(renderData, colorAttachmentFormats, renderData.rdLightVolumePipelineLayout,
-    renderData.rdLightVolumePipeline, vertexShaderFile, fragmentShaderFile)) {
-    Logger::log(1, "%s error: could not init light volume shader pipeline\n", __FUNCTION__);
+  if (!LightSpherePipeline::init(renderData, colorAttachmentFormats, renderData.rdLightSpherePipelineLayout,
+    renderData.rdLightSpherePipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init light sphere shader pipeline\n", __FUNCTION__);
     return false;
   }
 
@@ -3536,13 +3536,13 @@ bool VkHelper::createVertexBuffers(VkRenderData& renderData) {
     return false;
   }
 
-  if (!VertexBuffer::init(renderData, renderData.rdLightVolumeVertexBuffer, 1024)) {
-    Logger::log(1, "%s error: could not create light volume vertex buffer\n", __FUNCTION__);
+  if (!VertexBuffer::init(renderData, renderData.rdLightSphereVertexBuffer, 1024)) {
+    Logger::log(1, "%s error: could not create light sphere vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(renderData, renderData.rdLightVolumeDebugVertexBuffer, 1024)) {
-    Logger::log(1, "%s error: could not create light volume debug vertex buffer\n", __FUNCTION__);
+  if (!VertexBuffer::init(renderData, renderData.rdLightSphereDebugVertexBuffer, 1024)) {
+    Logger::log(1, "%s error: could not create light sphere debug vertex buffer\n", __FUNCTION__);
     return false;
   }
 
@@ -3615,7 +3615,7 @@ bool VkHelper::createImages(VkRenderData& renderData) {
     return false;
   }
 
-  if (!createImage(renderData, renderData.rdLightVolumesBufferData)) {
+  if (!createImage(renderData, renderData.rdLightSpheresBufferData)) {
     return false;
   }
 
@@ -3626,7 +3626,7 @@ void VkHelper::cleanupImages(VkRenderData& renderData) {
   cleanupImage(renderData, renderData.rdSelectionImageData);
   cleanupImage(renderData, renderData.rdSSAOColorBufferData);
   cleanupImage(renderData, renderData.rdSSAOBlurBufferData);
-  cleanupImage(renderData, renderData.rdLightVolumesBufferData);
+  cleanupImage(renderData, renderData.rdLightSpheresBufferData);
 }
 
 bool VkHelper::createImage(VkRenderData& renderData, VkImageData& image) {
@@ -3901,7 +3901,7 @@ bool VkHelper::createShadowMapBuffer(VkRenderData& renderData) {
     return false;
   }
 
-  Logger::log(1, "%s: create comboined shadow map depth attachment (16 bit depth)\n", __FUNCTION__);
+  Logger::log(1, "%s: create combined shadow map depth attachment (16 bit depth)\n", __FUNCTION__);
   if (!FramebufferAttachment::init(renderData, renderData.rdShadowMapCombinedDepthBufferData,
     VK_FORMAT_D16_UNORM,
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -4420,7 +4420,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpSkinningPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpSkinningMorphPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpLevelPipeline);
-  LightVolumePipeline::cleanup(renderData, renderData.rdLightVolumePipeline);
+  LightSpherePipeline::cleanup(renderData, renderData.rdLightSpherePipeline);
 
   ComputePipeline::cleanup(renderData, renderData.rdAssimpComputeTransformPipeline);
   ComputePipeline::cleanup(renderData, renderData.rdAssimpComputeHeadMoveTransformPipeline);
@@ -4444,7 +4444,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   PipelineLayout::cleanup(renderData, renderData.rdCompositePipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdSSAOPipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdSSAOBlurPipelineLayout);
-  PipelineLayout::cleanup(renderData, renderData.rdLightVolumePipelineLayout);
+  PipelineLayout::cleanup(renderData, renderData.rdLightSpherePipelineLayout);
 
   UniformBuffer::cleanup(renderData, renderData.rdRenderUploadDataUBO);
   UniformBuffer::cleanup(renderData, renderData.rdSSAOKernelSamplesUBO);
@@ -4460,8 +4460,8 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   VertexBuffer::cleanup(renderData, renderData.rdInstancePathVertexBuffer);
   VertexBuffer::cleanup(renderData, renderData.rdSkyboxBuffer);
   VertexBuffer::cleanup(renderData, renderData.rdDynamicLightDebugVertexBuffer);
-  VertexBuffer::cleanup(renderData, renderData.rdLightVolumeVertexBuffer);
-  VertexBuffer::cleanup(renderData, renderData.rdLightVolumeDebugVertexBuffer);
+  VertexBuffer::cleanup(renderData, renderData.rdLightSphereVertexBuffer);
+  VertexBuffer::cleanup(renderData, renderData.rdLightSphereDebugVertexBuffer);
 
   ShaderStorageBuffer::cleanup(renderData, renderData.rdShaderTRSMatrixBuffer);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdPerInstanceAnimDataBuffer);
@@ -4516,7 +4516,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdSSAOBlurDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
-    &renderData.rdLightVolumeDescriptorSet);
+    &renderData.rdLightSphereDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdDynLightDebugSphereDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
@@ -4550,7 +4550,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdCompositeDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdSSAODescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdSSAOBlurDescriptorLayout, nullptr);
-  vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightVolumeDescriptorLayout, nullptr);
+  vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightSphereDescriptorLayout, nullptr);
 
   vkDestroyDescriptorPool(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, nullptr);
 

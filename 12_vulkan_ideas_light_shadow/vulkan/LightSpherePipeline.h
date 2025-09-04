@@ -6,7 +6,7 @@
 
 #include <VkRenderData.h>
 
-class LightVolumePipeline {
+class LightSpherePipeline {
   public:
     static bool init(VkRenderData &renderData, std::vector<VkFormat> colorAttachmentFormats,
       VkPipelineLayout& pipelineLayout, VkPipeline& pipeline, std::string vertexShaderFilename, std::string fragmentShaderFilename);

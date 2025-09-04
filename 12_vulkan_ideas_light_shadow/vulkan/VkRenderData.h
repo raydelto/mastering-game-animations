@@ -130,7 +130,7 @@ struct VkRenderUploadData {
   int32_t shadowMapPCFRange = 1;
   int32_t colorCascadeDebug = 0;
   int32_t numDynamicLights = 0;
-  int32_t useLightVolumes = 0;
+  int32_t useLightSpheres = 0;
 };
 
 struct ShadowMapCascadeData {
@@ -263,8 +263,8 @@ struct VkRenderData {
   std::vector<DynamicLightData> rdLightData{};
   bool rdEnableLightDebug = false;
   std::vector<glm::vec4> rdLightDebugData{};
-  bool rdEnableLightVolumes = false;
-  bool rdEnableLightVolumeDebug = false;
+  bool rdEnableLightSpheres = false;
+  bool rdEnableLightSphereDebug = false;
 
   compositeDebugDisplay rdCompositeDebug = compositeDebugDisplay::composite;
 
@@ -427,8 +427,8 @@ struct VkRenderData {
   VkVertexBufferData rdInstancePathVertexBuffer{};
   VkVertexBufferData rdSkyboxBuffer{};
   VkVertexBufferData rdDynamicLightDebugVertexBuffer{};
-  VkVertexBufferData rdLightVolumeVertexBuffer{};
-  VkVertexBufferData rdLightVolumeDebugVertexBuffer{};
+  VkVertexBufferData rdLightSphereVertexBuffer{};
+  VkVertexBufferData rdLightSphereDebugVertexBuffer{};
 
   VkShaderStorageBufferData rdShaderModelRootMatrixBuffer{};
   VkShaderStorageBufferData rdSelectedInstanceBuffer{};
@@ -479,7 +479,7 @@ struct VkRenderData {
   VkImageData rdSSAOBlurBufferData{};
   VkImageData rdShadowMapCombinedDepthBufferData{};
   VkImageData rdShadowMapDepthBufferData{};
-  VkImageData rdLightVolumesBufferData{};
+  VkImageData rdLightSpheresBufferData{};
 
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdAssimpSkinningPipelineLayout = VK_NULL_HANDLE;
@@ -498,7 +498,7 @@ struct VkRenderData {
   VkPipelineLayout rdCompositePipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdSSAOPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdSSAOBlurPipelineLayout = VK_NULL_HANDLE;
-  VkPipelineLayout rdLightVolumePipelineLayout = VK_NULL_HANDLE;
+  VkPipelineLayout rdLightSpherePipelineLayout = VK_NULL_HANDLE;
 
   VkPipeline rdAssimpPipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpSkinningPipeline = VK_NULL_HANDLE;
@@ -526,7 +526,7 @@ struct VkRenderData {
   VkPipeline rdShadowMapAssimpLevelPipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpPostCompositePipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpPostCompositeSelectionPipeline = VK_NULL_HANDLE;
-  VkPipeline rdLightVolumePipeline = VK_NULL_HANDLE;
+  VkPipeline rdLightSpherePipeline = VK_NULL_HANDLE;
 
   VkCommandPool rdCommandPool = VK_NULL_HANDLE;
   VkCommandPool rdComputeCommandPool = VK_NULL_HANDLE;
@@ -566,7 +566,7 @@ struct VkRenderData {
   VkDescriptorSetLayout rdCompositeDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdSSAODescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdSSAOBlurDescriptorLayout = VK_NULL_HANDLE;
-  VkDescriptorSetLayout rdLightVolumeDescriptorLayout = VK_NULL_HANDLE;
+  VkDescriptorSetLayout rdLightSphereDescriptorLayout = VK_NULL_HANDLE;
 
   VkDescriptorSet rdAssimpDescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdAssimpSkinningDescriptorSet = VK_NULL_HANDLE;
@@ -589,7 +589,7 @@ struct VkRenderData {
   VkDescriptorSet rdSSAODescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdSSAOBlurDescriptorSet = VK_NULL_HANDLE;
   VkDescriptorSet rdDynLightDebugSphereDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdLightVolumeDescriptorSet = VK_NULL_HANDLE;
+  VkDescriptorSet rdLightSphereDescriptorSet = VK_NULL_HANDLE;
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;
