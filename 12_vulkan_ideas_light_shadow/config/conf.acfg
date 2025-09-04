@@ -3,7 +3,7 @@ version: 12.0
 
 settings:
   near-clip-plane: 1
-  far-clip-plane: 500
+  far-clip-plane: 600
   orth-nearfar-clip-plane: 40
   selected-model: 1
   selected-instance: 0
