@@ -42,9 +42,14 @@ layout (std140, set = 0, binding = 0) uniform Matrices {
   int useLightSpheres;
 };
 
+struct ShadowMapCascadeData {
+  mat4 shadowMapMat;
+  // vec4 to avoid padding problems
+  vec4 shadowMapSplits;
+};
+
 layout (std430, set = 0, binding = 1) readonly restrict buffer ShadowMapCascadeParameters {
-  mat4 shadowMapMat[SHADOW_MAP_CASCADE_COUNT];
-  float shadowMapSplits[SHADOW_MAP_CASCADE_COUNT];
+  ShadowMapCascadeData shadowMapData[];
 };
 
 struct dynamicLight {
@@ -173,12 +178,12 @@ void main() {
       /* find cascade index of current fragment */
       uint cascadeIndex = 0;
       for(uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; ++i) {
-        if(fragDepth < shadowMapSplits[i]) {
+        if(fragDepth < shadowMapData[i].shadowMapSplits.x) {
           cascadeIndex = i + 1;
         }
       }
 
-      vec4 shadowMapPos = biasMat * shadowMapMat[cascadeIndex] * vec4(worldPos, 1.0);
+      vec4 shadowMapPos = biasMat * shadowMapData[cascadeIndex].shadowMapMat * vec4(worldPos, 1.0);
       shadowMapPos /= shadowMapPos.w;
 
       float shadowFactor = 1.0;

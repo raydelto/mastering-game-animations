@@ -324,9 +324,10 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mVulkanViewCorrectionMatrix[3][1] = -1.0f;
 
   // Cascaded Shadow map init
-  // XXX: we cannot upload a struct containing std::vector, use std::array for now
-  //mRenderData.rdShadowMapCascadeData.lightViewProjectionMat.resize(mRenderData.SHADOW_MAP_LAYERS);
-  //mRenderData.rdShadowMapCascadeData.splitDepth.resize(mRenderData.SHADOW_MAP_LAYERS);
+  mRenderData.rdShadowMapCascadeData.cascades.resize(mRenderData.SHADOW_MAP_LAYERS);
+
+  // dynamic light shadow map init
+  mRenderData.rdDynamicLightShadowMapData.cascades.resize(6);
 
   // shadow maps need camera, so do after config creation
   updateShadowMapCascades();
@@ -3814,8 +3815,8 @@ void VkRenderer::updateShadowMapCascades() {
       glm::mat4 lightViewMat = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
       glm::mat4 lightOrthoMat = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 5.0f * minExtents.z, 5.0f * maxExtents.z);
 
-      mRenderData.rdShadowMapCascadeData.splitDepth.at(i) = minExtents.z / 5.0f * mRenderData.rdShadowMapSplitLambda;
-      mRenderData.rdShadowMapCascadeData.lightViewProjectionMat.at(i) = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
+      mRenderData.rdShadowMapCascadeData.cascades.at(i).splitDepth.x = minExtents.z / 5.0f * mRenderData.rdShadowMapSplitLambda;
+      mRenderData.rdShadowMapCascadeData.cascades.at(i).lightViewProjectionMat = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
     }
   } else {
     float minZ = mRenderData.rdNearPlane;
@@ -3886,8 +3887,8 @@ void VkRenderer::updateShadowMapCascades() {
       glm::mat4 lightViewMat = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
       glm::mat4 lightOrthoMat = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, minExtents.z / 4.0f, maxExtents.z - minExtents.z);
 
-      mRenderData.rdShadowMapCascadeData.splitDepth.at(i) = -(mRenderData.rdNearPlane + splitDist * clipRange);
-      mRenderData.rdShadowMapCascadeData.lightViewProjectionMat.at(i) = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
+      mRenderData.rdShadowMapCascadeData.cascades.at(i).splitDepth.x = -(mRenderData.rdNearPlane + splitDist * clipRange);
+      mRenderData.rdShadowMapCascadeData.cascades.at(i).lightViewProjectionMat = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
 
       lastSplitDist = splits[i];
     }
@@ -5014,6 +5015,54 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderUploadData.numDynamicLights = mRenderData.rdLightData.size();
   updateShaderLightData();
 
+  if (mModelInstCamData.micDynLights.size() > 1) {
+    glm::mat4 dynLightProjectionMat = glm::perspective(
+      glm::radians(90.0f), 1.0f, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
+
+    /*
+     * Cube Map is a cross, so single image width is 1/4, height is 1/3
+     * 0,0
+     *  +----+----+----+----+
+     *  |    | +Y |    |    |
+     *  +----+----+----+----+
+     *  | -X | -Z | +X | +Z |
+     *  +----+----+----+----+
+     *  |    | -Y |    |    |
+     *  +----+----+----+----+ w
+     *                      h
+     *
+     * GL_TEXTURE_CUBE_MAP_POSITIVE_X -> Right
+     * GL_TEXTURE_CUBE_MAP_NEGATIVE_X -> Left
+     * GL_TEXTURE_CUBE_MAP_POSITIVE_Y -> Top
+     * GL_TEXTURE_CUBE_MAP_NEGATIVE_Y -> Bottom
+     * GL_TEXTURE_CUBE_MAP_POSITIVE_Z -> Back
+     * GL_TEXTURE_CUBE_MAP_NEGATIVE_Z -> Front
+     */
+
+    // draw upside down by manipulating the up vector
+    glm::vec3 lightPos = mRenderData.rdLightData.at(1).position;
+    glm::vec3 worldUpVector = glm::vec3(0.0f, -1.0f, 0.0f);
+
+    glm::mat4 posXMat = glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), worldUpVector);
+    glm::mat4 negXMat = glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), worldUpVector);
+
+    glm::mat4 posYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 negYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+
+    glm::mat4 posZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), worldUpVector);
+    glm::mat4 negZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), worldUpVector);
+
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(0).lightViewProjectionMat = dynLightProjectionMat * posXMat;
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(1).lightViewProjectionMat = dynLightProjectionMat * negXMat;
+
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(2).lightViewProjectionMat = dynLightProjectionMat * posYMat;
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(3).lightViewProjectionMat = dynLightProjectionMat * negYMat;
+
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(4).lightViewProjectionMat = dynLightProjectionMat * posZMat;
+    mRenderData.rdDynamicLightShadowMapData.cascades.at(5).lightViewProjectionMat = dynLightProjectionMat * negZMat;
+  }
+
+
   // update shadow map data for now in every frame
   updateShadowMapCascades();
 
@@ -5023,18 +5072,18 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderData.rdUploadToUBOTimer.start();
   UniformBuffer::uploadData(mRenderData, mRenderData.rdRenderUploadDataUBO, mRenderUploadData);
   bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffer, mWorldPosMatrices);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, mRenderData.rdShadowMapCascadeData);
-
-  if (bufferResized) {
-    VkHelper::updateDescriptorSets(mRenderData);
-  }
 
   // light data uses different descriptors
   bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
   // reuse the sphere drawing shader for light debug
   bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffer, mRenderData.rdLightDebugData);
 
+  size_t shadowMapCascadeSize = sizeof(ShadowMapCascades) * std::max(mModelInstCamData.micDynLights.size() * 6, static_cast<size_t>(4));
+  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, shadowMapCascadeSize);
+
   if (bufferResized) {
+    VkHelper::updateDescriptorSets(mRenderData);
+    VkHelper::updateLevelDescriptorSets(mRenderData);
     VkHelper::updateImageDescriptorSets(mRenderData);
   }
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -5249,7 +5298,223 @@ bool VkRenderer::draw(float deltaTime) {
 
   VkRect2D shadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdShadowMapSize};
 
-  // shadow map pass
+  // Dynamic light shadow pass
+  if (mModelInstCamData.micDynLights.size() == 2) {
+    // update shadow map data of dynamic lights
+    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, 6 * sizeof(ShadowMapCascades),
+      mRenderData.rdDynamicLightShadowMapData.cascades.data());
+
+    // shadow map pass
+    VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo {};
+    dynShadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    dynShadowMapBufferAttachmentInfo.imageView = mRenderData.rdDynamicLightShadowData.imageView;
+    dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    dynShadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    dynShadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    dynShadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
+
+    VkRenderingInfo dynShadowMapRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = shadowMapenderArea,
+      .layerCount = mRenderData.rdDynamicLightShadowData.numLayers,
+      .pDepthAttachment = &dynShadowMapBufferAttachmentInfo
+    };
+
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &dynShadowMapRenderInfo);
+    drawScene(true, 0);
+    drawScene(true, 1);
+    drawScene(true, 2);
+    drawScene(true, 3);
+    drawScene(true, 4);
+    drawScene(true, 5);
+    vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+
+    // combine the six images into one
+    VkImageSubresourceRange srcBlitRange{};
+    srcBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    srcBlitRange.baseMipLevel = 0;
+    srcBlitRange.levelCount = 1;
+    srcBlitRange.baseArrayLayer = 0;
+    srcBlitRange.layerCount = 6;
+
+    VkImageSubresourceRange dstBlitRange{};
+    dstBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    dstBlitRange.baseMipLevel = 0;
+    dstBlitRange.levelCount = 1;
+    dstBlitRange.baseArrayLayer = 0;
+    dstBlitRange.layerCount = 1;
+
+    VkImageMemoryBarrier firstSrcBarrier{};
+    firstSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    firstSrcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    firstSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
+    firstSrcBarrier.subresourceRange = srcBlitRange;
+    firstSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    firstSrcBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+    VkImageMemoryBarrier firstDstBarrier{};
+    firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+    firstDstBarrier.subresourceRange = dstBlitRange;
+    firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &firstSrcBarrier);
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
+
+    VkImageBlit depthBlit{};
+    depthBlit.srcOffsets[0] = { 0, 0, 0 };
+    depthBlit.srcOffsets[1] = {
+      static_cast<int32_t>(mRenderData.rdShadowMapSize.width), static_cast<int32_t>(mRenderData.rdShadowMapSize.height),
+      1 };
+    depthBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    depthBlit.srcSubresource.baseArrayLayer = 0;
+    depthBlit.srcSubresource.layerCount = 1;
+    depthBlit.srcSubresource.mipLevel = 0;
+
+    depthBlit.dstOffsets[0] = { 0, 0, 0 };
+    depthBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    depthBlit.dstSubresource.baseArrayLayer = 0;
+    depthBlit.dstSubresource.layerCount = 1;
+    depthBlit.dstSubresource.mipLevel = 0;
+
+    int32_t cubeFaceWidth = mRenderData.rdShadowMapSize.width / 4;
+    int32_t cubeFaceHeight = mRenderData.rdShadowMapSize.height / 3;
+
+    for (int i = 0; i < 6; ++i) {
+      switch (i) {
+        case 0:
+          depthBlit.srcSubresource.baseArrayLayer = 0;
+          depthBlit.dstOffsets[0] = {
+            cubeFaceWidth * 2, cubeFaceHeight, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth * 3, cubeFaceHeight * 2, 1
+          };
+          break;
+        case 1:
+          depthBlit.srcSubresource.baseArrayLayer = 1;
+          depthBlit.dstOffsets[0] = {
+            0, cubeFaceHeight, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth, cubeFaceHeight * 2, 1
+          };
+          break;
+        case 2:
+          depthBlit.srcSubresource.baseArrayLayer = 2;
+          depthBlit.dstOffsets[0] = {
+            cubeFaceWidth, 0, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth * 2, cubeFaceHeight, 1
+          };
+          break;
+        case 3:
+          depthBlit.srcSubresource.baseArrayLayer = 3;
+          depthBlit.dstOffsets[0] = {
+            cubeFaceWidth, cubeFaceHeight * 2, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth * 2, cubeFaceHeight * 3, 1
+          };
+          break;
+        case 4:
+          depthBlit.srcSubresource.baseArrayLayer = 4;
+          depthBlit.dstOffsets[0] = {
+            cubeFaceWidth, cubeFaceHeight, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth * 2, cubeFaceHeight * 2, 1
+          };
+          break;
+        case 5:
+          depthBlit.srcSubresource.baseArrayLayer = 5;
+          depthBlit.dstOffsets[0] = {
+            cubeFaceWidth * 3, cubeFaceHeight, 0
+          };
+          depthBlit.dstOffsets[1] = {
+            cubeFaceWidth * 4, cubeFaceHeight * 2, 1
+          };
+          break;
+      }
+
+      vkCmdBlitImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+        mRenderData.rdDynamicLightShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        mRenderData.rdDynamicLightCombinedShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &depthBlit, VK_FILTER_NEAREST);
+    }
+
+    VkImageMemoryBarrier secondSrcBarrier{};
+    secondSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    secondSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    secondSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
+    secondSrcBarrier.subresourceRange = srcBlitRange;
+    secondSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    secondSrcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    VkImageMemoryBarrier secondDstBarrier{};
+    secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+    secondDstBarrier.subresourceRange = dstBlitRange;
+    secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &secondSrcBarrier);
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
+  } else {
+    // clear image when we don't blit
+    VkImageSubresourceRange blitRange{};
+    blitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    blitRange.baseMipLevel = 0;
+    blitRange.levelCount = 1;
+    blitRange.baseArrayLayer = 0;
+    blitRange.layerCount = 1;
+
+    VkImageMemoryBarrier firstDstBarrier{};
+    firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+    firstDstBarrier.subresourceRange = blitRange;
+    firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
+
+    VkClearDepthStencilValue clearShadowMapDepth = { .depth = 0.0f };
+
+    vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdDynamicLightCombinedShadowData.image,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearShadowMapDepth, 1, &blitRange);
+
+    VkImageMemoryBarrier secondDstBarrier{};
+    secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+    secondDstBarrier.subresourceRange = blitRange;
+    secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
+  }
+
+  // sun light shadow map pass
   VkRenderingAttachmentInfo shadowMapBufferAttachmentInfo {};
   shadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   shadowMapBufferAttachmentInfo.imageView = mRenderData.rdShadowMapDepthBufferData.imageView;
@@ -5261,11 +5526,15 @@ bool VkRenderer::draw(float deltaTime) {
   VkRenderingInfo shadowMapRenderInfo {
     .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
     .renderArea = shadowMapenderArea,
-    .layerCount = 4,
+    .layerCount = mRenderData.rdShadowMapDepthBufferData.numLayers,
     .pDepthAttachment = &shadowMapBufferAttachmentInfo
   };
 
   if (mRenderData.rdEnableShadowMap) {
+    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, 4 * sizeof(ShadowMapCascades),
+      mRenderData.rdShadowMapCascadeData.cascades.data());
+
     vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &shadowMapRenderInfo);
     drawScene(true, 0);
     drawScene(true, 1);

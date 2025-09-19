@@ -5,7 +5,9 @@ layout (location = 1) in flat uint inInstance;
 layout (location = 7) out vec4 FragColor;
 
 layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputDepth;
-layout (input_attachment_index = 2, set = 0, binding = 3) uniform subpassInput inputNormal;
+layout (input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput inputNormal;
+
+layout (set = 0, binding = 4) uniform samplerCube shadowCubeMap;
 
 layout (std140, set = 0, binding = 0) uniform Matrices {
   mat4 viewMat;
@@ -37,6 +39,12 @@ layout (std430, set = 0, binding = 1) readonly restrict buffer DynamicLights {
   dynamicLight lights[];
 };
 
+const float ambientStrength = 0.1;
+
+float linearDepth(float depth) {
+  return 2.0 * nearPlane / (farPlane + nearPlane - depth * (farPlane - nearPlane));
+}
+
 float unlinearizeDepth(float depth) {
   return -(2.0 * nearPlane / depth - farPlane - nearPlane) / (farPlane - nearPlane);
 }
@@ -56,6 +64,20 @@ vec3 getWorldPosFromDepth(vec2 uv) {
   return pos.xyz;
 }
 
+float vectorToDepth(vec3 vec) {
+  vec3 absVec = abs(vec);
+  float localZcomp = max(absVec.x, max(absVec.y, absVec.z));
+
+  // OpenGL version
+  //float normZComp = (farPlane + nearPlane) / (farPlane - nearPlane) - (2.0 * farPlane * nearPlane) / ((farPlane - nearPlane) * localZcomp);
+  //return (normZComp + 1.0) * 0.5;
+
+  // Vulkan version
+  float normZComp = farPlane / (farPlane - nearPlane) - (farPlane * nearPlane) / (localZcomp * (farPlane - nearPlane));
+
+  return normZComp;
+}
+
 void main() {
   vec3 lightDynDiff = vec3(0.0);
 
@@ -63,7 +85,7 @@ void main() {
   vec3 worldPos = vec3(invViewMat * vec4(getWorldPosFromDepth(inUV), 1.0));
   vec3 normal = normalize(subpassLoad(inputNormal).rgb * 2.0 - 1.0);
 
-  vec3 lightPos = lights[inInstance].position.xyz / lights[inInstance].position.w;
+  vec3 lightPos = lights[inInstance].position.xyz;
   vec3 lightDir = normalize(lightPos - worldPos);
   float diff = max(dot(normal, lightDir), 0.0);
 
@@ -82,5 +104,16 @@ void main() {
     }
   }
 
-  FragColor = vec4(lightDynDiff, 1.0);
+  // add normal here to avoid strange circular shadow acne
+  vec3 lightVec = (worldPos + normal * (5.0 / distance)) - lightPos;
+
+  float shadowCubeMapDepth = texture(shadowCubeMap, normalize(lightVec)).r;
+  float lightDepth = vectorToDepth(lightVec);
+
+  float shadowFactor = 1.0;
+  if (shadowCubeMapDepth < lightDepth - 0.0001) {
+    shadowFactor = 0.0;
+  }
+
+  FragColor = vec4(lightDynDiff * shadowFactor, 1.0);
 }

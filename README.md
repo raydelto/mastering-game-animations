@@ -13,10 +13,13 @@ Note: The examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMAGE\_LAYO
 ![Example Image, SSAO on](https://github.com/mich-dy/mastering-game-animations/blob/main/10_vulkan_ideas_ssao/image_ssao_on.png)
 
 ### Cascaded Shadow Maps
-![Example Image with Cascaded Shadow maps](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_shadow_maps.png)
+![Example Image with Cascaded Shadow Maps](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_shadow_maps.png)
 
 ### Dynamic Lights
 ![Example Image with Dynamic Lights](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_lights.png)
 
 ### Dynamic Spotlights
 ![Example Image with Dynamic Spotlights](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_spotlights.png)
+
+### Dynamic Shadow Maps
+![Example Image with Dynamic Shadow Maps](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_shadow_maps.png)

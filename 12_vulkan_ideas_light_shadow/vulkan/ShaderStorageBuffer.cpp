@@ -12,7 +12,8 @@ bool ShaderStorageBuffer::init(VkRenderData& renderData, VkShaderStorageBufferDa
   VkBufferCreateInfo bufferInfo{};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   bufferInfo.size = bufferSize;
-  bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  // TODO: Add as extra flag
+  bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
   VmaAllocationCreateInfo vmaAllocInfo{};
   vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
@@ -37,29 +38,6 @@ bool ShaderStorageBuffer::checkForResize(VkRenderData& renderData, VkShaderStora
     return true;
   }
   return false;
-}
-
-bool ShaderStorageBuffer::uploadSsboData(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, ShadowMapCascadeData bufferData) {
-  bool bufferResized = false;
-  size_t bufferSize = (sizeof(glm::mat4) + sizeof(glm::vec4)) * renderData.SHADOW_MAP_LAYERS;
-  if (bufferSize > SSBOData.bufferSize) {
-    Logger::log(1, "%s: resize SSBO %p from %i to %i bytes\n", __FUNCTION__, SSBOData.buffer, SSBOData.bufferSize, bufferSize);
-    cleanup(renderData, SSBOData);
-    init(renderData, SSBOData, bufferSize);
-    bufferResized = true;
-  }
-
-  void* data;
-  VkResult result = vmaMapMemory(renderData.rdAllocator, SSBOData.bufferAlloc, &data);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not map SSBO memory (error: %i)\n", __FUNCTION__, result);
-    return false;
-  }
-  std::memcpy(data, &bufferData, bufferSize);
-  vmaUnmapMemory(renderData.rdAllocator, SSBOData.bufferAlloc);
-  vmaFlushAllocation(renderData.rdAllocator, SSBOData.bufferAlloc, 0, SSBOData.bufferSize);
-
-  return bufferResized;
 }
 
 glm::mat4 ShaderStorageBuffer::getSsboDataMat4(VkRenderData& renderData, VkShaderStorageBufferData& SSBOData, size_t offset) {

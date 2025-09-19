@@ -12,8 +12,6 @@ struct MorphVertex {
   vec4 normal;
 };
 
-layout (constant_id = 0) const int SHADOW_MAP_CASCADE_COUNT = 4;
-
 layout (push_constant) uniform Constants {
   uint modelStride;
   uint worldPosOffset;
@@ -44,8 +42,14 @@ layout (std430, set = 1, binding = 4) readonly restrict buffer AnimMorphData {
   vec4 vertsPerMorphAnim[];
 };
 
+struct ShadowMapCascadeData {
+  mat4 shadowMapMat;
+  // vec4 to avoid padding problems
+  vec4 shadowMapSplits;
+};
+
 layout (std430, set = 1, binding = 5) readonly restrict buffer ShadowMapCascadeParameters {
-  mat4 shadowMapMat[SHADOW_MAP_CASCADE_COUNT];
+  ShadowMapCascadeData shadowMapData[];
 };
 
 layout (std430, set = 2, binding = 0) readonly restrict buffer AnimMorphBuffer {
@@ -70,7 +74,7 @@ void main() {
   vec4 origVertex = vec4(aPos.xyz, 1.0);
   vec4 morphVertex = vec4(morphVertices[gl_VertexIndex + morphAnimIndex].position.xyz, 1.0);
 
-  gl_Position = shadowMapMat[shadowMapLayerIndex] * worldPosSkinMat *
+  gl_Position = shadowMapData[shadowMapLayerIndex].shadowMapMat * worldPosSkinMat *
     mix(origVertex, morphVertex, vertsPerMorphAnim[gl_InstanceIndex + worldPosOffset].x);
   gl_Layer = shadowMapLayerIndex;
 }

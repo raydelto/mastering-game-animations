@@ -133,9 +133,13 @@ struct VkRenderUploadData {
   int32_t useLightSpheres = 0;
 };
 
+struct ShadowMapCascades {
+  glm::mat4 lightViewProjectionMat{};
+  glm::vec4 splitDepth{};
+};
+
 struct ShadowMapCascadeData {
-  std::array<glm::mat4, 4> lightViewProjectionMat{};
-  std::array<float, 4> splitDepth{};
+  std::vector<ShadowMapCascades> cascades{};
 };
 
 struct DynamicLightData {
@@ -201,7 +205,7 @@ struct VkImageData {
   VkSampler sampler = VK_NULL_HANDLE;
   VmaAllocation alloc = VK_NULL_HANDLE;
   VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-  int numLayers = 1;
+  uint32_t numLayers = 1;
 };
 
 struct VulkanGBuffer {
@@ -259,6 +263,7 @@ struct VkRenderData {
   VkExtent2D rdShadowMapSize { 4096, 4096 };
 
   ShadowMapCascadeData rdShadowMapCascadeData{};
+  ShadowMapCascadeData rdDynamicLightShadowMapData{};
 
   std::vector<DynamicLightData> rdLightData{};
   bool rdEnableLightDebug = false;
@@ -480,6 +485,8 @@ struct VkRenderData {
   VkImageData rdShadowMapCombinedDepthBufferData{};
   VkImageData rdShadowMapDepthBufferData{};
   VkImageData rdLightSpheresBufferData{};
+  VkImageData rdDynamicLightShadowData{};
+  VkImageData rdDynamicLightCombinedShadowData{};
 
   VkPipelineLayout rdAssimpPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdAssimpSkinningPipelineLayout = VK_NULL_HANDLE;

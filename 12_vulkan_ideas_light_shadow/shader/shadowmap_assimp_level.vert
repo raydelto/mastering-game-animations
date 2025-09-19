@@ -7,8 +7,6 @@ layout (location = 2) in vec4 aNormal; // last float is uv.y
 layout (location = 3) in uvec4 aBoneNum; // ignored
 layout (location = 4) in vec4 aBoneWeight; // ignored
 
-layout (constant_id = 0) const int SHADOW_MAP_CASCADE_COUNT = 4;
-
 layout (push_constant) uniform Constants {
   uint modelStride;
   uint worldPosOffset;
@@ -27,12 +25,18 @@ layout (std430, set = 1, binding = 1) readonly restrict buffer WorldTransformMat
   mat4 worldTransformMat[];
 };
 
+struct ShadowMapCascadeData {
+  mat4 shadowMapMat;
+  // vec4 to avoid padding problems
+  vec4 shadowMapSplits;
+};
+
 layout (std430, set = 1, binding = 2) readonly restrict buffer ShadowMapCascadeParameters {
-  mat4 shadowMapMat[SHADOW_MAP_CASCADE_COUNT];
+  ShadowMapCascadeData shadowMapData[];
 };
 
 void main() {
   mat4 levelMat = worldTransformMat[worldPosOffset];
-  gl_Position = shadowMapMat[shadowMapLayerIndex] * levelMat * vec4(aPos.xyz, 1.0);
+  gl_Position = shadowMapData[shadowMapLayerIndex].shadowMapMat * levelMat * vec4(aPos.xyz, 1.0);
   gl_Layer = shadowMapLayerIndex;
 }

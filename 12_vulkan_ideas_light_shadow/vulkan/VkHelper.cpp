@@ -96,6 +96,10 @@ bool VkHelper::initVulkan(VkRenderData& renderData) {
     return false;
   }
 
+  if (!createDepthBufferCubeMap(renderData, renderData.rdDynamicLightShadowData)) {
+    return false;
+  }
+
   initSSAO(renderData);
 
   updateImageDescriptorSets(renderData);
@@ -292,7 +296,6 @@ bool VkHelper::recreateSwapchain(VkRenderData& renderData) {
   cleanupDepthBuffer(renderData);
   cleanupGBuffer(renderData);
   cleanupImages(renderData);
-  cleanupShadowMapBuffer(renderData);
 
   renderData.rdVkbSwapchain.destroy_image_views(renderData.rdSwapchainImageViews);
 
@@ -314,11 +317,6 @@ bool VkHelper::recreateSwapchain(VkRenderData& renderData) {
 
   if (!createGBuffer(renderData)) {
     Logger::log(1, "%s error: could not recreate G-Buffer buffer\n", __FUNCTION__);
-    return false;
-  }
-
-  if (!createShadowMapBuffer(renderData)) {
-    Logger::log(1, "%s error: could not recreate shadow map depth buffer\n", __FUNCTION__);
     return false;
   }
 
@@ -1447,11 +1445,19 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
     normalBinding.pImmutableSamplers = nullptr;
     normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    VkDescriptorSetLayoutBinding shadowMapDepthBinding{};
+    shadowMapDepthBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    shadowMapDepthBinding.binding = 4;
+    shadowMapDepthBinding.descriptorCount = 1;
+    shadowMapDepthBinding.pImmutableSamplers = nullptr;
+    shadowMapDepthBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
       renderDataUboBind,
       lightDataSsboBind,
       depthImageBinding,
       normalBinding,
+      shadowMapDepthBinding,
     };
 
     VkDescriptorSetLayoutCreateInfo lightSphereLayoutInfo{};
@@ -3023,6 +3029,11 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalInfo.imageView = renderData.rdGBuffer.normal.imageView;
     normalInfo.sampler = VK_NULL_HANDLE;
 
+    VkDescriptorImageInfo shadowMapDepthInfo{};
+    shadowMapDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    shadowMapDepthInfo.imageView = renderData.rdDynamicLightShadowData.imageView;
+    shadowMapDepthInfo.sampler = renderData.rdDynamicLightShadowData.sampler;
+
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -3055,11 +3066,20 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalWriteDescriptorSet.descriptorCount = 1;
     normalWriteDescriptorSet.pImageInfo = &normalInfo;
 
+    VkWriteDescriptorSet shadowMapDepthWriteDescriptorSet{};
+    shadowMapDepthWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    shadowMapDepthWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    shadowMapDepthWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
+    shadowMapDepthWriteDescriptorSet.dstBinding = 4;
+    shadowMapDepthWriteDescriptorSet.descriptorCount = 1;
+    shadowMapDepthWriteDescriptorSet.pImageInfo = &shadowMapDepthInfo;
+
     std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
       matrixWriteDescriptorSet,
       lightDataWriteDescriptorSet,
       depthImageWriteDescriptorSet,
       normalWriteDescriptorSet,
+      shadowMapDepthWriteDescriptorSet,
     };
 
     vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),
@@ -3602,6 +3622,115 @@ void VkHelper::cleanupDepthBuffer(VkRenderData& renderData) {
   vmaDestroyImage(renderData.rdAllocator, renderData.rdDepthBufferData.image, renderData.rdDepthBufferData.alloc);
 }
 
+bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData) {
+  VkImageCreateInfo imageInfo{};
+  imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  imageInfo.imageType = VK_IMAGE_TYPE_2D;
+  imageInfo.extent.width = renderData.rdShadowMapSize.width;
+  imageInfo.extent.height = renderData.rdShadowMapSize.height;
+  imageInfo.extent.depth = 1;
+  imageInfo.mipLevels = 1;
+  imageInfo.format = VK_FORMAT_D16_UNORM;
+  imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+  imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+  // every face is a layer
+  imageInfo.arrayLayers = 6;
+  imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+  VmaAllocationCreateInfo imageAllocInfo{};
+  imageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+  VkResult result = vmaCreateImage(renderData.rdAllocator, &imageInfo, &imageAllocInfo, &imageData.image,  &imageData.alloc, nullptr);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s error: could not allocate texture image via VMA (error: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  VkImageSubresourceRange subresourceRange{};
+  subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  subresourceRange.baseMipLevel = 0;
+  subresourceRange.levelCount = 1;
+  subresourceRange.baseArrayLayer = 0;
+  subresourceRange.layerCount = 6;
+
+  // 1st barrier, we need to transfer to dst optimal
+  VkImageMemoryBarrier formatChangeBarrier{};
+  formatChangeBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  formatChangeBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  formatChangeBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+  formatChangeBarrier.image = imageData.image;
+  formatChangeBarrier.subresourceRange = subresourceRange;
+  formatChangeBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+  VkCommandBuffer uploadCommandBuffer = CommandBuffer::createSingleShotBuffer(renderData, renderData.rdCommandPool);
+
+  vkCmdPipelineBarrier(uploadCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    0,
+    0, nullptr,
+    0, nullptr,
+    1, &formatChangeBarrier);
+
+  bool commandResult = CommandBuffer::submitSingleShotBuffer(renderData, renderData.rdCommandPool, uploadCommandBuffer, renderData.rdGraphicsQueue);
+
+  if (!commandResult) {
+    Logger::log(1, "%s error: could not submit texture transfer commands\n", __FUNCTION__);
+    return false;
+  }
+
+  // image view and sampler
+  VkImageViewCreateInfo cubeViewInfo{};
+  cubeViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  cubeViewInfo.image = imageData.image;
+  cubeViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+  cubeViewInfo.format = VK_FORMAT_D16_UNORM;
+  cubeViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  cubeViewInfo.subresourceRange.baseMipLevel = 0;
+  cubeViewInfo.subresourceRange.levelCount = 1;
+  cubeViewInfo.subresourceRange.baseArrayLayer = 0;
+  cubeViewInfo.subresourceRange.layerCount = 6;
+
+  result = vkCreateImageView(renderData.rdVkbDevice.device, &cubeViewInfo, nullptr, &imageData.imageView);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s error: could not create image view for texture\n", __FUNCTION__);
+    return false;
+  }
+
+  VkSamplerCreateInfo cubeSamplerInfo{};
+  cubeSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  cubeSamplerInfo.magFilter = VK_FILTER_LINEAR;
+  cubeSamplerInfo.minFilter = VK_FILTER_LINEAR;
+  cubeSamplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  cubeSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  cubeSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  cubeSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+  cubeSamplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
+  cubeSamplerInfo.compareEnable = VK_FALSE;
+  cubeSamplerInfo.compareOp = VK_COMPARE_OP_NEVER;
+  cubeSamplerInfo.mipLodBias = 0.0f;
+  cubeSamplerInfo.minLod = 0.0f;
+  cubeSamplerInfo.maxLod = 1.0f;
+  cubeSamplerInfo.anisotropyEnable = VK_FALSE;
+
+  result = vkCreateSampler(renderData.rdVkbDevice.device, &cubeSamplerInfo, nullptr, &imageData.sampler);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s error: could not create sampler for texture (error: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  imageData.numLayers = 6;
+
+  return true;
+}
+
+void VkHelper::cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData) {
+  vkDestroySampler(renderData.rdVkbDevice.device, imageData.sampler, nullptr);
+  vkDestroyImageView(renderData.rdVkbDevice.device, imageData.imageView, nullptr);
+  vmaDestroyImage(renderData.rdAllocator, imageData.image, imageData.alloc);
+}
+
 bool VkHelper::createImages(VkRenderData& renderData) {
   if (!createImage(renderData, renderData.rdSelectionImageData)) {
     return false;
@@ -3908,6 +4037,14 @@ bool VkHelper::createShadowMapBuffer(VkRenderData& renderData) {
     renderData.rdShadowMapSize)) {
     return false;
   }
+
+  Logger::log(1, "%s: create combined shadow map depth attachment for dynamic lights (16 bit depth)\n", __FUNCTION__);
+  if (!FramebufferAttachment::init(renderData, renderData.rdDynamicLightCombinedShadowData,
+    VK_FORMAT_D16_UNORM,
+    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+    renderData.rdShadowMapSize)) {
+    return false;
+  }
   return true;
 }
 
@@ -3923,6 +4060,12 @@ void VkHelper::cleanupShadowMapBuffer(VkRenderData& renderData) {
     Logger::log(1, "%s: deleted combined shadow map depth attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: combined shadow map depth attachment is null\n",  __FUNCTION__);
+  }
+  if (renderData.rdDynamicLightCombinedShadowData.image != VK_NULL_HANDLE) {
+    FramebufferAttachment::cleanup(renderData, renderData.rdDynamicLightCombinedShadowData);
+    Logger::log(1, "%s: deleted combined shadow map depth attachment for dynamic lights\n", __FUNCTION__);
+  } else {
+    Logger::log(1,"%s error: combined shadow map depth attachment for dynamic lights is null\n",  __FUNCTION__);
   }
 }
 
@@ -4558,6 +4701,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   cleanupShadowMapBuffer(renderData);
   cleanupDepthBuffer(renderData);
   cleanupImages(renderData);
+  cleanupDepthBufferCubeMap(renderData, renderData.rdDynamicLightShadowData);
 
   vmaDestroyAllocator(renderData.rdAllocator);
 

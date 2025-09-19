@@ -134,6 +134,7 @@ void UserInterface::createDescriptorSets(VkRenderData& renderData) {
   renderData.rdSSAOColorBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOColorBufferData.sampler, renderData.rdSSAOColorBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOBlurBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOBlurBufferData.sampler, renderData.rdSSAOBlurBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdLightSpheresBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightSpheresBufferData.sampler, renderData.rdLightSpheresBufferData.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  renderData.rdDynamicLightCombinedShadowData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdDynamicLightCombinedShadowData.sampler, renderData.rdDynamicLightCombinedShadowData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 
   renderData.rdShadowMapCombinedDepthBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdShadowMapCombinedDepthBufferData.sampler, renderData.rdShadowMapCombinedDepthBufferData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
@@ -4073,11 +4074,14 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
   ImGui::Text("SSAO Blur");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAOBlurBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
 
+  ImGui::Text("Shadow Map");
+  ImGui::Image(static_cast<ImTextureID>(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet), ImVec2(300, 300));
+
   ImGui::Text("Light Spheres");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdLightSpheresBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
 
-  ImGui::Text("Shadow Map");
-  ImGui::Image(static_cast<ImTextureID>(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet), ImVec2(300, 300));
+  ImGui::Text("Light Sphere Shadow Map");
+  ImGui::Image(static_cast<ImTextureID>(renderData.rdDynamicLightCombinedShadowData.descriptorSet), ImVec2(300, 300));
 
   ImGui::End();
 }
@@ -4303,6 +4307,7 @@ void UserInterface::removeDescriptorSets(VkRenderData& renderData) {
   ImGui_ImplVulkan_RemoveTexture(renderData.rdSSAOBlurBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdLightSpheresBufferData.descriptorSet);
   ImGui_ImplVulkan_RemoveTexture(renderData.rdShadowMapCombinedDepthBufferData.descriptorSet);
+  ImGui_ImplVulkan_RemoveTexture(renderData.rdDynamicLightCombinedShadowData.descriptorSet);
 }
 
 void UserInterface::cleanup(VkRenderData& renderData) {

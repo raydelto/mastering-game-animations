@@ -44,6 +44,9 @@ class VkHelper {
     static bool createDepthBuffer(VkRenderData& renderData);
     static void cleanupDepthBuffer(VkRenderData& renderDat);
 
+    static bool createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData);
+    static void cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData);
+
     static void initSSAO(VkRenderData& renderData);
     static bool createSSAONoiseTexture(VkRenderData& renderData, std::vector<glm::vec4> noiseData);
     static void cleanupSSAONoiseTexture(VkRenderData& renderData);

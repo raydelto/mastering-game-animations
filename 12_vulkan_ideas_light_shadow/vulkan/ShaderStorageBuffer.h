@@ -14,9 +14,6 @@ class ShaderStorageBuffer {
     // set an arbitraty buffer size as default
     static bool init(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, size_t bufferSize = 1024);
 
-    // needs a separate method since the elements in ShadowMapCascadeData are in std::vector
-    static bool uploadSsboData(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, ShadowMapCascadeData bufferData);
-
     template <typename T>
     static bool uploadSsboData(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, std::vector<T> bufferData) {
       if (bufferData.empty()) {
