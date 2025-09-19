@@ -5074,18 +5074,13 @@ bool VkRenderer::draw(float deltaTime) {
   bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffer, mWorldPosMatrices);
 
   // light data uses different descriptors
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
   // reuse the sphere drawing shader for light debug
   bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffer, mRenderData.rdLightDebugData);
 
   size_t shadowMapCascadeSize = sizeof(ShadowMapCascades) * std::max(mModelInstCamData.micDynLights.size() * 6, static_cast<size_t>(4));
   bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, shadowMapCascadeSize);
 
-  if (bufferResized) {
-    VkHelper::updateDescriptorSets(mRenderData);
-    VkHelper::updateLevelDescriptorSets(mRenderData);
-    VkHelper::updateImageDescriptorSets(mRenderData);
-  }
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   // clear and resize world pos matrix for level data
@@ -5103,10 +5098,12 @@ bool VkRenderer::draw(float deltaTime) {
 
   // we need to update descriptors after the upload if buffer size changed
   mRenderData.rdUploadToUBOTimer.start();
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderLevelRootMatrixBuffer, mLevelWorldPosMatrices);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderLevelRootMatrixBuffer, mLevelWorldPosMatrices);
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   if (bufferResized) {
+    VkHelper::updateDescriptorSets(mRenderData);
+    VkHelper::updateImageDescriptorSets(mRenderData);
     VkHelper::updateLevelDescriptorSets(mRenderData);
   }
 
