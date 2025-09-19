@@ -254,7 +254,7 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
     .set_old_swapchain(renderData.rdVkbSwapchain)
     .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
     .set_desired_format(surfaceFormat)
-    .set_desired_min_image_count(mRenderData.MAX_FRAMES_IN_FLIGHT)
+    .set_desired_min_image_count(renderData.MAX_FRAMES_IN_FLIGHT)
     .build();
 
   if (!swapChainBuildRet) {
