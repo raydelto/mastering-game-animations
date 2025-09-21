@@ -96,7 +96,8 @@ bool VkHelper::initVulkan(VkRenderData& renderData) {
     return false;
   }
 
-  if (!createDepthBufferCubeMap(renderData, renderData.rdDynamicLightShadowData)) {
+  // create a single shadow map to satisfy the descriptor sets
+  if (!createDepthBufferCubeMap(renderData, renderData.rdDynamicLightShadowData, 1)) {
     return false;
   }
 
@@ -1445,6 +1446,55 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
     normalBinding.pImmutableSamplers = nullptr;
     normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
+      renderDataUboBind,
+      lightDataSsboBind,
+      depthImageBinding,
+      normalBinding,
+    };
+
+    VkDescriptorSetLayoutCreateInfo lightSphereLayoutInfo{};
+    lightSphereLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    lightSphereLayoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    lightSphereLayoutInfo.pBindings = layoutBindings.data();
+
+    if (vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &lightSphereLayoutInfo,
+        nullptr, &renderData.rdLightSphereDescriptorLayout) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not create light sphere descriptor set layout\n", __FUNCTION__);
+      return false;
+     }
+  }
+
+  {
+    // Light sphere shader with shadows
+    VkDescriptorSetLayoutBinding renderDataUboBind{};
+    renderDataUboBind.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    renderDataUboBind.binding = 0;
+    renderDataUboBind.descriptorCount = 1;
+    renderDataUboBind.pImmutableSamplers = nullptr;
+    renderDataUboBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding lightDataSsboBind{};
+    lightDataSsboBind.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    lightDataSsboBind.binding = 1;
+    lightDataSsboBind.descriptorCount = 1;
+    lightDataSsboBind.pImmutableSamplers = nullptr;
+    lightDataSsboBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding depthImageBinding{};
+    depthImageBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    depthImageBinding.binding = 2;
+    depthImageBinding.descriptorCount = 1;
+    depthImageBinding.pImmutableSamplers = nullptr;
+    depthImageBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding normalBinding{};
+    normalBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    normalBinding.binding = 3;
+    normalBinding.descriptorCount = 1;
+    normalBinding.pImmutableSamplers = nullptr;
+    normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutBinding shadowMapDepthBinding{};
     shadowMapDepthBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     shadowMapDepthBinding.binding = 4;
@@ -1460,14 +1510,14 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
       shadowMapDepthBinding,
     };
 
-    VkDescriptorSetLayoutCreateInfo lightSphereLayoutInfo{};
-    lightSphereLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    lightSphereLayoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-    lightSphereLayoutInfo.pBindings = layoutBindings.data();
+    VkDescriptorSetLayoutCreateInfo lightSphereShadowLayoutInfo{};
+    lightSphereShadowLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    lightSphereShadowLayoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    lightSphereShadowLayoutInfo.pBindings = layoutBindings.data();
 
-    if (vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &lightSphereLayoutInfo,
-        nullptr, &renderData.rdLightSphereDescriptorLayout) != VK_SUCCESS) {
-      Logger::log(1, "%s error: could not create ssao descriptor set layout\n", __FUNCTION__);
+    if (vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &lightSphereShadowLayoutInfo,
+        nullptr, &renderData.rdLightSphereShadowDescriptorLayout) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not create light sphere shadow descriptor set layout\n", __FUNCTION__);
       return false;
      }
   }
@@ -1823,6 +1873,23 @@ bool VkHelper::createDescriptorSets(VkRenderData& renderData) {
 
       if (result != VK_SUCCESS) {
         Logger::log(1, "%s error: could not allocate light sphere descriptor set (error: %i)\n", __FUNCTION__, result);
+        return false;
+      }
+    }
+
+    {
+      // light sphere drawing with shadows
+      VkDescriptorSetAllocateInfo lightSphereShadowAllocateInfo{};
+      lightSphereShadowAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+      lightSphereShadowAllocateInfo.descriptorPool = renderData.rdDescriptorPool;
+      lightSphereShadowAllocateInfo.descriptorSetCount = 1;
+      lightSphereShadowAllocateInfo.pSetLayouts = &renderData.rdLightSphereShadowDescriptorLayout;
+
+      VkResult result = vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &lightSphereShadowAllocateInfo,
+        &renderData.rdLightSphereShadowsDescriptorSet);
+
+      if (result != VK_SUCCESS) {
+        Logger::log(1, "%s error: could not allocate light spheres shadow descriptor set (error: %i)\n", __FUNCTION__, result);
         return false;
       }
     }
@@ -3029,11 +3096,6 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalInfo.imageView = renderData.rdGBuffer.normal.imageView;
     normalInfo.sampler = VK_NULL_HANDLE;
 
-    VkDescriptorImageInfo shadowMapDepthInfo{};
-    shadowMapDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    shadowMapDepthInfo.imageView = renderData.rdDynamicLightShadowData.imageView;
-    shadowMapDepthInfo.sampler = renderData.rdDynamicLightShadowData.sampler;
-
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -3066,10 +3128,80 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
     normalWriteDescriptorSet.descriptorCount = 1;
     normalWriteDescriptorSet.pImageInfo = &normalInfo;
 
+    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+      matrixWriteDescriptorSet,
+      lightDataWriteDescriptorSet,
+      depthImageWriteDescriptorSet,
+      normalWriteDescriptorSet,
+    };
+
+    vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),
+      writeDescriptorSets.data(), 0, nullptr);
+  }
+
+  {
+    // light sphere drawing shader with shadows
+    VkDescriptorBufferInfo matrixInfo{};
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.offset = 0;
+    matrixInfo.range = VK_WHOLE_SIZE;
+
+    VkDescriptorBufferInfo lightDataInfo{};
+    lightDataInfo.buffer = renderData.rdDynamicLightBuffer.buffer;
+    lightDataInfo.offset = 0;
+    lightDataInfo.range = VK_WHOLE_SIZE;
+
+    VkDescriptorImageInfo depthImageInfo{};
+    depthImageInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    depthImageInfo.imageView = renderData.rdGBuffer.depth.imageView;
+    depthImageInfo.sampler = VK_NULL_HANDLE;
+
+    VkDescriptorImageInfo normalInfo{};
+    normalInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
+    normalInfo.imageView = renderData.rdGBuffer.normal.imageView;
+    normalInfo.sampler = VK_NULL_HANDLE;
+
+    VkDescriptorImageInfo shadowMapDepthInfo{};
+    shadowMapDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    shadowMapDepthInfo.imageView = renderData.rdDynamicLightShadowData.imageView;
+    shadowMapDepthInfo.sampler = renderData.rdDynamicLightShadowData.sampler;
+
+    VkWriteDescriptorSet matrixWriteDescriptorSet{};
+    matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matrixWriteDescriptorSet.dstSet = renderData.rdLightSphereShadowsDescriptorSet;
+    matrixWriteDescriptorSet.dstBinding = 0;
+    matrixWriteDescriptorSet.descriptorCount = 1;
+    matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
+
+    VkWriteDescriptorSet lightDataWriteDescriptorSet{};
+    lightDataWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    lightDataWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    lightDataWriteDescriptorSet.dstSet = renderData.rdLightSphereShadowsDescriptorSet;
+    lightDataWriteDescriptorSet.dstBinding = 1;
+    lightDataWriteDescriptorSet.descriptorCount = 1;
+    lightDataWriteDescriptorSet.pBufferInfo = &lightDataInfo;
+
+    VkWriteDescriptorSet depthImageWriteDescriptorSet{};
+    depthImageWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    depthImageWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    depthImageWriteDescriptorSet.dstSet = renderData.rdLightSphereShadowsDescriptorSet;
+    depthImageWriteDescriptorSet.dstBinding = 2;
+    depthImageWriteDescriptorSet.descriptorCount = 1;
+    depthImageWriteDescriptorSet.pImageInfo = &depthImageInfo;
+
+    VkWriteDescriptorSet normalWriteDescriptorSet{};
+    normalWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    normalWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    normalWriteDescriptorSet.dstSet = renderData.rdLightSphereShadowsDescriptorSet;
+    normalWriteDescriptorSet.dstBinding = 3;
+    normalWriteDescriptorSet.descriptorCount = 1;
+    normalWriteDescriptorSet.pImageInfo = &normalInfo;
+
     VkWriteDescriptorSet shadowMapDepthWriteDescriptorSet{};
     shadowMapDepthWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     shadowMapDepthWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    shadowMapDepthWriteDescriptorSet.dstSet = renderData.rdLightSphereDescriptorSet;
+    shadowMapDepthWriteDescriptorSet.dstSet = renderData.rdLightSphereShadowsDescriptorSet;
     shadowMapDepthWriteDescriptorSet.dstBinding = 4;
     shadowMapDepthWriteDescriptorSet.descriptorCount = 1;
     shadowMapDepthWriteDescriptorSet.pImageInfo = &shadowMapDepthInfo;
@@ -3264,6 +3396,15 @@ bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
 
   if (!PipelineLayout::init(renderData, renderData.rdLightSpherePipelineLayout, lightSphereLayout)) {
     Logger::log(1, "%s error: could not init light sphere pipeline layout\n", __FUNCTION__);
+    return false;
+  }
+
+  // light sphere pass pass with shadows
+  std::vector<VkDescriptorSetLayout> lightSphereShadowLayout = {
+    renderData.rdLightSphereShadowDescriptorLayout };
+
+  if (!PipelineLayout::init(renderData, renderData.rdLightSphereShadowPipelineLayout, lightSphereShadowLayout)) {
+    Logger::log(1, "%s error: could not init light sphere shadow pipeline layout\n", __FUNCTION__);
     return false;
   }
 
@@ -3488,6 +3629,14 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
     return false;
   }
 
+  vertexShaderFile = "shader/light_sphere_shadow.vert.spv";
+  fragmentShaderFile = "shader/light_sphere_shadow.frag.spv";
+  if (!LightSpherePipeline::init(renderData, colorAttachmentFormats, renderData.rdLightSphereShadowPipelineLayout,
+    renderData.rdLightSphereShadowPipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init light sphere shadow shader pipeline\n", __FUNCTION__);
+    return false;
+  }
+
   return true;
 }
 
@@ -3622,12 +3771,12 @@ void VkHelper::cleanupDepthBuffer(VkRenderData& renderData) {
   vmaDestroyImage(renderData.rdAllocator, renderData.rdDepthBufferData.image, renderData.rdDepthBufferData.alloc);
 }
 
-bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData) {
+bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData, uint32_t numDynamicLightsWithShadow) {
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.extent.width = renderData.rdShadowMapSize.width;
-  imageInfo.extent.height = renderData.rdShadowMapSize.height;
+  imageInfo.extent.width = renderData.rdDynLightShadowMapSize.width;
+  imageInfo.extent.height = renderData.rdDynLightShadowMapSize.height;
   imageInfo.extent.depth = 1;
   imageInfo.mipLevels = 1;
   imageInfo.format = VK_FORMAT_D16_UNORM;
@@ -3637,7 +3786,7 @@ bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& i
   imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
   // every face is a layer
-  imageInfo.arrayLayers = 6;
+  imageInfo.arrayLayers = 6 * numDynamicLightsWithShadow;
   imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
   VmaAllocationCreateInfo imageAllocInfo{};
@@ -3654,7 +3803,7 @@ bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& i
   subresourceRange.baseMipLevel = 0;
   subresourceRange.levelCount = 1;
   subresourceRange.baseArrayLayer = 0;
-  subresourceRange.layerCount = 6;
+  subresourceRange.layerCount = 6 * numDynamicLightsWithShadow;
 
   // 1st barrier, we need to transfer to dst optimal
   VkImageMemoryBarrier formatChangeBarrier{};
@@ -3684,13 +3833,13 @@ bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& i
   VkImageViewCreateInfo cubeViewInfo{};
   cubeViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   cubeViewInfo.image = imageData.image;
-  cubeViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+  cubeViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
   cubeViewInfo.format = VK_FORMAT_D16_UNORM;
   cubeViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
   cubeViewInfo.subresourceRange.baseMipLevel = 0;
   cubeViewInfo.subresourceRange.levelCount = 1;
   cubeViewInfo.subresourceRange.baseArrayLayer = 0;
-  cubeViewInfo.subresourceRange.layerCount = 6;
+  cubeViewInfo.subresourceRange.layerCount = 6 * numDynamicLightsWithShadow;
 
   result = vkCreateImageView(renderData.rdVkbDevice.device, &cubeViewInfo, nullptr, &imageData.imageView);
   if (result != VK_SUCCESS) {
@@ -3720,7 +3869,7 @@ bool VkHelper::createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& i
     return false;
   }
 
-  imageData.numLayers = 6;
+  imageData.numLayers = 6 * numDynamicLightsWithShadow;
 
   return true;
 }
@@ -4042,7 +4191,7 @@ bool VkHelper::createShadowMapBuffer(VkRenderData& renderData) {
   if (!FramebufferAttachment::init(renderData, renderData.rdDynamicLightCombinedShadowData,
     VK_FORMAT_D16_UNORM,
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-    renderData.rdShadowMapSize)) {
+    renderData.rdDynLightShadowMapSize)) {
     return false;
   }
   return true;
@@ -4564,6 +4713,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpSkinningMorphPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpLevelPipeline);
   LightSpherePipeline::cleanup(renderData, renderData.rdLightSpherePipeline);
+  LightSpherePipeline::cleanup(renderData, renderData.rdLightSphereShadowPipeline);
 
   ComputePipeline::cleanup(renderData, renderData.rdAssimpComputeTransformPipeline);
   ComputePipeline::cleanup(renderData, renderData.rdAssimpComputeHeadMoveTransformPipeline);
@@ -4588,6 +4738,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   PipelineLayout::cleanup(renderData, renderData.rdSSAOPipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdSSAOBlurPipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdLightSpherePipelineLayout);
+  PipelineLayout::cleanup(renderData, renderData.rdLightSphereShadowPipelineLayout);
 
   UniformBuffer::cleanup(renderData, renderData.rdRenderUploadDataUBO);
   UniformBuffer::cleanup(renderData, renderData.rdSSAOKernelSamplesUBO);
@@ -4661,6 +4812,8 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdLightSphereDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
+    &renderData.rdLightSphereShadowsDescriptorSet);
+  vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdDynLightDebugSphereDescriptorSet);
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, 1,
     &renderData.rdAssimpComputeSphereTransformDescriptorSet);
@@ -4694,6 +4847,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdSSAODescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdSSAOBlurDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightSphereDescriptorLayout, nullptr);
+  vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightSphereShadowDescriptorLayout, nullptr);
 
   vkDestroyDescriptorPool(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, nullptr);
 

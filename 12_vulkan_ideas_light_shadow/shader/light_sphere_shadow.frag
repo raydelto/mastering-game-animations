@@ -7,6 +7,8 @@ layout (location = 7) out vec4 FragColor;
 layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputDepth;
 layout (input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput inputNormal;
 
+layout (set = 0, binding = 4) uniform samplerCubeArray shadowCubeMap;
+
 layout (std140, set = 0, binding = 0) uniform Matrices {
   mat4 viewMat;
   mat4 projectionMat;
@@ -98,5 +100,34 @@ void main() {
     }
   }
 
-  FragColor = vec4(lightDynDiff, 1.0);
+  // simple PCF
+  vec3 sampleOffsetDirections[20] = vec3[] (
+    vec3( 1,  1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1,  1,  1),
+    vec3( 1,  1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1,  1, -1),
+    vec3( 1,  1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1,  1,  0),
+    vec3( 1,  0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1,  0, -1),
+    vec3( 0,  1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0,  1, -1)
+  );
+
+  int samples = 20;
+  float shadowFactor = 0.0;
+
+  float viewDistance = length(vec3(cameraPos) - worldPos);
+  float diskRadius = (1.0 + (viewDistance / farPlane)) / 50.0;
+
+  // add normal here to avoid strange circular shadow acne
+  vec3 lightVec = (worldPos + normal * (5.0 / dist)) - lightPos;
+
+  for(int i = 0; i < samples; ++i) {
+    // dynamic shadow map skips null instance
+    float shadowCubeMapDepth = texture(shadowCubeMap, vec4(lightVec + sampleOffsetDirections[i] * diskRadius, inInstance - 1)).r;
+    float lightDepth = vectorToDepth(lightVec);
+
+    if (shadowCubeMapDepth + 0.0001 > lightDepth) {
+      shadowFactor += 1.0;
+    }
+  }
+  shadowFactor /= float(samples);
+
+  FragColor = vec4(lightDynDiff * shadowFactor, 1.0);
 }

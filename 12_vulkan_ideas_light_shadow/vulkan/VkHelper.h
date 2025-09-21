@@ -44,7 +44,7 @@ class VkHelper {
     static bool createDepthBuffer(VkRenderData& renderData);
     static void cleanupDepthBuffer(VkRenderData& renderDat);
 
-    static bool createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData);
+    static bool createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData, uint32_t numDynLigthsWithShadow);
     static void cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData);
 
     static void initSSAO(VkRenderData& renderData);

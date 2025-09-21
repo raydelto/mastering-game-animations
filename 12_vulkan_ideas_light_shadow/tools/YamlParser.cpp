@@ -353,6 +353,8 @@ YAML::Emitter& operator<<(YAML::Emitter& out, const DynamicLightSettings& settin
   out << YAML::Value << settings.dlsWorldRotation;
   out << YAML::Key << "enabled";
   out << YAML::Value << settings.dlsEnabled;
+  out << YAML::Key << "shadow-enabled";
+  out << YAML::Value << settings.dlsShadowEnabled;
   out << YAML::Key << "type";
   out << YAML::Value << static_cast<int>(settings.dlsType);
   out << YAML::Key << "diffuse-color";

@@ -858,13 +858,15 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
   }
 
   if (ImGui::CollapsingHeader("Dynamic Light")) {
-    size_t numberOfLights = modInstCamData.micDynLights.size() - 1;
+    unsigned int numberOfLights = renderData.rdNumDynamicLights;
+    unsigned int nnumberOfLightsWithShadow = renderData.rdNumDynamicLightsWithShadow;
     bool nullLightSelected = modInstCamData.micSelectedDynLight == 0;
     int selectedLight = modInstCamData.micSelectedDynLight;
     mCurrentDynLight = modInstCamData.micDynLights.at(selectedLight);
     DynamicLightSettings lightSettings = mCurrentDynLight->getDynLightSettings();
 
-    ImGui::Text("Total Lights:      %ld", numberOfLights);
+    ImGui::Text("Total Lights:      %i", numberOfLights);
+    ImGui::Text("Lights w/ Shadows: %i", nnumberOfLightsWithShadow);
 
     if (numberOfLights == 0) {
      ImGui::BeginDisabled();
@@ -918,22 +920,9 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Checkbox("##EnableLightDebug", &renderData.rdEnableLightDebug);
 
     ImGui::AlignTextToFramePadding();
-    ImGui::Text("Use Light Spheres:");
-    ImGui::SameLine();
-    ImGui::Checkbox("##UseLightSpheres", &renderData.rdEnableLightSpheres);
-
-    if (!renderData.rdEnableLightSpheres) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
     ImGui::Text("Light Sph. Debug: ");
     ImGui::SameLine();
     ImGui::Checkbox("##LightSpheresDebug", &renderData.rdEnableLightSphereDebug);
-
-    if (!renderData.rdEnableLightSpheres) {
-      ImGui::EndDisabled();
-    }
 
     ImGui::Text("                  ");
     ImGui::SameLine();
@@ -964,7 +953,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Center This Light##LightCenter")) {
-      modInstCamData.micdynLightCenterCallbackFunction(mCurrentDynLight);
+      modInstCamData.micDynLightCenterCallbackFunction(mCurrentDynLight);
     }
 
     if (numberOfLights < 1 || nullLightSelected) {
@@ -979,6 +968,15 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("Enable Light:     ");
     ImGui::SameLine();
     ImGui::Checkbox("##EnableLight", &lightSettings.dlsEnabled);
+
+    bool regenerateShaderData = false;
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Cubemap Shadows:  ");
+    ImGui::SameLine();
+    if (ImGui::Checkbox("##EnableLightShadows", &lightSettings.dlsShadowEnabled)) {
+      // we need to update shadow map images
+      regenerateShaderData = true;
+    }
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Light Type:       ");
@@ -1065,6 +1063,11 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
 
     mCurrentDynLight->setDynLightSettings(lightSettings);
+
+    // regenerate shadow data after light/shadow settings were saved
+    if (regenerateShaderData) {
+      modInstCamData.dynLightSphereShadowChangedCallbackFunction();
+    }
   }
 
   if (ImGui::CollapsingHeader("Timers")) {

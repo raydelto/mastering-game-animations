@@ -816,6 +816,7 @@ namespace YAML {
       node["position"] = rhs.dlsWorldPosition;
       node["rotation"] = rhs.dlsWorldRotation;
       node["enabled"] = rhs.dlsEnabled;
+      node["shadow-enabled"] = rhs.dlsShadowEnabled;
       node["type"] = rhs.dlsType;
       node["diffuse-color"] = rhs.dlsDiffuseColor;
       node["distance"] = rhs.dlsDistance;
@@ -846,6 +847,12 @@ namespace YAML {
       } catch (...) {
         Logger::log(1, "%s warning: could not parse enable status of light, init with a default value\n", __FUNCTION__);
         rhs.dlsEnabled = true;
+      }
+      try {
+        rhs.dlsShadowEnabled = node["shadow-enabled"].as<bool>();
+      } catch (...) {
+        Logger::log(1, "%s warning: could not parse enable shadow status of light, init with a default value\n", __FUNCTION__);
+        rhs.dlsShadowEnabled = false;
       }
       try {
         rhs.dlsType = node["type"].as<dynamicLightType>();

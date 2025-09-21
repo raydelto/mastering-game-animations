@@ -52,6 +52,10 @@ bool AssimpDynLight::getLightEnabled() {
   return mDynLightSettings.dlsEnabled;
 }
 
+bool AssimpDynLight::getShadowEnabled() {
+  return mDynLightSettings.dlsShadowEnabled;
+}
+
 void AssimpDynLight::rotateLight(float angle) {
   mDynLightSettings.dlsWorldRotation.y -= angle;
   if (mDynLightSettings.dlsWorldRotation.y < -180.0f) {

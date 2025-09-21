@@ -12,6 +12,7 @@ struct DynamicLightSettings {
   int dlsIndexPosition = -1;
 
   bool dlsEnabled = true;
+  bool dlsShadowEnabled = false;
 
   dynamicLightType dlsType = dynamicLightType::point;
   glm::vec3 dlsDiffuseColor = glm::vec3(1.0f);

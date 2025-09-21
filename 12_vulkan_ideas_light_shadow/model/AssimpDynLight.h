@@ -34,6 +34,7 @@ class AssimpDynLight {
     dynamicLightType getLightType();
 
     bool getLightEnabled();
+    bool getShadowEnabled();
 
     void rotateLight(float angle);
     void rotateLight(glm::vec3 angles);

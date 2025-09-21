@@ -112,7 +112,8 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mModelInstCamData.micDynLightAddCallbackFunction = [this]() { return addDynLight(); };
   mModelInstCamData.micDynLightDeleteCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { deleteDynLight(light); };
   mModelInstCamData.micDynLightCloneCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { cloneDynLight(light); };
-  mModelInstCamData.micdynLightCenterCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { centerDynLight(light); };
+  mModelInstCamData.micDynLightCenterCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { centerDynLight(light); };
+  mModelInstCamData.dynLightSphereShadowChangedCallbackFunction = [this]() { generateShaderLightData(); };
 
   mModelInstCamData.micUndoCallbackFunction = [this]() { undoLastOperation(); };
   mModelInstCamData.micRedoCallbackFunction = [this]() { redoLastOperation(); };
@@ -575,6 +576,9 @@ bool VkRenderer::loadConfigFile(std::string configFileName) {
 
     // re-index after all ligths were added
     assignLightIndices();
+
+    // regenerate light data
+    generateShaderLightData();
 
     // restore selected level num
     int selectedLight = parser.getSelectedDynLightNum();
@@ -1790,6 +1794,7 @@ void VkRenderer::assignLightIndices() {
     lightSettings.dlsIndexPosition = i;
     mModelInstCamData.micDynLights.at(i)->setDynLightSettings(lightSettings);
   }
+
 }
 
 void VkRenderer::generateShaderLightData() {
@@ -1798,42 +1803,138 @@ void VkRenderer::generateShaderLightData() {
   mRenderData.rdLightDebugData.clear();
   mRenderData.rdLightDebugData.resize(mModelInstCamData.micDynLights.size());
 
+  int lightsWithShadows = 0;
+  for (size_t i = 1; i < mRenderData.rdLightData.size(); ++i) {
+    if (mModelInstCamData.micDynLights.at(i)->getShadowEnabled()) {
+      ++lightsWithShadows;
+    }
+  }
+
+  mRenderData.rdNumDynamicLights = mModelInstCamData.micDynLights.size() - 1;
+  mRenderData.rdNumDynamicLightsWithShadow = lightsWithShadows;
+
+  // put lights with shadows in front, null light still first
+  mRenderData.rdLightIndices.clear();
+  mRenderData.rdLightIndices.push_back(0);
+
+  std::vector<int> shadowLights{};
+  std::vector<int> nonShadowLights{};
+  for (int i = 1; i < mModelInstCamData.micDynLights.size(); ++i) {
+    int index = mModelInstCamData.micDynLights.at(i)->getDynLightIndexPosition();
+    if (mModelInstCamData.micDynLights.at(i)->getShadowEnabled()) {
+      shadowLights.push_back(index);
+    }
+    else {
+      nonShadowLights.push_back(index);
+    }
+  }
+
+  mRenderData.rdLightIndices.insert(mRenderData.rdLightIndices.end(), shadowLights.begin(), shadowLights.end());
+  mRenderData.rdLightIndices.insert(mRenderData.rdLightIndices.end(), nonShadowLights.begin(), nonShadowLights.end());
+
+  for (auto i : mRenderData.rdLightIndices) {
+    Logger::log(1, "%s: light index is %i\n", __FUNCTION__, i);
+  }
+
+  Logger::log(1, "%s: update dynamic light shadow data\n", __FUNCTION__);
+  if (lightsWithShadows > 0) {
+    mRenderData.rdDynamicLightShadowMapData.cascades.resize(mRenderData.rdNumDynamicLightsWithShadow * 6);
+
+    size_t shadowMapCascadeSize = sizeof(ShadowMapCascades) * std::max(static_cast<size_t>(mRenderData.rdNumDynamicLightsWithShadow * 6), static_cast<size_t>(4));
+    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, shadowMapCascadeSize);
+
+    if (bufferResized) {
+      VkHelper::updateDescriptorSets(mRenderData);
+      VkHelper::updateImageDescriptorSets(mRenderData);
+      VkHelper::updateLevelDescriptorSets(mRenderData);
+    }
+
+    VkHelper::cleanupDepthBufferCubeMap(mRenderData, mRenderData.rdDynamicLightShadowData);
+    if (!VkHelper::createDepthBufferCubeMap(mRenderData, mRenderData.rdDynamicLightShadowData, mRenderData.rdNumDynamicLightsWithShadow)) {
+      Logger::log(1, "%s error: could not create dynamic light shadow map\n", __FUNCTION__);
+    }
+
+    VkHelper::updateImageDescriptorSets(mRenderData);
+  }
+
   updateShaderLightData();
 }
 
 void VkRenderer::updateShaderLightData() {
-  for (size_t i = 1; i < mRenderData.rdLightData.size(); ++i) {
-    float lightDistance = mModelInstCamData.micDynLights.at(i)->getLightingDistance();
-    float maxLightDistance = mModelInstCamData.micDynLights.at(i)->getMaxLightingDistance();
+  if (mRenderData.rdNumDynamicLights == 0) {
+    return;
+  }
+
+  // Skip null light, light data can be default values
+  for (unsigned int i = 1; i < mRenderData.rdNumDynamicLights + 1; ++i) {
+    int lightIndex = mRenderData.rdLightIndices.at(i);
+
+    float lightDistance = mModelInstCamData.micDynLights.at(lightIndex)->getLightingDistance();
+    float maxLightDistance = mModelInstCamData.micDynLights.at(lightIndex)->getMaxLightingDistance();
 
     float constantFactor = 1.0f;
     float linearFactor = 1.0f / (lightDistance / 45.0f);
     float quadraticFactor = 1.0f / ((lightDistance * lightDistance) / 750.0f);
 
-    glm::vec3 lightColor = mModelInstCamData.micDynLights.at(i)->getLightColor();
+    glm::vec3 lightColor = mModelInstCamData.micDynLights.at(lightIndex)->getLightColor();
     float maxLightColor = glm::max(glm::max(lightColor.r, lightColor.g), lightColor.b);
 
     float lightSphereRadius = lightDistance * maxLightColor;
 
     // debug sphere radius is min of attenuation light and max light distance
-    mRenderData.rdLightDebugData.at(i) = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), glm::min(lightSphereRadius, maxLightDistance));
+    mRenderData.rdLightDebugData.at(i) = glm::vec4(mModelInstCamData.micDynLights.at(lightIndex)->getWorldPosition(), glm::min(lightSphereRadius, maxLightDistance));
 
-    mRenderData.rdLightData.at(i).type = static_cast<uint32_t>(mModelInstCamData.micDynLights.at(i)->getLightType());
-    mRenderData.rdLightData.at(i).position = glm::vec4(mModelInstCamData.micDynLights.at(i)->getWorldPosition(), 1.0f);
-    mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(i)->getRotationRadians(), 1.0f);
+    mRenderData.rdLightData.at(i).type = static_cast<uint32_t>(mModelInstCamData.micDynLights.at(lightIndex)->getLightType());
+    mRenderData.rdLightData.at(i).position = glm::vec4(mModelInstCamData.micDynLights.at(lightIndex)->getWorldPosition(), 1.0f);
+    mRenderData.rdLightData.at(i).rotation = glm::vec4(mModelInstCamData.micDynLights.at(lightIndex)->getRotationRadians(), 1.0f);
     mRenderData.rdLightData.at(i).color = glm::vec4(lightColor, 1.0f);
-    if (mModelInstCamData.micDynLights.at(i)->getLightEnabled()) {
+    if (mModelInstCamData.micDynLights.at(lightIndex)->getLightEnabled()) {
       mRenderData.rdLightData.at(i).distance = lightDistance;
       mRenderData.rdLightData.at(i).maxDistance = maxLightDistance;
     } else {
       mRenderData.rdLightData.at(i).distance = 0.0f;
       mRenderData.rdLightData.at(i).maxDistance = 0.0f;
     }
-    mRenderData.rdLightData.at(i).cutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightCutOffAngle()));
-    mRenderData.rdLightData.at(i).outerCutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(i)->getPointLightOuterCutOffAngle()));
+    mRenderData.rdLightData.at(i).cutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(lightIndex)->getPointLightCutOffAngle()));
+    mRenderData.rdLightData.at(i).outerCutoff = glm::cos(glm::radians(mModelInstCamData.micDynLights.at(lightIndex)->getPointLightOuterCutOffAngle()));
     mRenderData.rdLightData.at(i).constantAttFactor = constantFactor;
     mRenderData.rdLightData.at(i).linearAttFactor = linearFactor;
     mRenderData.rdLightData.at(i).quadraticAttFactor = quadraticFactor;
+  }
+
+  if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
+    glm::mat4 dynLightProjectionMat = glm::perspective(
+      glm::radians(90.0f), 1.0f, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
+
+    // draw upside down by manipulating the up vector
+    glm::vec3 worldUpVector = glm::vec3(0.0f, -1.0f, 0.0f);
+
+    glm::vec3 negYUpVector = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 posYUpVector = glm::vec3(0.0f, 0.0f, 1.0f);
+
+    for (int i = 0; i < mRenderData.rdNumDynamicLightsWithShadow; ++i ) {
+      // null light is at pos 0, skip
+      glm::vec3 lightPos = mRenderData.rdLightData.at(i + 1).position;
+
+      glm::mat4 posXMat = glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), worldUpVector);
+      glm::mat4 negXMat = glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), worldUpVector);
+
+      glm::mat4 posYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), posYUpVector);
+      glm::mat4 negYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), negYUpVector);
+
+      glm::mat4 posZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), worldUpVector);
+      glm::mat4 negZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), worldUpVector);
+
+      int cubeArrayOffset = i * 6;
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset).lightViewProjectionMat = dynLightProjectionMat * posXMat;
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset + 1).lightViewProjectionMat = dynLightProjectionMat * negXMat;
+
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset + 2).lightViewProjectionMat = dynLightProjectionMat * posYMat;
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset + 3).lightViewProjectionMat = dynLightProjectionMat * negYMat;
+
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset + 4).lightViewProjectionMat = dynLightProjectionMat * posZMat;
+      mRenderData.rdDynamicLightShadowMapData.cascades.at(cubeArrayOffset + 5).lightViewProjectionMat = dynLightProjectionMat * negZMat;
+    }
   }
 }
 
@@ -3340,9 +3441,7 @@ void VkRenderer::resetLevelData() {
   mRenderData.rdShadowMapPCFScale = 1.0f;
   mRenderData.rdShadowMapPCFRange = 1;
 
-  mRenderData.rdEnableLightSpheres = false;
   mRenderData.rdEnableLightDebug = false;
-  mRenderData.rdEnableLightSpheres = false;
   mRenderData.rdEnableLightSphereDebug = false;
 
   // add loaded levels to pending delete list
@@ -5005,65 +5104,13 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderUploadData.shadowMapPCFScale = mRenderData.rdShadowMapPCFScale;
   mRenderUploadData.shadowMapPCFRange = mRenderData.rdShadowMapPCFRange;
   mRenderUploadData.colorCascadeDebug = mRenderData.rdEnableShadowMapColorCascadeDebug;
-  mRenderUploadData.useLightSpheres = mRenderData.rdEnableLightSpheres;
 
   mRenderUploadData.ssaoRadius = mRenderData.rdSSAORadius;
   mRenderUploadData.ssaoBias = mRenderData.rdSSAOBias;
   mRenderUploadData.ssaoExponent = static_cast<float>(mRenderData.rdSSAOExponent);
   mRenderUploadData.ssaoBlurRadius = static_cast<float>(mRenderData.rdSSAOBlurRadius);
 
-  mRenderUploadData.numDynamicLights = mRenderData.rdLightData.size();
   updateShaderLightData();
-
-  if (mModelInstCamData.micDynLights.size() > 1) {
-    glm::mat4 dynLightProjectionMat = glm::perspective(
-      glm::radians(90.0f), 1.0f, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-
-    /*
-     * Cube Map is a cross, so single image width is 1/4, height is 1/3
-     * 0,0
-     *  +----+----+----+----+
-     *  |    | +Y |    |    |
-     *  +----+----+----+----+
-     *  | -X | -Z | +X | +Z |
-     *  +----+----+----+----+
-     *  |    | -Y |    |    |
-     *  +----+----+----+----+ w
-     *                      h
-     *
-     * GL_TEXTURE_CUBE_MAP_POSITIVE_X -> Right
-     * GL_TEXTURE_CUBE_MAP_NEGATIVE_X -> Left
-     * GL_TEXTURE_CUBE_MAP_POSITIVE_Y -> Top
-     * GL_TEXTURE_CUBE_MAP_NEGATIVE_Y -> Bottom
-     * GL_TEXTURE_CUBE_MAP_POSITIVE_Z -> Back
-     * GL_TEXTURE_CUBE_MAP_NEGATIVE_Z -> Front
-     */
-
-    // draw upside down by manipulating the up vector
-    glm::vec3 lightPos = mRenderData.rdLightData.at(1).position;
-    glm::vec3 worldUpVector = glm::vec3(0.0f, -1.0f, 0.0f);
-
-    glm::mat4 posXMat = glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), worldUpVector);
-    glm::mat4 negXMat = glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), worldUpVector);
-
-    glm::mat4 posYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::mat4 negYMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-
-    glm::mat4 posZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), worldUpVector);
-    glm::mat4 negZMat = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), worldUpVector);
-
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(0).lightViewProjectionMat = dynLightProjectionMat * posXMat;
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(1).lightViewProjectionMat = dynLightProjectionMat * negXMat;
-
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(2).lightViewProjectionMat = dynLightProjectionMat * posYMat;
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(3).lightViewProjectionMat = dynLightProjectionMat * negYMat;
-
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(4).lightViewProjectionMat = dynLightProjectionMat * posZMat;
-    mRenderData.rdDynamicLightShadowMapData.cascades.at(5).lightViewProjectionMat = dynLightProjectionMat * negZMat;
-  }
-
-
-  // update shadow map data for now in every frame
   updateShadowMapCascades();
 
   mRenderData.rdMatrixGenerateTime += mRenderData.rdMatrixGenerateTimer.stop();
@@ -5077,9 +5124,6 @@ bool VkRenderer::draw(float deltaTime) {
   bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
   // reuse the sphere drawing shader for light debug
   bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffer, mRenderData.rdLightDebugData);
-
-  size_t shadowMapCascadeSize = sizeof(ShadowMapCascades) * std::max(mModelInstCamData.micDynLights.size() * 6, static_cast<size_t>(4));
-  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, shadowMapCascadeSize);
 
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -5278,6 +5322,243 @@ bool VkRenderer::draw(float deltaTime) {
   depthClearValue.depthStencil.depth = 1.0f;
 
   // shadow Map
+  VkViewport dynLightShadowMapViewport{};
+  dynLightShadowMapViewport.x = 0.0f;
+  dynLightShadowMapViewport.y = 0.0f;
+  dynLightShadowMapViewport.width = static_cast<float>(mRenderData.rdDynLightShadowMapSize.width);
+  dynLightShadowMapViewport.height = static_cast<float>(mRenderData.rdDynLightShadowMapSize.height);
+  dynLightShadowMapViewport.minDepth = 0.0f;
+  dynLightShadowMapViewport.maxDepth = 1.0f;
+
+  VkRect2D dynLightShadowMapScissor{};
+  dynLightShadowMapScissor.offset = { 0, 0 };
+  dynLightShadowMapScissor.extent = mRenderData.rdDynLightShadowMapSize;
+
+  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &dynLightShadowMapViewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &dynLightShadowMapScissor);
+
+  VkRect2D dynLightShadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdDynLightShadowMapSize};
+
+
+  // Dynamic light shadow pass
+  if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
+    VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo {};
+    dynShadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    dynShadowMapBufferAttachmentInfo.imageView = mRenderData.rdDynamicLightShadowData.imageView;
+    dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    dynShadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    dynShadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    dynShadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
+
+    VkRenderingInfo dynShadowMapRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = dynLightShadowMapenderArea,
+      .layerCount = mRenderData.rdDynamicLightShadowData.numLayers,
+      .pDepthAttachment = &dynShadowMapBufferAttachmentInfo
+    };
+
+      // update shadow map data of dynamic lights
+    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, mRenderData.rdNumDynamicLightsWithShadow * 6 * sizeof(ShadowMapCascades),
+      mRenderData.rdDynamicLightShadowMapData.cascades.data());
+
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &dynShadowMapRenderInfo);
+    for (int i = 0; i <  mRenderData.rdDynamicLightShadowData.numLayers; ++i) {
+      drawScene(true, i);
+    }
+    vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+
+    auto iter = std::find(mRenderData.rdLightIndices.begin(), mRenderData.rdLightIndices.end(),
+      mModelInstCamData.micSelectedDynLight);
+    int dynLightIndicesIndex = std::distance(mRenderData.rdLightIndices.begin() + 1, iter);
+
+    // combine the six images for the selected shadow into one
+    if (dynLightIndicesIndex < mRenderData.rdNumDynamicLightsWithShadow) {
+      VkImageSubresourceRange srcBlitRange{};
+      srcBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      srcBlitRange.baseMipLevel = 0;
+      srcBlitRange.levelCount = 1;
+      srcBlitRange.baseArrayLayer = dynLightIndicesIndex * 6;
+      srcBlitRange.layerCount = 6;
+
+      VkImageSubresourceRange dstBlitRange{};
+      dstBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      dstBlitRange.baseMipLevel = 0;
+      dstBlitRange.levelCount = 1;
+      dstBlitRange.baseArrayLayer = 0;
+      dstBlitRange.layerCount = 1;
+
+      VkImageMemoryBarrier firstSrcBarrier{};
+      firstSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      firstSrcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      firstSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
+      firstSrcBarrier.subresourceRange = srcBlitRange;
+      firstSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      firstSrcBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+      VkImageMemoryBarrier firstDstBarrier{};
+      firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+      firstDstBarrier.subresourceRange = dstBlitRange;
+      firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &firstSrcBarrier);
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
+
+      VkImageBlit depthBlit{};
+      depthBlit.srcOffsets[0] = { 0, 0, 0 };
+      depthBlit.srcOffsets[1] = {
+        static_cast<int32_t>(mRenderData.rdDynLightShadowMapSize.width), static_cast<int32_t>(mRenderData.rdDynLightShadowMapSize.height),
+        1 };
+      depthBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      depthBlit.srcSubresource.baseArrayLayer = 0;
+      depthBlit.srcSubresource.layerCount = 1;
+      depthBlit.srcSubresource.mipLevel = 0;
+
+      depthBlit.dstOffsets[0] = { 0, 0, 0 };
+      depthBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      depthBlit.dstSubresource.baseArrayLayer = 0;
+      depthBlit.dstSubresource.layerCount = 1;
+      depthBlit.dstSubresource.mipLevel = 0;
+
+      int32_t cubeFaceWidth = mRenderData.rdDynLightShadowMapSize.width / 4;
+      int32_t cubeFaceHeight = mRenderData.rdDynLightShadowMapSize.height / 3;
+
+      for (int i = 0; i < 6; ++i) {
+        switch (i) {
+          case 0:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6;
+            depthBlit.dstOffsets[0] = {
+              cubeFaceWidth * 2, cubeFaceHeight, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth * 3, cubeFaceHeight * 2, 1
+            };
+            break;
+          case 1:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6 + 1;
+            depthBlit.dstOffsets[0] = {
+              0, cubeFaceHeight, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth, cubeFaceHeight * 2, 1
+            };
+            break;
+          case 2:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6 + 2;
+            depthBlit.dstOffsets[0] = {
+              cubeFaceWidth, 0, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth * 2, cubeFaceHeight, 1
+            };
+            break;
+          case 3:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6 + 3;
+            depthBlit.dstOffsets[0] = {
+              cubeFaceWidth, cubeFaceHeight * 2, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth * 2, cubeFaceHeight * 3, 1
+            };
+            break;
+          case 4:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6 + 4;
+            depthBlit.dstOffsets[0] = {
+              cubeFaceWidth, cubeFaceHeight, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth * 2, cubeFaceHeight * 2, 1
+            };
+            break;
+          case 5:
+            depthBlit.srcSubresource.baseArrayLayer = dynLightIndicesIndex * 6 + 5;
+            depthBlit.dstOffsets[0] = {
+              cubeFaceWidth * 3, cubeFaceHeight, 0
+            };
+            depthBlit.dstOffsets[1] = {
+              cubeFaceWidth * 4, cubeFaceHeight * 2, 1
+            };
+            break;
+        }
+
+        vkCmdBlitImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+          mRenderData.rdDynamicLightShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+          mRenderData.rdDynamicLightCombinedShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          1, &depthBlit, VK_FILTER_NEAREST);
+      }
+
+      VkImageMemoryBarrier secondSrcBarrier{};
+      secondSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      secondSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      secondSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
+      secondSrcBarrier.subresourceRange = srcBlitRange;
+      secondSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      secondSrcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+      VkImageMemoryBarrier secondDstBarrier{};
+      secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+      secondDstBarrier.subresourceRange = dstBlitRange;
+      secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &secondSrcBarrier);
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
+    } else {
+      // clear image when we don't blit
+      VkImageSubresourceRange blitRange{};
+      blitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      blitRange.baseMipLevel = 0;
+      blitRange.levelCount = 1;
+      blitRange.baseArrayLayer = 0;
+      blitRange.layerCount = 1;
+
+      VkImageMemoryBarrier firstDstBarrier{};
+      firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+      firstDstBarrier.subresourceRange = blitRange;
+      firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
+
+      VkClearDepthStencilValue clearShadowMapDepth = { .depth = 0.0f };
+
+      vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdDynamicLightCombinedShadowData.image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearShadowMapDepth, 1, &blitRange);
+
+      VkImageMemoryBarrier secondDstBarrier{};
+      secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
+      secondDstBarrier.subresourceRange = blitRange;
+      secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
+    }
+  }
+
+  // sun light shadow map pass
   VkViewport shadowMapViewport{};
   shadowMapViewport.x = 0.0f;
   shadowMapViewport.y = 0.0f;
@@ -5295,223 +5576,6 @@ bool VkRenderer::draw(float deltaTime) {
 
   VkRect2D shadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdShadowMapSize};
 
-  // Dynamic light shadow pass
-  if (mModelInstCamData.micDynLights.size() == 2) {
-    // update shadow map data of dynamic lights
-    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, 6 * sizeof(ShadowMapCascades),
-      mRenderData.rdDynamicLightShadowMapData.cascades.data());
-
-    // shadow map pass
-    VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo {};
-    dynShadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    dynShadowMapBufferAttachmentInfo.imageView = mRenderData.rdDynamicLightShadowData.imageView;
-    dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    dynShadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    dynShadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    dynShadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
-
-    VkRenderingInfo dynShadowMapRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = shadowMapenderArea,
-      .layerCount = mRenderData.rdDynamicLightShadowData.numLayers,
-      .pDepthAttachment = &dynShadowMapBufferAttachmentInfo
-    };
-
-    vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &dynShadowMapRenderInfo);
-    drawScene(true, 0);
-    drawScene(true, 1);
-    drawScene(true, 2);
-    drawScene(true, 3);
-    drawScene(true, 4);
-    drawScene(true, 5);
-    vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
-
-    // combine the six images into one
-    VkImageSubresourceRange srcBlitRange{};
-    srcBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    srcBlitRange.baseMipLevel = 0;
-    srcBlitRange.levelCount = 1;
-    srcBlitRange.baseArrayLayer = 0;
-    srcBlitRange.layerCount = 6;
-
-    VkImageSubresourceRange dstBlitRange{};
-    dstBlitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    dstBlitRange.baseMipLevel = 0;
-    dstBlitRange.levelCount = 1;
-    dstBlitRange.baseArrayLayer = 0;
-    dstBlitRange.layerCount = 1;
-
-    VkImageMemoryBarrier firstSrcBarrier{};
-    firstSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    firstSrcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    firstSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
-    firstSrcBarrier.subresourceRange = srcBlitRange;
-    firstSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    firstSrcBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-    VkImageMemoryBarrier firstDstBarrier{};
-    firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
-    firstDstBarrier.subresourceRange = dstBlitRange;
-    firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &firstSrcBarrier);
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
-
-    VkImageBlit depthBlit{};
-    depthBlit.srcOffsets[0] = { 0, 0, 0 };
-    depthBlit.srcOffsets[1] = {
-      static_cast<int32_t>(mRenderData.rdShadowMapSize.width), static_cast<int32_t>(mRenderData.rdShadowMapSize.height),
-      1 };
-    depthBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depthBlit.srcSubresource.baseArrayLayer = 0;
-    depthBlit.srcSubresource.layerCount = 1;
-    depthBlit.srcSubresource.mipLevel = 0;
-
-    depthBlit.dstOffsets[0] = { 0, 0, 0 };
-    depthBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depthBlit.dstSubresource.baseArrayLayer = 0;
-    depthBlit.dstSubresource.layerCount = 1;
-    depthBlit.dstSubresource.mipLevel = 0;
-
-    int32_t cubeFaceWidth = mRenderData.rdShadowMapSize.width / 4;
-    int32_t cubeFaceHeight = mRenderData.rdShadowMapSize.height / 3;
-
-    for (int i = 0; i < 6; ++i) {
-      switch (i) {
-        case 0:
-          depthBlit.srcSubresource.baseArrayLayer = 0;
-          depthBlit.dstOffsets[0] = {
-            cubeFaceWidth * 2, cubeFaceHeight, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth * 3, cubeFaceHeight * 2, 1
-          };
-          break;
-        case 1:
-          depthBlit.srcSubresource.baseArrayLayer = 1;
-          depthBlit.dstOffsets[0] = {
-            0, cubeFaceHeight, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth, cubeFaceHeight * 2, 1
-          };
-          break;
-        case 2:
-          depthBlit.srcSubresource.baseArrayLayer = 2;
-          depthBlit.dstOffsets[0] = {
-            cubeFaceWidth, 0, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth * 2, cubeFaceHeight, 1
-          };
-          break;
-        case 3:
-          depthBlit.srcSubresource.baseArrayLayer = 3;
-          depthBlit.dstOffsets[0] = {
-            cubeFaceWidth, cubeFaceHeight * 2, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth * 2, cubeFaceHeight * 3, 1
-          };
-          break;
-        case 4:
-          depthBlit.srcSubresource.baseArrayLayer = 4;
-          depthBlit.dstOffsets[0] = {
-            cubeFaceWidth, cubeFaceHeight, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth * 2, cubeFaceHeight * 2, 1
-          };
-          break;
-        case 5:
-          depthBlit.srcSubresource.baseArrayLayer = 5;
-          depthBlit.dstOffsets[0] = {
-            cubeFaceWidth * 3, cubeFaceHeight, 0
-          };
-          depthBlit.dstOffsets[1] = {
-            cubeFaceWidth * 4, cubeFaceHeight * 2, 1
-          };
-          break;
-      }
-
-      vkCmdBlitImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-        mRenderData.rdDynamicLightShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        mRenderData.rdDynamicLightCombinedShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1, &depthBlit, VK_FILTER_NEAREST);
-    }
-
-    VkImageMemoryBarrier secondSrcBarrier{};
-    secondSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    secondSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    secondSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
-    secondSrcBarrier.subresourceRange = srcBlitRange;
-    secondSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    secondSrcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-    VkImageMemoryBarrier secondDstBarrier{};
-    secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
-    secondDstBarrier.subresourceRange = dstBlitRange;
-    secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &secondSrcBarrier);
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
-  } else {
-    // clear image when we don't blit
-    VkImageSubresourceRange blitRange{};
-    blitRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    blitRange.baseMipLevel = 0;
-    blitRange.levelCount = 1;
-    blitRange.baseArrayLayer = 0;
-    blitRange.layerCount = 1;
-
-    VkImageMemoryBarrier firstDstBarrier{};
-    firstDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    firstDstBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    firstDstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    firstDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
-    firstDstBarrier.subresourceRange = blitRange;
-    firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
-
-    VkClearDepthStencilValue clearShadowMapDepth = { .depth = 0.0f };
-
-    vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdDynamicLightCombinedShadowData.image,
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearShadowMapDepth, 1, &blitRange);
-
-    VkImageMemoryBarrier secondDstBarrier{};
-    secondDstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    secondDstBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    secondDstBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    secondDstBarrier.image = mRenderData.rdDynamicLightCombinedShadowData.image;
-    secondDstBarrier.subresourceRange = blitRange;
-    secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-      0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
-  }
-
-  // sun light shadow map pass
   VkRenderingAttachmentInfo shadowMapBufferAttachmentInfo {};
   shadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   shadowMapBufferAttachmentInfo.imageView = mRenderData.rdShadowMapDepthBufferData.imageView;
@@ -5944,15 +6008,22 @@ bool VkRenderer::draw(float deltaTime) {
   VkDeviceSize offset = 0;
 
   // light sphere pass
-  uint32_t numberOfLights = static_cast<uint32_t>(mModelInstCamData.micDynLights.size() - 1);
+  if (mRenderData.rdNumDynamicLights > 0) {
+    if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipeline);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipelineLayout, 0, 1,
+        &mRenderData.rdLightSphereShadowsDescriptorSet, 0, nullptr);
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereVertexBuffer.buffer, &offset);
 
-  if (numberOfLights > 0 && mRenderData.rdEnableLightSpheres) {
+      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLightsWithShadow, 0, 1);
+    }
+
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipeline);
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipelineLayout, 0, 1,
       &mRenderData.rdLightSphereDescriptorSet, 0, nullptr);
     vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereVertexBuffer.buffer, &offset);
 
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), numberOfLights, 0, 1);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLights - mRenderData.rdNumDynamicLightsWithShadow, 0, mRenderData.rdNumDynamicLightsWithShadow + 1);
   }
 
   // SSAO pass
@@ -6114,8 +6185,6 @@ bool VkRenderer::draw(float deltaTime) {
 
   // draw in forward rendering after composite pass to avoid model light problems
   if (mRenderData.rdApplicationMode == appMode::edit) {
-    size_t numberOfLights = mModelInstCamData.micDynLights.size() - 1;
-
     if (mMousePick) {
       vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
         VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositeSelectionPipeline);
@@ -6141,7 +6210,7 @@ bool VkRenderer::draw(float deltaTime) {
     }
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
-    mLightModel->drawInstanced(mRenderData, numberOfLights, mMousePick);
+    mLightModel->drawInstanced(mRenderData, mRenderData.rdNumDynamicLights, mMousePick);
 
     if (mRenderData.rdEnableLightDebug) {
       uint32_t dynLightVertexCount = static_cast<uint32_t>(mDynLightModel.getVertexData().vertices.size());
@@ -6152,10 +6221,10 @@ bool VkRenderer::draw(float deltaTime) {
 
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdDynamicLightDebugVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
+      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
     }
 
-    if (mRenderData.rdEnableLightSpheres && mRenderData.rdEnableLightSphereDebug) {
+    if (mRenderData.rdEnableLightSphereDebug) {
       uint32_t dynLightVertexCount = static_cast<uint32_t>(mFullSphereDebugMesh.vertices.size());
       vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
@@ -6164,7 +6233,7 @@ bool VkRenderer::draw(float deltaTime) {
 
       vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereDebugVertexBuffer.buffer, &offset);
       vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, numberOfLights, 0, 1);
+      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
     }
   }
 

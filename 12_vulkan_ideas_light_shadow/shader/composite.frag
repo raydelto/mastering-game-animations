@@ -39,7 +39,6 @@ layout (std140, set = 0, binding = 0) uniform Matrices {
   int shadowMapPCFRange;
   int colorCascadeDebugEnabled;
   int numDynamicLights;
-  int useLightSpheres;
 };
 
 struct ShadowMapCascadeData {
@@ -195,33 +194,7 @@ void main() {
         }
       }
 
-      vec3 dynamicDiffuse = vec3(0.0);
-
-      if (useLightSpheres == 0) {
-        // we always have a null light added
-        for(int i = 1; i < numDynamicLights; ++i) {
-          vec3 lightDir = normalize(vec3(lights[i].position) - worldPos);
-          float diff = max(dot(normal, lightDir), 0.0);
-
-          float distance = length(vec3(lights[i].position) - worldPos);
-          if (distance < lights[i].maxDistance) {
-            float attenuation = 1.0 / (lights[i].constantAttFactor + lights[i].linearAttFactor * distance + lights[i].quadraticAttFactor * (distance * distance));
-
-            vec3 lightDynDiff = vec3(lights[i].color) * diff * albedo * attenuation;
-            if (lights[i].type == 1) {
-              float theta = dot(lightDir, normalize(-vec3(lights[i].rotation)));
-              float epsilon = lights[i].cutOff - lights[i].outerCutOff;
-
-              float intensity = clamp((theta - lights[i].outerCutOff) / epsilon, 0.0, 1.0);
-
-              lightDynDiff *= intensity;
-            }
-            dynamicDiffuse += lightDynDiff;
-          }
-        }
-      } else {
-        dynamicDiffuse = subpassLoad(lightSpheres).rgb * albedo;
-      }
+      vec3 dynamicDiffuse = subpassLoad(lightSpheres).rgb * albedo;
 
       outColor = mix(vec4(clamp(ambient + diffuse * ssaoValue * shadowFactor + dynamicDiffuse, 0.0, 1.0), 1.0), fogColor, fogAmount);
 
