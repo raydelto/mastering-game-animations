@@ -290,7 +290,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   /* We must flip Y axis to match Vulkan viewport */
   mVulkanViewCorrectionMatrix = glm::mat4(1.0f);
   mVulkanViewCorrectionMatrix[1][1] = -1.0f;
-  mVulkanViewCorrectionMatrix[3][1] = -1.0f;
 
   mRenderData.rdFrameTimer.start();
 

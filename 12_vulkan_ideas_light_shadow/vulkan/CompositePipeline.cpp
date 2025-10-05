@@ -60,7 +60,7 @@ bool CompositePipeline::init(VkRenderData& renderData, std::vector<VkFormat> col
   rasterizerInfo.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizerInfo.lineWidth = 1.0f;
   rasterizerInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-  // use CCW winding
+  // use CW winding
   rasterizerInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
   rasterizerInfo.depthBiasEnable = VK_FALSE;
 

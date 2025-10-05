@@ -322,7 +322,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   // We must flip Y axis to match Vulkan viewport
   mVulkanViewCorrectionMatrix = glm::mat4(1.0f);
   mVulkanViewCorrectionMatrix[1][1] = -1.0f;
-  mVulkanViewCorrectionMatrix[3][1] = -1.0f;
 
   // Cascaded Shadow map init
   mRenderData.rdShadowMapCascadeData.cascades.resize(mRenderData.SHADOW_MAP_LAYERS);
@@ -6070,118 +6069,114 @@ bool VkRenderer::draw(float deltaTime) {
 
   vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
 
-  // do not draw lines etc in debug modes
-  if (mRenderData.rdCompositeDebug == compositeDebugDisplay::composite) {
-
   // draw skybox into swapchain image, depth writes are disabled
-    // XXX: sybox doest not work in ortho projection, disable for now
-    if (mRenderData.rdDrawSkybox && camSettings.csCamProjection == cameraProjection::perspective) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdSkyboxPipeline);
+  // XXX: sybox doest not work in ortho projection, disable for now
+  if (mRenderData.rdDrawSkybox && camSettings.csCamProjection == cameraProjection::perspective) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdSkyboxPipeline);
 
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-       mRenderData.rdSkyboxPipelineLayout, 0, 1,
-       &mRenderData.rdSkyboxTexture.descriptorSet, 0, nullptr);
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdSkyboxPipelineLayout, 1, 1,
-        &mRenderData.rdSkyboxDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+     mRenderData.rdSkyboxPipelineLayout, 0, 1,
+     &mRenderData.rdSkyboxTexture.descriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdSkyboxPipelineLayout, 1, 1,
+      &mRenderData.rdSkyboxDescriptorSet, 0, nullptr);
 
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSkyboxBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSkyboxBuffer.buffer, &offset);
 
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mSphereModel.getVertexData().vertices.size()), 1, 0, 0);
-    }
-
-    // draw infinte grid
-    if (mRenderData.rdEnableInfiniteGrid && mRenderData.rdApplicationMode == appMode::edit) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGridLinePipeline);
-
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 6, 1, 0, 0);
-    }
-
-    // draw lines also into swapchain image
-    mRenderData.rdCollisionDebugDrawTimer.start();
-    if (mLineIndexCount > 0) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
-
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
-
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLineVertexBuffer.buffer, &offset);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
-    }
-
-    // draw colliding spheres
-    if (mCollidingSphereCount > 0) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
-
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSet, 0, nullptr);
-
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSphereVertexBuffer.buffer, &offset);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], sphereVertexCount, mCollidingSphereCount, 0, 0);
-    }
-
-    mRenderData.rdCollisionDebugDrawTime += mRenderData.rdCollisionDebugDrawTimer.stop();
-
-    if (mRenderData.rdDrawLevelAABB || mRenderData.rdDrawLevelWireframe ||
-        mRenderData.rdDrawLevelOctree || mRenderData.rdDrawIKDebugLines ||
-        mRenderData.rdDrawInstancePaths || mRenderData.rdDrawNeighborTriangles) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
-
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-    }
-
-    mRenderData.rdLevelCollisionTimer.start();
-    if (mRenderData.rdDrawLevelAABB && !mLevelAABBMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelAABBVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
-    }
-
-    if (mRenderData.rdDrawLevelWireframe && !mLevelWireframeMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelWireframeVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
-    }
-
-    if (mRenderData.rdDrawLevelOctree && !mLevelOctreeMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelOctreeVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
-    }
-
-    if (mRenderData.rdDrawIKDebugLines && !mIKFootPointMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdIKLinesVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
-    }
-    mRenderData.rdLevelCollisionTime += mRenderData.rdLevelCollisionTimer.stop();
-
-    if (mRenderData.rdDrawInstancePaths && !mInstancePathMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdInstancePathVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
-    }
-
-    if (mRenderData.rdDrawNeighborTriangles && !mLevelGroundNeighborsMesh->vertices.empty()) {
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshNeighborVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
-    }
-
-    mRenderData.rdLevelGroundNeighborUpdateTimer.start();
-    if (mRenderData.rdDrawGroundTriangles) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
-
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSet, 0, nullptr);
-
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshVertexBuffer.buffer, &offset);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mGroundMeshVertexCount, 1, 0, 0);
-    }
-    mRenderData.rdLevelGroundNeighborUpdateTime += mRenderData.rdLevelGroundNeighborUpdateTimer.stop();
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mSphereModel.getVertexData().vertices.size()), 1, 0, 0);
   }
+
+  // draw infinte grid
+  if (mRenderData.rdEnableInfiniteGrid && mRenderData.rdApplicationMode == appMode::edit) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGridLinePipeline);
+
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 6, 1, 0, 0);
+  }
+
+  // draw lines also into swapchain image
+  mRenderData.rdCollisionDebugDrawTimer.start();
+  if (mLineIndexCount > 0) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
+
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLineVertexBuffer.buffer, &offset);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
+  }
+
+  // draw colliding spheres
+  if (mCollidingSphereCount > 0) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSet, 0, nullptr);
+
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSphereVertexBuffer.buffer, &offset);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], sphereVertexCount, mCollidingSphereCount, 0, 0);
+  }
+
+  mRenderData.rdCollisionDebugDrawTime += mRenderData.rdCollisionDebugDrawTimer.stop();
+
+  if (mRenderData.rdDrawLevelAABB || mRenderData.rdDrawLevelWireframe ||
+      mRenderData.rdDrawLevelOctree || mRenderData.rdDrawIKDebugLines ||
+      mRenderData.rdDrawInstancePaths || mRenderData.rdDrawNeighborTriangles) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
+
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+  }
+
+  mRenderData.rdLevelCollisionTimer.start();
+  if (mRenderData.rdDrawLevelAABB && !mLevelAABBMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelAABBVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
+  }
+
+  if (mRenderData.rdDrawLevelWireframe && !mLevelWireframeMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelWireframeVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
+  }
+
+  if (mRenderData.rdDrawLevelOctree && !mLevelOctreeMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelOctreeVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
+  }
+
+  if (mRenderData.rdDrawIKDebugLines && !mIKFootPointMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdIKLinesVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
+  }
+  mRenderData.rdLevelCollisionTime += mRenderData.rdLevelCollisionTimer.stop();
+
+  if (mRenderData.rdDrawInstancePaths && !mInstancePathMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdInstancePathVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
+  }
+
+  if (mRenderData.rdDrawNeighborTriangles && !mLevelGroundNeighborsMesh->vertices.empty()) {
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshNeighborVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
+  }
+
+  mRenderData.rdLevelGroundNeighborUpdateTimer.start();
+  if (mRenderData.rdDrawGroundTriangles) {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
+
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSet, 0, nullptr);
+
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshVertexBuffer.buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mGroundMeshVertexCount, 1, 0, 0);
+  }
+  mRenderData.rdLevelGroundNeighborUpdateTime += mRenderData.rdLevelGroundNeighborUpdateTimer.stop();
 
   // draw in forward rendering after composite pass to avoid model light problems
   if (mRenderData.rdApplicationMode == appMode::edit) {
