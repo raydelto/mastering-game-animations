@@ -312,6 +312,7 @@ struct VkRenderData {
 
   /* Vulkan specific stuff */
   const int MAX_FRAMES_IN_FLIGHT = 3;
+  int rdNumFramesInFlight = 1;
   int currentFrame = 0;
 
   VmaAllocator rdAllocator = nullptr;
@@ -385,7 +386,6 @@ struct VkRenderData {
 
   std::vector<VkSemaphore> rdPresentSemaphores{};
   std::vector<VkSemaphore> rdRenderSemaphores{};
-  std::vector<VkSemaphore> rdGraphicSemaphores{};
   std::vector<VkSemaphore> rdComputeSemaphores{};
   std::vector<VkSemaphore> rdCollisionSemaphores{};
 
@@ -414,24 +414,24 @@ struct VkRenderData {
   VkDescriptorSetLayout rdSkyboxDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdCompositeDescriptorLayout = VK_NULL_HANDLE;
 
-  VkDescriptorSet rdAssimpDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeTransformDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeMatrixMultDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningMorphDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningMorphSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeSphereTransformDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeSphereMatrixMultDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeBoundingSpheresDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeIKDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpLevelDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdLineDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSphereDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdGroundMeshDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSkyboxDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdCompositeDescriptorSet = VK_NULL_HANDLE;
+  std::vector<VkDescriptorSet> rdAssimpDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeTransformDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeMatrixMultDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningMorphDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningMorphSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeSphereTransformDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeSphereMatrixMultDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeBoundingSpheresDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeIKDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpLevelDescriptorSets{};
+  std::vector<VkDescriptorSet> rdLineDescriptorSets{};
+  std::vector<VkDescriptorSet> rdSphereDescriptorSets{};
+  std::vector<VkDescriptorSet> rdGroundMeshDescriptorSets{};
+  std::vector<VkDescriptorSet> rdSkyboxDescriptorSets{};
+  std::vector<VkDescriptorSet> rdCompositeDescriptorSets{};
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

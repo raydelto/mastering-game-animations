@@ -133,28 +133,28 @@ class VkRenderer {
     VkPushConstants mModelData{};
     VkComputePushConstants mComputeModelData{};
     VkUniformBufferData mPerspectiveViewMatrixUBO{};
-    VkVertexBufferData mLineVertexBuffer{};
-    VkVertexBufferData mSphereVertexBuffer{};
-    VkVertexBufferData mLevelAABBVertexBuffer{};
-    VkVertexBufferData mLevelOctreeVertexBuffer{};
-    VkVertexBufferData mLevelWireframeVertexBuffer{};
-    VkVertexBufferData mIKLinesVertexBuffer{};
-    VkVertexBufferData mGroundMeshVertexBuffer{};
-    VkVertexBufferData mGroundMeshNeighborVertexBuffer{};
-    VkVertexBufferData mInstancePathVertexBuffer{};
+    std::vector<VkVertexBufferData> mLineVertexBuffers{};
+    std::vector<VkVertexBufferData> mSphereVertexBuffers{};
+    std::vector<VkVertexBufferData> mLevelAABBVertexBuffers{};
+    std::vector<VkVertexBufferData> mLevelOctreeVertexBuffers{};
+    std::vector<VkVertexBufferData> mLevelWireframeVertexBuffers{};
+    std::vector<VkVertexBufferData> mIKLinesVertexBuffers{};
+    std::vector<VkVertexBufferData> mGroundMeshVertexBuffers{};
+    std::vector<VkVertexBufferData> mGroundMeshNeighborVertexBuffers{};
+    std::vector<VkVertexBufferData> mInstancePathVertexBuffers{};
 
     /* for animated and non-animated models */
-    VkShaderStorageBufferData mShaderModelRootMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mShaderModelRootMatrixBuffers{};
     std::vector<glm::mat4> mWorldPosMatrices{};
 
     /* color hightlight for selection etc */
     std::vector<glm::vec2> mSelectedInstance{};
-    VkShaderStorageBufferData mSelectedInstanceBuffer{};
+    std::vector<VkShaderStorageBufferData> mSelectedInstanceBuffers{};
 
     /* for animated models */
-    VkShaderStorageBufferData mShaderBoneMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mShaderBoneMatrixBuffers{};
     std::vector<PerInstanceAnimData> mPerInstanceAnimData{};
-    VkShaderStorageBufferData mPerInstanceAnimDataBuffer{};
+    std::vector<VkShaderStorageBufferData> mPerInstanceAnimDataBuffers{};
     std::vector<glm::mat4> mShaderBoneMatrices{};
 
     std::vector<AABB> mPerInstanceAABB{};
@@ -162,18 +162,18 @@ class VkRenderer {
 
     /* for compute shader */
     bool mHasDedicatedComputeQueue = false;
-    VkShaderStorageBufferData mShaderTRSMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mShaderTRSMatrixBuffers{};
 
     /* bounding sphere compute shader */
-    VkShaderStorageBufferData mSphereModelRootMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mSphereModelRootMatrixBuffers{};
     std::vector<glm::mat4> mSphereWorldPosMatrices{};
     std::vector<PerInstanceAnimData> mSpherePerInstanceAnimData{};
-    VkShaderStorageBufferData mSpherePerInstanceAnimDataBuffer{};
-    VkShaderStorageBufferData mSphereTRSMatrixBuffer{};
-    VkShaderStorageBufferData mSphereBoneMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mSpherePerInstanceAnimDataBuffers{};
+    std::vector<VkShaderStorageBufferData> mSphereTRSMatrixBuffers{};
+    std::vector<VkShaderStorageBufferData> mSphereBoneMatrixBuffers{};
 
     /* x/y/z is shpere center, w is radius */
-    VkShaderStorageBufferData mBoundingSphereBuffer{};
+    std::vector<VkShaderStorageBufferData> mBoundingSphereBuffers{};
 
     CoordArrowsModel mCoordArrowsModel{};
     RotationArrowsModel mRotationArrowsModel{};
@@ -281,9 +281,9 @@ class VkRenderer {
     instanceNodeActionCallback mInstanceNodeActionCallbackFunction;
 
     std::vector<glm::vec4> mFaceAnimPerInstanceData{};
-    VkShaderStorageBufferData mFaceAnimPerInstanceDataBuffer{};
+    std::vector<VkShaderStorageBufferData> mFaceAnimPerInstanceDataBuffers{};
 
-    VkShaderStorageBufferData mShaderLevelRootMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mShaderLevelRootMatrixBuffers{};
     std::vector<glm::mat4> mLevelWorldPosMatrices{};
 
     void generateLevelVertexData();
@@ -313,8 +313,8 @@ class VkRenderer {
 
     std::vector<glm::mat4> mIKMatrices{};
     std::vector<glm::mat4> mIKModelMatrices{};
-    VkShaderStorageBufferData mIKBoneMatrixBuffer{};
-    VkShaderStorageBufferData mIKTRSMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mIKBoneMatrixBuffers{};
+    std::vector<VkShaderStorageBufferData> mIKTRSMatrixBuffers{};
 
     PathFinder mPathFinder{};
     void generateGroundTriangleData();
@@ -329,7 +329,7 @@ class VkRenderer {
 
     VkTextureData mSkyboxTexture{};
     SkyboxModel mSkyboxModel{};
-    VkVertexBufferData mSkyboxBuffer{};
+    std::vector<VkVertexBufferData> mSkyboxBuffers{};
 
     /* Vulkan specific code */
     VkSurfaceKHR mSurface = VK_NULL_HANDLE;
@@ -367,6 +367,8 @@ class VkRenderer {
     bool createGBuffer();
     void cleanupGBuffer();
     bool updateFramebufferAttachmentDescriptorSets();
+
+    void transitionImageForImGui(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
 
     void updateDescriptorSets();
     void updateComputeDescriptorSets();

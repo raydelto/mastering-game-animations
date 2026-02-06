@@ -78,16 +78,16 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
     return false;
   }
 
-  /* must be done AFTER swapchain as we need data from it */
-  if (!createDepthBuffer()) {
-    return false;
-  }
-
   if (!createCommandPools()) {
     return false;
   }
 
   if (!createCommandBuffers()) {
+    return false;
+  }
+
+  /* must be done AFTER swapchain and command pool+buffer as we need data from it */
+  if (!createDepthBuffer()) {
     return false;
   }
 
@@ -306,7 +306,9 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   mSkyboxModel.init();
   VkSkyboxMesh skyboxMesh = mSkyboxModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mSkyboxBuffer, skyboxMesh);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mSkyboxBuffers.at(i), skyboxMesh);
+  }
 
   const std::string texName = "textures/skybox.jpg";
   if (!Texture::loadCubemapTexture(mRenderData, mSkyboxTexture, texName, false)) {
@@ -326,18 +328,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   mGraphEditor = std::make_shared<GraphEditor>();
   Logger::log(1, "%s: graph editor initialized\n", __FUNCTION__);
-
-  /* signal graphics semaphore before doing anything else to be able to run compute submit */
-  VkSubmitInfo submitInfo{};
-  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.signalSemaphoreCount = 1;
-  submitInfo.pSignalSemaphores = &mRenderData.rdGraphicSemaphores[0];
-
-  VkResult result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: failed to submit initial semaphore (%i)\n", __FUNCTION__, result);
-    return false;
-  }
 
   /* try to load the default configuration file */
   if (loadConfigFile(mDefaultConfigFileName)) {
@@ -785,13 +775,15 @@ void VkRenderer::loadDefaultFreeCam() {
 }
 
 bool VkRenderer::deviceInit() {
-  /* instance and window - we need at least Vukan 1.1 for the "VK_KHR_maintenance1" extension */
+  /* instance and window - we need at least Vukan 1.3 for dynamic rendering */
   vkb::InstanceBuilder instBuild;
   auto instRet = instBuild
-    .use_default_debug_messenger()
-    .request_validation_layers()
-    .require_api_version(1, 3, 0)
-    .build();
+  .use_default_debug_messenger()
+  .request_validation_layers()
+  .enable_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) // required to use VK_EXT_swapchain_maintenance1
+  .enable_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) // required to use VK_EXT_surface_maintenance1
+  .require_api_version(1, 3, 0)
+  .build();
 
   if (!instRet) {
     Logger::log(1, "%s error: could not build vkb instance\n", __FUNCTION__);
@@ -805,39 +797,38 @@ bool VkRenderer::deviceInit() {
     return false;
   }
 
-  /* force anisotropy */
-  VkPhysicalDeviceFeatures requiredFeatures{};
-  requiredFeatures.samplerAnisotropy = VK_TRUE;
+  // enable dynamic rendering
+  VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature{};
+  dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+  dynamicRenderingFeature.dynamicRendering = VK_TRUE;
 
-  /* just get the first available device */
+  // local read, provided by VK_VERSION_1_4
+  VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR dynamicRenderingLocalReadFeature{};
+  dynamicRenderingLocalReadFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR;
+  dynamicRenderingLocalReadFeature.dynamicRenderingLocalRead = VK_TRUE;
+
+  // force anisotropy and line width
+  VkPhysicalDeviceFeatures vk10features{};
+  vk10features.samplerAnisotropy = VK_TRUE;
+  vk10features.wideLines = VK_TRUE;
+
+  // just get the first available device
   vkb::PhysicalDeviceSelector physicalDevSel{mRenderData.rdVkbInstance};
-  auto firstPysicalDevSelRet = physicalDevSel
-    .set_surface(mSurface)
-    .set_required_features(requiredFeatures)
-    .add_required_extension("VK_KHR_dynamic_rendering")
-    .add_required_extension("VK_KHR_dynamic_rendering_local_read")
-    .select();
+  auto physicalDevSelRet = physicalDevSel
+  .set_surface(mSurface)
+  .set_required_features(vk10features)
+  .add_required_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+  .add_required_extension_features(dynamicRenderingFeature)
+  .add_required_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME)
+  .add_required_extension_features(dynamicRenderingLocalReadFeature)
+  .select();
 
-  if (!firstPysicalDevSelRet) {
+  if (!physicalDevSelRet) {
     Logger::log(1, "%s error: could not get physical devices\n", __FUNCTION__);
     return false;
   }
 
-  /* a 2nd call is required to enable all the supported features, like wideLines */
-  VkPhysicalDeviceFeatures physFeatures;
-  vkGetPhysicalDeviceFeatures(firstPysicalDevSelRet.value(), &physFeatures);
-
-  auto secondPhysicalDevSelRet = physicalDevSel
-    .set_surface(mSurface)
-    .set_required_features(physFeatures)
-    .select();
-
-  if (!secondPhysicalDevSelRet) {
-    Logger::log(1, "%s error: could not get physical devices\n", __FUNCTION__);
-    return false;
-  }
-
-  mRenderData.rdVkbPhysicalDevice = secondPhysicalDevSelRet.value();
+  mRenderData.rdVkbPhysicalDevice = physicalDevSelRet.value();
   Logger::log(1, "%s: found physical device '%s'\n", __FUNCTION__, mRenderData.rdVkbPhysicalDevice.name.c_str());
 
   /* required for dynamic buffer with world position matrices */
@@ -846,23 +837,8 @@ bool VkRenderer::deviceInit() {
   mMinSSBOOffsetAlignment = std::max(minSSBOOffsetAlignment, sizeof(glm::mat4));
   Logger::log(1, "%s: SSBO offset has been adjusted to %i bytes\n", __FUNCTION__, mMinSSBOOffsetAlignment);
 
-  // enable dynamic rendering
-  VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature {
-    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
-    .dynamicRendering = VK_TRUE,
-  };
-
-  // Provided by VK_VERSION_1_4
-  VkPhysicalDeviceDynamicRenderingLocalReadFeatures dynamicRenderingLocalReadFeature {
-    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES,
-    .dynamicRenderingLocalRead = VK_TRUE,
-  };
-
   vkb::DeviceBuilder devBuilder{mRenderData.rdVkbPhysicalDevice};
-  auto devBuilderRet = devBuilder
-  .add_pNext(&dynamicRenderingFeature)
-  .add_pNext(&dynamicRenderingLocalReadFeature)
-  .build();
+  auto devBuilderRet = devBuilder.build();
   if (!devBuilderRet) {
     Logger::log(1, "%s error: could not get devices\n", __FUNCTION__);
     return false;
@@ -910,7 +886,7 @@ bool VkRenderer::createDescriptorPool() {
     { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
     { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
     { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-    { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 10 },
+    { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 },
   };
 
   VkDescriptorPoolCreateInfo poolInfo{};
@@ -1639,14 +1615,18 @@ bool VkRenderer::createDescriptorLayouts() {
 bool VkRenderer::createDescriptorSets() {
   {
     /* non-animated models */
+    mRenderData.rdAssimpDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    // we need a matching number of layouts xD
+    std::vector<VkDescriptorSetLayout> assimpLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpDescriptorLayout);
+
     VkDescriptorSetAllocateInfo descriptorAllocateInfo{};
     descriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    descriptorAllocateInfo.descriptorSetCount = 1;
-    descriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpDescriptorLayout;
+    descriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    descriptorAllocateInfo.pSetLayouts = assimpLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &descriptorAllocateInfo,
-        &mRenderData.rdAssimpDescriptorSet);
+        mRenderData.rdAssimpDescriptorSets.data());
      if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1655,14 +1635,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* animated models */
+    mRenderData.rdAssimpSkinningDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpSkinningLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSkinningDescriptorLayout);
+
     VkDescriptorSetAllocateInfo skinningDescriptorAllocateInfo{};
     skinningDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     skinningDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    skinningDescriptorAllocateInfo.descriptorSetCount = 1;
-    skinningDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpSkinningDescriptorLayout;
+    skinningDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    skinningDescriptorAllocateInfo.pSetLayouts = assimpSkinningLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skinningDescriptorAllocateInfo,
-      &mRenderData.rdAssimpSkinningDescriptorSet);
+      mRenderData.rdAssimpSkinningDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Skinning descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1671,14 +1654,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* selection, non-animated models */
+    mRenderData.rdAssimpSelectionDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpSelectionLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSelectionDescriptorLayout);
+
     VkDescriptorSetAllocateInfo selectionDescriptorAllocateInfo{};
     selectionDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     selectionDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    selectionDescriptorAllocateInfo.descriptorSetCount = 1;
-    selectionDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpSelectionDescriptorLayout;
+    selectionDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    selectionDescriptorAllocateInfo.pSetLayouts = assimpSelectionLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &selectionDescriptorAllocateInfo,
-      &mRenderData.rdAssimpSelectionDescriptorSet);
+      mRenderData.rdAssimpSelectionDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp selection descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1687,14 +1673,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* selection, animated models */
+    mRenderData.rdAssimpSkinningSelectionDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpSkinningSelectionLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSkinningSelectionDescriptorLayout);
+
     VkDescriptorSetAllocateInfo skinningSelectionDescriptorAllocateInfo{};
     skinningSelectionDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     skinningSelectionDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    skinningSelectionDescriptorAllocateInfo.descriptorSetCount = 1;
-    skinningSelectionDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpSkinningSelectionDescriptorLayout;
+    skinningSelectionDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    skinningSelectionDescriptorAllocateInfo.pSetLayouts = assimpSkinningSelectionLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skinningSelectionDescriptorAllocateInfo,
-      &mRenderData.rdAssimpSkinningSelectionDescriptorSet);
+      mRenderData.rdAssimpSkinningSelectionDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp skinning selection descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1703,14 +1692,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* animated and morphed models */
+    mRenderData.rdAssimpSkinningMorphDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpSkinningMorphLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSkinningMorphDescriptorLayout);
+
     VkDescriptorSetAllocateInfo skinningMorphDescriptorAllocateInfo{};
     skinningMorphDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     skinningMorphDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    skinningMorphDescriptorAllocateInfo.descriptorSetCount = 1;
-    skinningMorphDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpSkinningMorphDescriptorLayout;
+    skinningMorphDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    skinningMorphDescriptorAllocateInfo.pSetLayouts = assimpSkinningMorphLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skinningMorphDescriptorAllocateInfo,
-      &mRenderData.rdAssimpSkinningMorphDescriptorSet);
+      mRenderData.rdAssimpSkinningMorphDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp morph skinning descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1719,14 +1711,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* selection, animated and morphed models */
+    mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpSkinningMorphSelectionLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSkinningMorphSelectionDescriptorLayout);
+
     VkDescriptorSetAllocateInfo skinningMorphSelectionDescriptorAllocateInfo{};
     skinningMorphSelectionDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     skinningMorphSelectionDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    skinningMorphSelectionDescriptorAllocateInfo.descriptorSetCount = 1;
-    skinningMorphSelectionDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpSkinningMorphSelectionDescriptorLayout;
+    skinningMorphSelectionDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    skinningMorphSelectionDescriptorAllocateInfo.pSetLayouts = assimpSkinningMorphSelectionLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skinningMorphSelectionDescriptorAllocateInfo,
-      &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet);
+      mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp morph skinning selection descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1735,14 +1730,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* level */
+    mRenderData.rdAssimpLevelDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> assimpLevelLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpLevelDescriptorLayout);
+
     VkDescriptorSetAllocateInfo levelDescriptorAllocateInfo{};
     levelDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     levelDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    levelDescriptorAllocateInfo.descriptorSetCount = 1;
-    levelDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpLevelDescriptorLayout;
+    levelDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    levelDescriptorAllocateInfo.pSetLayouts = assimpLevelLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &levelDescriptorAllocateInfo,
-      &mRenderData.rdAssimpLevelDescriptorSet);
+      mRenderData.rdAssimpLevelDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Level descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1751,14 +1749,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* ground-mesh drawing */
+    mRenderData.rdGroundMeshDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> groundMeshLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdGroundMeshDescriptorLayout);
+
     VkDescriptorSetAllocateInfo lineAllocateInfo{};
     lineAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     lineAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    lineAllocateInfo.descriptorSetCount = 1;
-    lineAllocateInfo.pSetLayouts = &mRenderData.rdGroundMeshDescriptorLayout;
+    lineAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    lineAllocateInfo.pSetLayouts = groundMeshLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &lineAllocateInfo,
-      &mRenderData.rdGroundMeshDescriptorSet);
+      mRenderData.rdGroundMeshDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp ground-mesh drawing descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1767,14 +1768,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* compute transform. global data */
+    mRenderData.rdAssimpComputeTransformDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeTransformLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeTransformDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeTransformDescriptorAllocateInfo{};
     computeTransformDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeTransformDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeTransformDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeTransformDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeTransformDescriptorLayout;
+    computeTransformDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeTransformDescriptorAllocateInfo.pSetLayouts = computeTransformLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeTransformDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeTransformDescriptorSet);
+      mRenderData.rdAssimpComputeTransformDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Transform Compute descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1783,14 +1787,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* compute transform fpr bounding spheres. global data */
+    mRenderData.rdAssimpComputeSphereTransformDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeSphereTransformLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeTransformDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeTransformDescriptorAllocateInfo{};
     computeTransformDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeTransformDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeTransformDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeTransformDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeTransformDescriptorLayout;
+    computeTransformDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeTransformDescriptorAllocateInfo.pSetLayouts = computeSphereTransformLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeTransformDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeSphereTransformDescriptorSet);
+      mRenderData.rdAssimpComputeSphereTransformDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Bounding Sphere Transform Compute descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1799,14 +1806,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* matrix multiplication, global data */
+    mRenderData.rdAssimpComputeMatrixMultDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeMatrixMultLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeMatrixMultDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeMatrixMultDescriptorAllocateInfo{};
     computeMatrixMultDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeMatrixMultDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeMatrixMultDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeMatrixMultDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeMatrixMultDescriptorLayout;
+    computeMatrixMultDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeMatrixMultDescriptorAllocateInfo.pSetLayouts = computeMatrixMultLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeMatrixMultDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeMatrixMultDescriptorSet);
+      mRenderData.rdAssimpComputeMatrixMultDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Matrix Mult Compute descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1815,14 +1825,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* matrix multiplication bounding spheres, global data */
+    mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeSphereMatrixMultLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeMatrixMultDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeMatrixMultDescriptorAllocateInfo{};
     computeMatrixMultDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeMatrixMultDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeMatrixMultDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeMatrixMultDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeMatrixMultDescriptorLayout;
+    computeMatrixMultDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeMatrixMultDescriptorAllocateInfo.pSetLayouts = computeSphereMatrixMultLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeMatrixMultDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSet);
+      mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Bounding Sphere Matrix Mult Compute descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1831,14 +1844,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* matrix multiplication inverse kinematics, global data */
+    mRenderData.rdAssimpComputeIKDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeIKLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeMatrixMultDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeMatrixMultIKDescriptorAllocateInfo{};
     computeMatrixMultIKDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeMatrixMultIKDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeMatrixMultIKDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeMatrixMultIKDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeMatrixMultDescriptorLayout;
+    computeMatrixMultIKDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeMatrixMultIKDescriptorAllocateInfo.pSetLayouts = computeIKLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeMatrixMultIKDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeIKDescriptorSet);
+      mRenderData.rdAssimpComputeIKDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Inverse Kinematics Matrix Mult Compute descriptor set (error: %i)\n",
         __FUNCTION__, result);
@@ -1848,14 +1864,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* bounding spheres, global data */
+    mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> computeBoundingSphereLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpComputeBoundingSpheresDescriptorLayout);
+
     VkDescriptorSetAllocateInfo computeBoundingSpheresDescriptorAllocateInfo{};
     computeBoundingSpheresDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     computeBoundingSpheresDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    computeBoundingSpheresDescriptorAllocateInfo.descriptorSetCount = 1;
-    computeBoundingSpheresDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpComputeBoundingSpheresDescriptorLayout;
+    computeBoundingSpheresDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    computeBoundingSpheresDescriptorAllocateInfo.pSetLayouts = computeBoundingSphereLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &computeBoundingSpheresDescriptorAllocateInfo,
-      &mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet);
+      mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp Bounding Sphere Compute descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1864,14 +1883,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* line-drawing */
+    mRenderData.rdLineDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> lineLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdLineDescriptorLayout);
+
     VkDescriptorSetAllocateInfo lineAllocateInfo{};
     lineAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     lineAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    lineAllocateInfo.descriptorSetCount = 1;
-    lineAllocateInfo.pSetLayouts = &mRenderData.rdLineDescriptorLayout;
+    lineAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    lineAllocateInfo.pSetLayouts = lineLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &lineAllocateInfo,
-      &mRenderData.rdLineDescriptorSet);
+      mRenderData.rdLineDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp line-drawing descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1880,14 +1902,17 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* sphere-drawing */
+    mRenderData.rdSphereDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> sphereLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdSphereDescriptorLayout);
+
     VkDescriptorSetAllocateInfo sphereAllocateInfo{};
     sphereAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     sphereAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    sphereAllocateInfo.descriptorSetCount = 1;
-    sphereAllocateInfo.pSetLayouts = &mRenderData.rdSphereDescriptorLayout;
+    sphereAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    sphereAllocateInfo.pSetLayouts = sphereLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &sphereAllocateInfo,
-      &mRenderData.rdSphereDescriptorSet);
+      mRenderData.rdSphereDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp bounding sphere-drawing descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -1896,31 +1921,39 @@ bool VkRenderer::createDescriptorSets() {
 
   {
     /* skybox */
+    mRenderData.rdSkyboxDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> skyboxLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdSkyboxDescriptorLayout);
+
     VkDescriptorSetAllocateInfo skyboxAllocateInfo{};
     skyboxAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     skyboxAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-    skyboxAllocateInfo.descriptorSetCount = 1;
-    skyboxAllocateInfo.pSetLayouts = &mRenderData.rdSkyboxDescriptorLayout;
+    skyboxAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    skyboxAllocateInfo.pSetLayouts = skyboxLayouts.data();
 
     VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skyboxAllocateInfo,
-      &mRenderData.rdSkyboxDescriptorSet);
+      mRenderData.rdSkyboxDescriptorSets.data());
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate Assimp skybox descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
     }
   }
 
-  /* composite */
-  VkDescriptorSetAllocateInfo compositeAllocInfo{};
-  compositeAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  compositeAllocInfo.descriptorPool = mRenderData.rdDescriptorPool;
-  compositeAllocInfo.descriptorSetCount = 1;
-  compositeAllocInfo.pSetLayouts = &mRenderData.rdCompositeDescriptorLayout;
+  {
+    /* composite */
+    mRenderData.rdCompositeDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+    std::vector<VkDescriptorSetLayout> compositeLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdCompositeDescriptorLayout);
 
-  if (vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &compositeAllocInfo,
-      &mRenderData.rdCompositeDescriptorSet) != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not allocate memory for composite descriptor set", __FUNCTION__);
-    return false;
+    VkDescriptorSetAllocateInfo compositeAllocInfo{};
+    compositeAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    compositeAllocInfo.descriptorPool = mRenderData.rdDescriptorPool;
+    compositeAllocInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+    compositeAllocInfo.pSetLayouts = compositeLayouts.data();
+
+    if (vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &compositeAllocInfo,
+        mRenderData.rdCompositeDescriptorSets.data()) != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate memory for composite descriptor set", __FUNCTION__);
+      return false;
+    }
   }
 
   updateDescriptorSets();
@@ -1935,7 +1968,7 @@ bool VkRenderer::createDescriptorSets() {
 void VkRenderer::updateDescriptorSets() {
   Logger::log(1, "%s: updating descriptor sets\n", __FUNCTION__);
   /* we must update the descriptor sets whenever the buffer size has changed */
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* non-animated shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -1943,19 +1976,19 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -1963,7 +1996,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 1;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -1971,7 +2004,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 2;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -1983,7 +2016,7 @@ void VkRenderer::updateDescriptorSets() {
        writeDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* animated shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -1991,24 +2024,24 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mShaderBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mShaderBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2016,7 +2049,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2024,7 +2057,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 2;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2032,7 +2065,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 3;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -2044,7 +2077,7 @@ void VkRenderer::updateDescriptorSets() {
        skinningWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* selection shader, non-animated  */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2052,19 +2085,19 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2072,7 +2105,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 1;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2080,7 +2113,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSelectionDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 2;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -2092,7 +2125,7 @@ void VkRenderer::updateDescriptorSets() {
        selectionWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* selection shader, animated  */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2100,24 +2133,24 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mShaderBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mShaderBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2125,7 +2158,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2133,7 +2166,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 2;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2141,7 +2174,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 3;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -2154,7 +2187,7 @@ void VkRenderer::updateDescriptorSets() {
        skinningSelectionWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* animated plus morph shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2162,29 +2195,29 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mShaderBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mShaderBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo faceAnimInfo{};
-    faceAnimInfo.buffer = mFaceAnimPerInstanceDataBuffer.buffer;
+    faceAnimInfo.buffer = mFaceAnimPerInstanceDataBuffers.at(i).buffer;
     faceAnimInfo.offset = 0;
     faceAnimInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2192,7 +2225,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2200,7 +2233,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 2;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2208,7 +2241,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 3;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -2216,7 +2249,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet faceAnimWriteDescriptorSet{};
     faceAnimWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     faceAnimWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    faceAnimWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSet;
+    faceAnimWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphDescriptorSets.at(i);
     faceAnimWriteDescriptorSet.dstBinding = 4;
     faceAnimWriteDescriptorSet.descriptorCount = 1;
     faceAnimWriteDescriptorSet.pBufferInfo = &faceAnimInfo;
@@ -2229,7 +2262,7 @@ void VkRenderer::updateDescriptorSets() {
        skinningWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* selection shader, animated plus morph */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2237,29 +2270,29 @@ void VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mShaderBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mShaderBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo selectionInfo{};
-    selectionInfo.buffer = mSelectedInstanceBuffer.buffer;
+    selectionInfo.buffer = mSelectedInstanceBuffers.at(i).buffer;
     selectionInfo.offset = 0;
     selectionInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo faceAnimInfo{};
-    faceAnimInfo.buffer = mFaceAnimPerInstanceDataBuffer.buffer;
+    faceAnimInfo.buffer = mFaceAnimPerInstanceDataBuffers.at(i).buffer;
     faceAnimInfo.offset = 0;
     faceAnimInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2267,7 +2300,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2275,7 +2308,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 2;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2283,7 +2316,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet selectionWriteDescriptorSet{};
     selectionWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     selectionWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet;
+    selectionWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(i);
     selectionWriteDescriptorSet.dstBinding = 3;
     selectionWriteDescriptorSet.descriptorCount = 1;
     selectionWriteDescriptorSet.pBufferInfo = &selectionInfo;
@@ -2291,7 +2324,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet faceAnimWriteDescriptorSet{};
     faceAnimWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     faceAnimWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    faceAnimWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet;
+    faceAnimWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(i);
     faceAnimWriteDescriptorSet.dstBinding = 4;
     faceAnimWriteDescriptorSet.descriptorCount = 1;
     faceAnimWriteDescriptorSet.pBufferInfo = &faceAnimInfo;
@@ -2304,7 +2337,7 @@ void VkRenderer::updateDescriptorSets() {
         skinningSelectionWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* line-drawing shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2314,7 +2347,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdLineDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdLineDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2326,7 +2359,7 @@ void VkRenderer::updateDescriptorSets() {
       writeDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* ground-mesh-drawing shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2336,7 +2369,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdGroundMeshDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdGroundMeshDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2348,7 +2381,7 @@ void VkRenderer::updateDescriptorSets() {
       writeDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* skybox shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2358,7 +2391,7 @@ void VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdSkyboxDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdSkyboxDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2373,22 +2406,22 @@ void VkRenderer::updateDescriptorSets() {
 
 void VkRenderer::updateComputeDescriptorSets() {
   Logger::log(1, "%s: updating compute descriptor sets\n", __FUNCTION__);
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* transform compute shader */
     VkDescriptorBufferInfo transformInfo{};
-    transformInfo.buffer = mPerInstanceAnimDataBuffer.buffer;
+    transformInfo.buffer = mPerInstanceAnimDataBuffers.at(i).buffer;
     transformInfo.offset = 0;
     transformInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo trsInfo{};
-    trsInfo.buffer = mShaderTRSMatrixBuffer.buffer;
+    trsInfo.buffer = mShaderTRSMatrixBuffers.at(i).buffer;
     trsInfo.offset = 0;
     trsInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet transformWriteDescriptorSet{};
     transformWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     transformWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    transformWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeTransformDescriptorSet;
+    transformWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeTransformDescriptorSets.at(i);
     transformWriteDescriptorSet.dstBinding = 0;
     transformWriteDescriptorSet.descriptorCount = 1;
     transformWriteDescriptorSet.pBufferInfo = &transformInfo;
@@ -2396,7 +2429,7 @@ void VkRenderer::updateComputeDescriptorSets() {
     VkWriteDescriptorSet trsWriteDescriptorSet{};
     trsWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     trsWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeTransformDescriptorSet;
+    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeTransformDescriptorSets.at(i);
     trsWriteDescriptorSet.dstBinding = 1;
     trsWriteDescriptorSet.descriptorCount = 1;
     trsWriteDescriptorSet.pBufferInfo = &trsInfo;
@@ -2408,22 +2441,22 @@ void VkRenderer::updateComputeDescriptorSets() {
        transformWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* matrix multiplication compute shader, global data */
     VkDescriptorBufferInfo trsInfo{};
-    trsInfo.buffer = mShaderTRSMatrixBuffer.buffer;
+    trsInfo.buffer = mShaderTRSMatrixBuffers.at(i).buffer;
     trsInfo.offset = 0;
     trsInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mShaderBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mShaderBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet trsWriteDescriptorSet{};
     trsWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     trsWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeMatrixMultDescriptorSet;
+    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeMatrixMultDescriptorSets.at(i);
     trsWriteDescriptorSet.dstBinding = 0;
     trsWriteDescriptorSet.descriptorCount = 1;
     trsWriteDescriptorSet.pBufferInfo = &trsInfo;
@@ -2431,7 +2464,7 @@ void VkRenderer::updateComputeDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeMatrixMultDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeMatrixMultDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2446,7 +2479,8 @@ void VkRenderer::updateComputeDescriptorSets() {
 
 void VkRenderer::updateLevelDescriptorSets() {
   Logger::log(1, "%s: updating level descriptor sets\n", __FUNCTION__);
-  {
+
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* level shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2454,14 +2488,14 @@ void VkRenderer::updateLevelDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mShaderLevelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mShaderLevelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpLevelDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpLevelDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2469,7 +2503,7 @@ void VkRenderer::updateLevelDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpLevelDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpLevelDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 1;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2484,22 +2518,23 @@ void VkRenderer::updateLevelDescriptorSets() {
 
 void VkRenderer::updateSphereComputeDescriptorSets() {
   Logger::log(1, "%s: updating sphere descriptor sets\n", __FUNCTION__);
-  {
+
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* transform compute shader for bounding spheres */
     VkDescriptorBufferInfo transformInfo{};
-    transformInfo.buffer = mSpherePerInstanceAnimDataBuffer.buffer;
+    transformInfo.buffer = mSpherePerInstanceAnimDataBuffers.at(i).buffer;
     transformInfo.offset = 0;
     transformInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo trsInfo{};
-    trsInfo.buffer = mSphereTRSMatrixBuffer.buffer;
+    trsInfo.buffer = mSphereTRSMatrixBuffers.at(i).buffer;
     trsInfo.offset = 0;
     trsInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet transformWriteDescriptorSet{};
     transformWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     transformWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    transformWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereTransformDescriptorSet;
+    transformWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereTransformDescriptorSets.at(i);
     transformWriteDescriptorSet.dstBinding = 0;
     transformWriteDescriptorSet.descriptorCount = 1;
     transformWriteDescriptorSet.pBufferInfo = &transformInfo;
@@ -2507,7 +2542,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     VkWriteDescriptorSet trsWriteDescriptorSet{};
     trsWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     trsWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereTransformDescriptorSet;
+    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereTransformDescriptorSets.at(i);
     trsWriteDescriptorSet.dstBinding = 1;
     trsWriteDescriptorSet.descriptorCount = 1;
     trsWriteDescriptorSet.pBufferInfo = &trsInfo;
@@ -2519,22 +2554,22 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
        transformWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* matrix multiplication bounding spheres compute shader, global data */
     VkDescriptorBufferInfo trsInfo{};
-    trsInfo.buffer = mSphereTRSMatrixBuffer.buffer;
+    trsInfo.buffer = mSphereTRSMatrixBuffers.at(i).buffer;
     trsInfo.offset = 0;
     trsInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mSphereBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mSphereBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet trsWriteDescriptorSet{};
     trsWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     trsWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSet;
+    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.at(i);
     trsWriteDescriptorSet.dstBinding = 0;
     trsWriteDescriptorSet.descriptorCount = 1;
     trsWriteDescriptorSet.pBufferInfo = &trsInfo;
@@ -2542,7 +2577,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2554,27 +2589,27 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
        matrixMultWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* bounding spheres compute shader, global data */
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mSphereBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mSphereBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mSphereModelRootMatrixBuffer.buffer;
+    worldPosInfo.buffer = mSphereModelRootMatrixBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boundingSphereInfo{};
-    boundingSphereInfo.buffer = mBoundingSphereBuffer.buffer;
+    boundingSphereInfo.buffer = mBoundingSphereBuffers.at(i).buffer;
     boundingSphereInfo.offset = 0;
     boundingSphereInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 0;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2582,7 +2617,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     VkWriteDescriptorSet worldPosWriteDescriptorSet{};
     worldPosWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     worldPosWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    worldPosWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet;
+    worldPosWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.at(i);
     worldPosWriteDescriptorSet.dstBinding = 1;
     worldPosWriteDescriptorSet.descriptorCount = 1;
     worldPosWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -2590,7 +2625,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     VkWriteDescriptorSet boundingSphereWriteDescriptorSet{};
     boundingSphereWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boundingSphereWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boundingSphereWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet;
+    boundingSphereWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.at(i);
     boundingSphereWriteDescriptorSet.dstBinding = 2;
     boundingSphereWriteDescriptorSet.descriptorCount = 1;
     boundingSphereWriteDescriptorSet.pBufferInfo = &boundingSphereInfo;
@@ -2602,7 +2637,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
        boundingSphereWriteDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* sphere-drawing shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -2610,14 +2645,14 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boundingSpheresInfo{};
-    boundingSpheresInfo.buffer = mBoundingSphereBuffer.buffer;
+    boundingSpheresInfo.buffer = mBoundingSphereBuffers.at(i).buffer;
     boundingSpheresInfo.offset = 0;
     boundingSpheresInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdSphereDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdSphereDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -2625,7 +2660,7 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
     VkWriteDescriptorSet boundingSpheresWriteDescriptorSet{};
     boundingSpheresWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boundingSpheresWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boundingSpheresWriteDescriptorSet.dstSet = mRenderData.rdSphereDescriptorSet;
+    boundingSpheresWriteDescriptorSet.dstSet = mRenderData.rdSphereDescriptorSets.at(i);
     boundingSpheresWriteDescriptorSet.dstBinding = 1;
     boundingSpheresWriteDescriptorSet.descriptorCount = 1;
     boundingSpheresWriteDescriptorSet.pBufferInfo = &boundingSpheresInfo;
@@ -2640,22 +2675,23 @@ void VkRenderer::updateSphereComputeDescriptorSets() {
 
 void VkRenderer::updateIKComputeDescriptorSets() {
   Logger::log(1, "%s: updating IK descriptor sets\n", __FUNCTION__);
-  {
+
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* matrix multiplication inverse kinematics compute shader, global data */
     VkDescriptorBufferInfo trsInfo{};
-    trsInfo.buffer = mIKTRSMatrixBuffer.buffer;
+    trsInfo.buffer = mIKTRSMatrixBuffers.at(i).buffer;
     trsInfo.offset = 0;
     trsInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mIKBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mIKBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet trsWriteDescriptorSet{};
     trsWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     trsWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeIKDescriptorSet;
+    trsWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeIKDescriptorSets.at(i);
     trsWriteDescriptorSet.dstBinding = 0;
     trsWriteDescriptorSet.descriptorCount = 1;
     trsWriteDescriptorSet.pBufferInfo = &trsInfo;
@@ -2663,7 +2699,7 @@ void VkRenderer::updateIKComputeDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeIKDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpComputeIKDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -2678,74 +2714,76 @@ void VkRenderer::updateIKComputeDescriptorSets() {
 
 bool VkRenderer::updateFramebufferAttachmentDescriptorSets() {
   /* composite */
-  VkDescriptorBufferInfo matrixInfo{};
-  matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
-  matrixInfo.offset = 0;
-  matrixInfo.range = VK_WHOLE_SIZE;
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VkDescriptorBufferInfo matrixInfo{};
+    matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
+    matrixInfo.offset = 0;
+    matrixInfo.range = VK_WHOLE_SIZE;
 
-  VkDescriptorImageInfo colorInfo{};
-  colorInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  colorInfo.imageView = mRenderData.gBuffer.color.imageView;
-  colorInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo colorInfo{};
+    colorInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    colorInfo.imageView = mRenderData.gBuffer.color.imageView;
+    colorInfo.sampler = VK_NULL_HANDLE;
 
-  VkDescriptorImageInfo positionInfo{};
-  positionInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  positionInfo.imageView = mRenderData.gBuffer.position.imageView;
-  positionInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo positionInfo{};
+    positionInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    positionInfo.imageView = mRenderData.gBuffer.position.imageView;
+    positionInfo.sampler = VK_NULL_HANDLE;
 
-  VkDescriptorImageInfo normalInfo{};
-  normalInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  normalInfo.imageView = mRenderData.gBuffer.normal.imageView;
-  normalInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo normalInfo{};
+    normalInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    normalInfo.imageView = mRenderData.gBuffer.normal.imageView;
+    normalInfo.sampler = VK_NULL_HANDLE;
 
-  VkDescriptorImageInfo selectionInfo{};
-  selectionInfo.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-  selectionInfo.imageView = mRenderData.rdSelectionImageView;
-  selectionInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo selectionInfo{};
+    selectionInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    selectionInfo.imageView = mRenderData.rdSelectionImageView;
+    selectionInfo.sampler = VK_NULL_HANDLE;
 
-  VkWriteDescriptorSet matrixWrite{};
-  matrixWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  matrixWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  matrixWrite.descriptorCount = 1;
-  matrixWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  matrixWrite.dstBinding = 0;
-  matrixWrite.pBufferInfo = &matrixInfo;
+    VkWriteDescriptorSet matrixWrite{};
+    matrixWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    matrixWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matrixWrite.descriptorCount = 1;
+    matrixWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    matrixWrite.dstBinding = 0;
+    matrixWrite.pBufferInfo = &matrixInfo;
 
-  VkWriteDescriptorSet colorWrite{};
-  colorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  colorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  colorWrite.descriptorCount = 1;
-  colorWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  colorWrite.dstBinding = 1;
-  colorWrite.pImageInfo = &colorInfo;
+    VkWriteDescriptorSet colorWrite{};
+    colorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    colorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    colorWrite.descriptorCount = 1;
+    colorWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    colorWrite.dstBinding = 1;
+    colorWrite.pImageInfo = &colorInfo;
 
-  VkWriteDescriptorSet positionWrite{};
-  positionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  positionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  positionWrite.descriptorCount = 1;
-  positionWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  positionWrite.dstBinding = 2;
-  positionWrite.pImageInfo = &positionInfo;
+    VkWriteDescriptorSet positionWrite{};
+    positionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    positionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    positionWrite.descriptorCount = 1;
+    positionWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    positionWrite.dstBinding = 2;
+    positionWrite.pImageInfo = &positionInfo;
 
-  VkWriteDescriptorSet normalWrite{};
-  normalWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  normalWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  normalWrite.descriptorCount = 1;
-  normalWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  normalWrite.dstBinding = 3;
-  normalWrite.pImageInfo = &normalInfo;
+    VkWriteDescriptorSet normalWrite{};
+    normalWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    normalWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    normalWrite.descriptorCount = 1;
+    normalWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    normalWrite.dstBinding = 3;
+    normalWrite.pImageInfo = &normalInfo;
 
-  VkWriteDescriptorSet selectionWrite{};
-  selectionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  selectionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  selectionWrite.descriptorCount = 1;
-  selectionWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  selectionWrite.dstBinding = 4;
-  selectionWrite.pImageInfo = &selectionInfo;
+    VkWriteDescriptorSet selectionWrite{};
+    selectionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    selectionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    selectionWrite.descriptorCount = 1;
+    selectionWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    selectionWrite.dstBinding = 4;
+    selectionWrite.pImageInfo = &selectionInfo;
 
-  std::vector<VkWriteDescriptorSet> writeSets = { matrixWrite, colorWrite, positionWrite, normalWrite, selectionWrite };
+    std::vector<VkWriteDescriptorSet> writeSets = { matrixWrite, colorWrite, positionWrite, normalWrite, selectionWrite };
 
-  vkUpdateDescriptorSets(mRenderData.rdVkbDevice.device, static_cast<uint32_t>(writeSets.size()), writeSets.data(), 0, nullptr);
+    vkUpdateDescriptorSets(mRenderData.rdVkbDevice.device, static_cast<uint32_t>(writeSets.size()), writeSets.data(), 0, nullptr);
+  }
 
   return true;
 }
@@ -2797,6 +2835,39 @@ bool VkRenderer::createDepthBuffer() {
     Logger::log(1, "%s error: could not create depth buffer image view (error: %i)\n", __FUNCTION__, result);
     return false;
   }
+
+  VkCommandBuffer imageTransitionBuffer = CommandBuffer::createSingleShotBuffer(mRenderData, mRenderData.rdCommandPool);
+
+  VkImageMemoryBarrier imageMemoryBarrier {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    .image = mRenderData.rdDepthImage,
+    .subresourceRange = {
+      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+    }
+  };
+
+  vkCmdPipelineBarrier(
+    imageTransitionBuffer,
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+    0,
+    0, nullptr, 0, nullptr,
+    1, &imageMemoryBarrier // pImageMemoryBarriers
+  );
+
+  if (!CommandBuffer::submitSingleShotBuffer(mRenderData, mRenderData.rdCommandPool,
+      imageTransitionBuffer, mRenderData.rdGraphicsQueue)) {
+    Logger::log(1, "%s error: could not transition depth image\n", __FUNCTION__);
+    return false;
+  }
+
   return true;
 }
 
@@ -3090,6 +3161,9 @@ bool VkRenderer::createSwapchain() {
   mRenderData.rdVkbSwapchain = swapChainBuildRet.value();
   mRenderData.rdSwapchainImages = swapChainBuildRet.value().get_images().value();
   mRenderData.rdSwapchainImageViews = swapChainBuildRet.value().get_image_views().value();
+  mRenderData.rdNumFramesInFlight = mRenderData.rdSwapchainImages.size();
+
+  Logger::log(1, "%s: Swapchain requested %i images, got %i\n", __FUNCTION__, mRenderData.MAX_FRAMES_IN_FLIGHT, mRenderData.rdNumFramesInFlight);
 
   return true;
 }
@@ -3141,52 +3215,62 @@ bool VkRenderer::recreateSwapchain() {
 }
 
 bool VkRenderer::createVertexBuffers() {
-  if (!VertexBuffer::init(mRenderData, mLineVertexBuffer, 1024)) {
+  mLineVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mLineVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create line vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mSphereVertexBuffer, 1024)) {
+  mSphereVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mSphereVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create sphere vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mLevelAABBVertexBuffer, 1024)) {
+  mLevelAABBVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mLevelAABBVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create level AABB vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mLevelOctreeVertexBuffer, 1024)) {
+  mLevelOctreeVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mLevelOctreeVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create level octree vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mLevelWireframeVertexBuffer, 1024)) {
+  mLevelWireframeVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mLevelWireframeVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create level wireframe vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mIKLinesVertexBuffer, 1024)) {
+  mIKLinesVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mIKLinesVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create IK Lines vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mGroundMeshVertexBuffer, 1024)) {
+  mGroundMeshVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mGroundMeshVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create ground mesh vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mGroundMeshNeighborVertexBuffer, 1024)) {
+  mGroundMeshNeighborVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mGroundMeshNeighborVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create ground mesh neighbor triangles vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mInstancePathVertexBuffer, 1024)) {
+  mInstancePathVertexBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mInstancePathVertexBuffers, 1024)) {
     Logger::log(1, "%s error: could not create instance path vertex buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!VertexBuffer::init(mRenderData, mSkyboxBuffer, 1024)) {
+  mSkyboxBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!VertexBuffer::init(mRenderData, mSkyboxBuffers, 1024)) {
     Logger::log(1, "%s error: could not create skybox vertex buffer\n", __FUNCTION__);
     return false;
   }
@@ -3203,74 +3287,88 @@ bool VkRenderer::createMatrixUBO() {
 }
 
 bool VkRenderer::createSSBOs() {
-  if (!ShaderStorageBuffer::init(mRenderData, mShaderTRSMatrixBuffer)) {
+  mShaderTRSMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mShaderTRSMatrixBuffers)) {
     Logger::log(1, "%s error: could not create TRS matrices SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mShaderModelRootMatrixBuffer)) {
+  mShaderModelRootMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mShaderModelRootMatrixBuffers)) {
     Logger::log(1, "%s error: could not create nodel root position SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mPerInstanceAnimDataBuffer)) {
+  mPerInstanceAnimDataBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mPerInstanceAnimDataBuffers)) {
     Logger::log(1, "%s error: could not create node transform SSBO\n", __FUNCTION__);
     return false;
   }
 
   /* we must read back data */
-  if (!ShaderStorageBuffer::init(mRenderData, mShaderBoneMatrixBuffer)) {
+  mShaderBoneMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mShaderBoneMatrixBuffers)) {
     Logger::log(1, "%s error: could not create bone matrix SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mSelectedInstanceBuffer)) {
+  mSelectedInstanceBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mSelectedInstanceBuffers)) {
     Logger::log(1, "%s error: could not create selection SSBO\n", __FUNCTION__);
     return false;
   }
 
   /* we must read back data */
-  if (!ShaderStorageBuffer::init(mRenderData, mBoundingSphereBuffer)) {
+  mBoundingSphereBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mBoundingSphereBuffers)) {
     Logger::log(1, "%s error: could not create bounding sphere SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mSphereModelRootMatrixBuffer)) {
+  mSphereModelRootMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mSphereModelRootMatrixBuffers)) {
     Logger::log(1, "%s error: could not create nodel root position SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mSpherePerInstanceAnimDataBuffer)) {
+  mSpherePerInstanceAnimDataBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mSpherePerInstanceAnimDataBuffers)) {
     Logger::log(1, "%s error: could not create node transform SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mSphereTRSMatrixBuffer)) {
+  mSphereTRSMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mSphereTRSMatrixBuffers)) {
     Logger::log(1, "%s error: could not create TRS matrices SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mSphereBoneMatrixBuffer)) {
+  mSphereBoneMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mSphereBoneMatrixBuffers)) {
     Logger::log(1, "%s error: could not create bone matrix SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mFaceAnimPerInstanceDataBuffer)) {
+  mFaceAnimPerInstanceDataBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mFaceAnimPerInstanceDataBuffers)) {
     Logger::log(1, "%s error: could not create face anim SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mShaderLevelRootMatrixBuffer)) {
+  mShaderLevelRootMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mShaderLevelRootMatrixBuffers)) {
     Logger::log(1, "%s error: could not create level world pos SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mIKBoneMatrixBuffer)) {
+  mIKBoneMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mIKBoneMatrixBuffers)) {
     Logger::log(1, "%s error: could not create inverse kinematics matrix SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mIKTRSMatrixBuffer)) {
+  mIKTRSMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+  if (!ShaderStorageBuffer::init(mRenderData, mIKTRSMatrixBuffers)) {
     Logger::log(1, "%s error: could not create inverse kinematics TRS data SSBO\n", __FUNCTION__);
     return false;
   }
@@ -3597,10 +3695,10 @@ bool VkRenderer::createCommandPools() {
 }
 
 bool VkRenderer::createCommandBuffers() {
-  mRenderData.rdCommandBuffers.resize(mRenderData.MAX_FRAMES_IN_FLIGHT);
-  mRenderData.rdComputeCommandBuffers.resize(mRenderData.MAX_FRAMES_IN_FLIGHT);
+  mRenderData.rdCommandBuffers.resize(mRenderData.rdNumFramesInFlight);
+  mRenderData.rdComputeCommandBuffers.resize(mRenderData.rdNumFramesInFlight);
 
-  for (int i = 0; i < mRenderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     if (!CommandBuffer::init(mRenderData,mRenderData.rdCommandPool, mRenderData.rdCommandBuffers[i])) {
       Logger::log(1, "%s error: could not create command buffers\n", __FUNCTION__);
       return false;
@@ -3644,6 +3742,34 @@ bool VkRenderer::initUserInterface() {
   }
   return true;
 }
+
+void VkRenderer::transitionImageForImGui(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+  VkImageMemoryBarrier imageMemoryBarrier {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    .oldLayout = oldLayout,
+    .newLayout = newLayout,
+    .image = image,
+    .subresourceRange = {
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+    }
+  };
+
+  vkCmdPipelineBarrier(
+    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+    0,
+    0, nullptr, 0, nullptr,
+    1, &imageMemoryBarrier // pImageMemoryBarriers
+  );
+}
+
 
 bool VkRenderer::hasModel(std::string modelFileName) {
   auto modelIter =  std::find_if(mModelInstCamData.micModelList.begin(), mModelInstCamData.micModelList.end(),
@@ -4274,7 +4400,9 @@ void VkRenderer::generateGroundTriangleData() {
   mGroundMeshVertexCount = groundMesh->vertices.size();
 
   mUploadToVBOTimer.start();
-  VertexBuffer::uploadData(mRenderData, mGroundMeshVertexBuffer, *groundMesh);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mGroundMeshVertexBuffers.at(i), *groundMesh);
+  }
   mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
 }
 
@@ -4307,7 +4435,9 @@ void VkRenderer::generateLevelAABB() {
 
   if (!mLevelAABBMesh->vertices.empty()) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mLevelAABBVertexBuffer, *mLevelAABBMesh);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mLevelAABBVertexBuffers.at(i), *mLevelAABBMesh);
+    }
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 }
@@ -4375,7 +4505,9 @@ void VkRenderer::generateLevelOctree() {
 
   if (!mLevelOctreeMesh->vertices.empty()) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mLevelOctreeVertexBuffer, *mLevelOctreeMesh);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mLevelOctreeVertexBuffers.at(i), *mLevelOctreeMesh);
+    }
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 }
@@ -4452,7 +4584,9 @@ void VkRenderer::generateLevelWireframe() {
 
   if (!mLevelWireframeMesh->vertices.empty()) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mLevelWireframeVertexBuffer, *mLevelWireframeMesh);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mLevelWireframeVertexBuffers.at(i), *mLevelWireframeMesh);
+    }
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 
@@ -4518,7 +4652,6 @@ void VkRenderer::assignInstanceIndices() {
   for (size_t i = 1; i < mModelInstCamData.micAssimpInstances.size(); ++i) {
     mOctree->add(mModelInstCamData.micAssimpInstances.at(i)->getInstanceIndexPosition());
   }
-
 }
 
 void VkRenderer::cloneCamera() {
@@ -5170,12 +5303,12 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
     /* we need to update descriptors after the upload if buffer size changed */
     bool bufferResized = false;
     mUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mPerInstanceAnimDataBuffer, mPerInstanceAnimData);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mPerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mPerInstanceAnimData);
     mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
     /* resize SSBO if needed */
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       updateDescriptorSets();
@@ -5237,7 +5370,7 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
 
     /* extract bone matrix from SSBO */
     mDownloadFromUBOTimer.start();
-    std::vector<glm::mat4> boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffer,
+    std::vector<glm::mat4> boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame),
       0, LOOKUP_SIZE * numberOfClips * numberOfBones);
     mRenderData.rdDownloadFromUBOTime += mDownloadFromUBOTimer.stop();
 
@@ -5321,7 +5454,7 @@ bool VkRenderer::checkForInstanceCollisions() {
     }
 
     /* resize SSBO if needed */
-    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
     if (bufferResized) {
       updateSphereComputeDescriptorSets();
@@ -5368,13 +5501,13 @@ bool VkRenderer::checkForInstanceCollisions() {
       /* we need to update descriptors after the upload if buffer size changed */
       bool bufferResized = false;
       mUploadToUBOTimer.start();
-      bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-      bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+      bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+      bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
       mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
       /* resize SSBO if needed */
-      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffer, bufferMatrixSize);
-      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffer, trsMatrixSize);
+      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
       if (bufferResized) {
         updateDescriptorSets();
@@ -5432,7 +5565,7 @@ bool VkRenderer::checkForInstanceCollisions() {
 
     /* read sphere SSBO */
     mDownloadFromUBOTimer.start();
-    std::vector<glm::vec4> boundingSpheres = ShaderStorageBuffer::getSsboDataVec4(mRenderData, mBoundingSphereBuffer, totalSpheres);
+    std::vector<glm::vec4> boundingSpheres = ShaderStorageBuffer::getSsboDataVec4(mRenderData, mBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres);
     mRenderData.rdDownloadFromUBOTime += mDownloadFromUBOTimer.stop();
 
     sphereModelOffset = 0;
@@ -5693,7 +5826,7 @@ void VkRenderer::runComputeShaders(std::shared_ptr<AssimpModel> model, int numIn
   }
 
   VkDescriptorSet &modelTransformDescriptorSet = model->getTransformDescriptorSet();
-  std::vector<VkDescriptorSet> transformComputeSets = { mRenderData.rdAssimpComputeTransformDescriptorSet, modelTransformDescriptorSet };
+  std::vector<VkDescriptorSet> transformComputeSets = { mRenderData.rdAssimpComputeTransformDescriptorSets.at(mRenderData.currentFrame), modelTransformDescriptorSet };
   vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     mRenderData.rdAssimpComputeTransformaPipelineLayout, 0, static_cast<uint32_t>(transformComputeSets.size()), transformComputeSets.data(), 0, 0);
 
@@ -5724,13 +5857,13 @@ void VkRenderer::runComputeShaders(std::shared_ptr<AssimpModel> model, int numIn
   if (useEmptyBoneOffsets) {
     VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultEmptyOffsetDescriptorSet();
     std::vector<VkDescriptorSet> matrixMultComputeSets =
-      { mRenderData.rdAssimpComputeMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
+      { mRenderData.rdAssimpComputeMatrixMultDescriptorSets.at(mRenderData.currentFrame), modelMatrixMultDescriptorSet };
     vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       mRenderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
   } else {
     VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultDescriptorSet();
     std::vector<VkDescriptorSet> matrixMultComputeSets =
-      { mRenderData.rdAssimpComputeMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
+      { mRenderData.rdAssimpComputeMatrixMultDescriptorSets.at(mRenderData.currentFrame), modelMatrixMultDescriptorSet };
     vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
       mRenderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
   }
@@ -5764,7 +5897,7 @@ void VkRenderer::runBoundingSphereComputeShaders(std::shared_ptr<AssimpModel> mo
     mRenderData.rdAssimpComputeTransformPipeline);
 
   VkDescriptorSet &modelTransformDescriptorSet = model->getTransformDescriptorSet();
-  std::vector<VkDescriptorSet> transformComputeSets = { mRenderData.rdAssimpComputeSphereTransformDescriptorSet, modelTransformDescriptorSet };
+  std::vector<VkDescriptorSet> transformComputeSets = { mRenderData.rdAssimpComputeSphereTransformDescriptorSets.at(mRenderData.currentFrame), modelTransformDescriptorSet };
   vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     mRenderData.rdAssimpComputeTransformaPipelineLayout, 0, static_cast<uint32_t>(transformComputeSets.size()), transformComputeSets.data(), 0, 0);
 
@@ -5794,7 +5927,7 @@ void VkRenderer::runBoundingSphereComputeShaders(std::shared_ptr<AssimpModel> mo
 
   VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultEmptyOffsetDescriptorSet();
   std::vector<VkDescriptorSet> matrixMultComputeSets =
-    { mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSet, modelMatrixMultDescriptorSet };
+    { mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.at(mRenderData.currentFrame), modelMatrixMultDescriptorSet };
   vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     mRenderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
 
@@ -5822,7 +5955,7 @@ void VkRenderer::runBoundingSphereComputeShaders(std::shared_ptr<AssimpModel> mo
                     mRenderData.rdAssimpComputeBoundingSpheresPipeline);
 
   VkDescriptorSet &boundingSpheresDescriptorSet = model->getBoundingSphereDescriptorSet();
-  std::vector<VkDescriptorSet> boundingSphereComputeSets = { mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet, boundingSpheresDescriptorSet };
+  std::vector<VkDescriptorSet> boundingSphereComputeSets = { mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.at(mRenderData.currentFrame), boundingSpheresDescriptorSet };
   vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     mRenderData.rdAssimpComputeBoundingSpheresPipelineLayout, 0, static_cast<uint32_t>(boundingSphereComputeSets.size()), boundingSphereComputeSets.data(), 0, 0);
 
@@ -5852,7 +5985,7 @@ bool VkRenderer::runIKComputeShaders(std::shared_ptr<AssimpModel> model, int num
 
   /* upload changed TRS data of this model only */
   mUploadToUBOTimer.start();
-  ShaderStorageBuffer::uploadSsboData(mRenderData, mIKTRSMatrixBuffer, mTRSData, modelOffset);
+  ShaderStorageBuffer::uploadSsboData(mRenderData, mIKTRSMatrixBuffers.at(mRenderData.currentFrame), mTRSData, modelOffset);
   mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
   VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
@@ -5876,7 +6009,7 @@ bool VkRenderer::runIKComputeShaders(std::shared_ptr<AssimpModel> model, int num
 
   VkDescriptorSet &modelMatrixMultDescriptorSet = model->getMatrixMultDescriptorSet();
   std::vector<VkDescriptorSet> matrixMultComputeSets =
-    { mRenderData.rdAssimpComputeIKDescriptorSet, modelMatrixMultDescriptorSet };
+    { mRenderData.rdAssimpComputeIKDescriptorSets.at(mRenderData.currentFrame), modelMatrixMultDescriptorSet };
   vkCmdBindDescriptorSets(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE,
     mRenderData.rdAssimpComputeMatrixMultPipelineLayout, 0, static_cast<uint32_t>(matrixMultComputeSets.size()), matrixMultComputeSets.data(), 0, 0);
 
@@ -5925,9 +6058,9 @@ bool VkRenderer::runIKComputeShaders(std::shared_ptr<AssimpModel> model, int num
 
   /* read (new) bone positions of this model only */
   mDownloadFromUBOTimer.start();
-  mIKModelMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mIKBoneMatrixBuffer,
+  mIKModelMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mIKBoneMatrixBuffers.at(mRenderData.currentFrame),
     modelOffset, numInstances * numberOfBones);
-  std::memcpy(mIKMatrices.data() + modelOffset, mIKModelMatrices.data(), numInstances * numberOfBones);
+  std::memcpy(mIKMatrices.data() + modelOffset, mIKModelMatrices.data(), numInstances * numberOfBones * sizeof(glm::mat4));
   mRenderData.rdDownloadFromUBOTime += mDownloadFromUBOTimer.stop();
 
   return true;
@@ -6307,14 +6440,14 @@ bool VkRenderer::createSelectedBoundingSpheres() {
     /* resize SSBOs if needed */
     bool bufferResized = false;
     mUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
     /* resize SSBO if needed */
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffer, trsMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffer, numberOfSpheres * sizeof(glm::vec4));
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffers.at(mRenderData.currentFrame), numberOfSpheres * sizeof(glm::vec4));
 
     if (bufferResized) {
       updateDescriptorSets();
@@ -6371,7 +6504,7 @@ bool VkRenderer::createSelectedBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffer, mSphereMesh);
+    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffers.at(mRenderData.currentFrame), mSphereMesh);
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 
@@ -6407,7 +6540,7 @@ bool VkRenderer::createCollidingBoundingSpheres() {
 
   /* resize SSBO if needed */
   bool bufferResized = false;
-  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
   if (bufferResized) {
     updateSphereComputeDescriptorSets();
@@ -6453,13 +6586,13 @@ bool VkRenderer::createCollidingBoundingSpheres() {
     /* we need to update descriptors after the upload if buffer size changed */
     bool bufferResized = false;
     mUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
     /* resize SSBO if needed */
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       updateDescriptorSets();
@@ -6517,7 +6650,7 @@ bool VkRenderer::createCollidingBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffer, mCollidingSphereMesh);
+    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffers.at(mRenderData.currentFrame), mCollidingSphereMesh);
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 
@@ -6544,7 +6677,7 @@ bool VkRenderer::createAllBoundingSpheres() {
 
   /* resize SSBO if needed */
   bool bufferResized = false;
-  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
   if (bufferResized) {
     updateSphereComputeDescriptorSets();
@@ -6589,13 +6722,13 @@ bool VkRenderer::createAllBoundingSpheres() {
     /* we need to update descriptors after the upload if buffer size changed */
     bool bufferResized = false;
     mUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
     /* resize SSBO if needed */
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       updateDescriptorSets();
@@ -6653,7 +6786,7 @@ bool VkRenderer::createAllBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffer, mSphereMesh);
+    VertexBuffer::uploadData(mRenderData, mSphereVertexBuffers.at(mRenderData.currentFrame), mSphereMesh);
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
 
@@ -7132,35 +7265,35 @@ bool VkRenderer::draw(float deltaTime) {
 
   /* upload vertex data for instance paths and neighbor triangles */
   mUploadToVBOTimer.start();
-  VertexBuffer::uploadData(mRenderData, mInstancePathVertexBuffer, *mInstancePathMesh);
-  VertexBuffer::uploadData(mRenderData, mGroundMeshNeighborVertexBuffer, *mLevelGroundNeighborsMesh);
+  VertexBuffer::uploadData(mRenderData, mInstancePathVertexBuffers.at(mRenderData.currentFrame), *mInstancePathMesh);
+  VertexBuffer::uploadData(mRenderData, mGroundMeshNeighborVertexBuffers.at(mRenderData.currentFrame), *mLevelGroundNeighborsMesh);
   mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
 
   /* we need to update descriptors after the upload if buffer size changed */
   bool bufferResized = false;
   mUploadToUBOTimer.start();
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mPerInstanceAnimDataBuffer, mPerInstanceAnimData);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSelectedInstanceBuffer, mSelectedInstance);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mFaceAnimPerInstanceDataBuffer, mFaceAnimPerInstanceData);
+  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mPerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mPerInstanceAnimData);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mSelectedInstanceBuffers.at(mRenderData.currentFrame), mSelectedInstance);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mFaceAnimPerInstanceDataBuffers.at(mRenderData.currentFrame), mFaceAnimPerInstanceData);
   mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
   /* resize SSBO if needed */
-  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderTRSMatrixBuffer, boneMatrixBufferSize * 3 * sizeof(glm::vec4));
-  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderBoneMatrixBuffer, boneMatrixBufferSize * sizeof(glm::mat4));
+  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderTRSMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * 3 * sizeof(glm::vec4));
+  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * sizeof(glm::mat4));
 
   if (bufferResized) {
     updateDescriptorSets();
     updateComputeDescriptorSets();
   }
 
-  /* record compute commands */
-  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
-    return false;
-  }
-
   if (animatedModelLoaded) {
+    /* record compute commands */
+    result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    if (result != VK_SUCCESS) {
+      Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
+      return false;
+    }
+
     uint32_t computeShaderModelOffset = 0;
     uint32_t computeShaderInstanceOffset = 0;
     if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
@@ -7195,43 +7328,23 @@ bool VkRenderer::draw(float deltaTime) {
     }
 
     /* submit compute commands */
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
     computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
-    computeSubmitInfo.waitSemaphoreCount = 1;
-    computeSubmitInfo.pWaitSemaphores = &mRenderData.rdGraphicSemaphores[mRenderData.currentFrame];
-    computeSubmitInfo.pWaitDstStageMask = &waitStage;
 
     result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
-  } else {
-    /* do an empty submit if we don't have animated models to satisfy fence and semaphore */
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
-    VkSubmitInfo computeSubmitInfo{};
-    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    computeSubmitInfo.waitSemaphoreCount = 1;
-    computeSubmitInfo.pWaitSemaphores = &mRenderData.rdGraphicSemaphores[mRenderData.currentFrame];
-    computeSubmitInfo.pWaitDstStageMask = &waitStage;
-
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    /* we must wait for the compute shaders to finish before we can read the bone data */
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
-      Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
+      Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
-    };
-  }
-
-  /* we must wait for the compute shaders to finish before we can read the bone data */
-  result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
-    return false;
+    }
   }
 
   /* first person follow cam node */
@@ -7245,7 +7358,7 @@ bool VkRenderer::draw(float deltaTime) {
 
       /* get the bone matrix of the selected bone from the SSBO */
       mDownloadFromUBOTimer.start();
-      glm::mat4 boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffer,
+      glm::mat4 boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame),
         firstPersonCamBoneMatrixPos + selectedBone);
       mRenderData.rdDownloadFromUBOTime += mDownloadFromUBOTimer.stop();
 
@@ -7271,14 +7384,14 @@ bool VkRenderer::draw(float deltaTime) {
 
     /* read back all node positions for foot positions  */
     mDownloadFromUBOTimer.start();
-    mIKMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffer, 0, boneMatrixBufferSize);
-    mTRSData = ShaderStorageBuffer::getSsboDataTRSMatrixData(mRenderData, mShaderTRSMatrixBuffer, 0, boneMatrixBufferSize);
+    mIKMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame), 0, boneMatrixBufferSize);
+    mTRSData = ShaderStorageBuffer::getSsboDataTRSMatrixData(mRenderData, mShaderTRSMatrixBuffers.at(mRenderData.currentFrame), 0, boneMatrixBufferSize);
     mRenderData.rdDownloadFromUBOTime += mDownloadFromUBOTimer.stop();
 
     /* resize SSBO if needed */
     bool bufferResized = false;
-    bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mIKBoneMatrixBuffer, boneMatrixBufferSize * sizeof(glm::mat4));
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mIKTRSMatrixBuffer, boneMatrixBufferSize * 3 * sizeof(glm::vec4));
+    bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mIKBoneMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * sizeof(glm::mat4));
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mIKTRSMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * 3 * sizeof(glm::vec4));
 
     if (bufferResized) {
       updateIKComputeDescriptorSets();
@@ -7447,13 +7560,13 @@ bool VkRenderer::draw(float deltaTime) {
 
     if (!mIKFootPointMesh->vertices.empty()) {
       mUploadToVBOTimer.start();
-      VertexBuffer::uploadData(mRenderData, mIKLinesVertexBuffer, *mIKFootPointMesh);
+      VertexBuffer::uploadData(mRenderData, mIKLinesVertexBuffers.at(mRenderData.currentFrame), *mIKFootPointMesh);
       mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
     }
 
     /* update original bone matrix buffer for drawing */
     mUploadToUBOTimer.start();
-    ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderBoneMatrixBuffer, mIKMatrices);
+    ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderBoneMatrixBuffers.at(mRenderData.currentFrame), mIKMatrices);
     mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
     mRenderData.rdIKTime += mIKTimer.stop();
@@ -7549,7 +7662,7 @@ bool VkRenderer::draw(float deltaTime) {
   /* we need to update descriptors after the upload if buffer size changed */
   mUploadToUBOTimer.start();
   UniformBuffer::uploadData(mRenderData, mPerspectiveViewMatrixUBO, mMatrices);
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderModelRootMatrixBuffer, mWorldPosMatrices);
+  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderModelRootMatrixBuffers.at(mRenderData.currentFrame), mWorldPosMatrices);
   mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
   if (bufferResized) {
@@ -7571,7 +7684,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   /* we need to update descriptors after the upload if buffer size changed */
   mUploadToUBOTimer.start();
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderLevelRootMatrixBuffer, mLevelWorldPosMatrices);
+  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mShaderLevelRootMatrixBuffers.at(mRenderData.currentFrame), mLevelWorldPosMatrices);
   mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
   if (bufferResized) {
@@ -7662,23 +7775,9 @@ bool VkRenderer::draw(float deltaTime) {
   /* upload lines */
   if (mLineIndexCount > 0) {
     mUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mLineVertexBuffer, *mLineMesh);
+    VertexBuffer::uploadData(mRenderData, mLineVertexBuffers.at(mRenderData.currentFrame), *mLineMesh);
     mRenderData.rdUploadToVBOTime += mUploadToVBOTimer.stop();
   }
-
-  /* imGui overlay */
-  mUIGenerateTimer.start();
-  mUserInterface.createFrame(mRenderData);
-
-  if (mRenderData.rdApplicationMode == appMode::edit) {
-    mUserInterface.hideMouse(mMouseLock);
-    mUserInterface.createSettingsWindow(mRenderData, mModelInstCamData);
-  }
-
-  /* always draw the status bar */
-  mUserInterface.createStatusBar(mRenderData, mModelInstCamData);
-  mUserInterface.createPositionsWindow(mRenderData, mModelInstCamData);
-  mRenderData.rdUIGenerateTime += mUIGenerateTimer.stop();
 
   /* only loaded data right now */
   if (mGraphEditor->getShowEditor()) {
@@ -7852,7 +7951,7 @@ bool VkRenderer::draw(float deltaTime) {
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdAssimpLevelPipelineLayout, 1, 1,
-      &mRenderData.rdAssimpLevelDescriptorSet, 0, nullptr);
+      &mRenderData.rdAssimpLevelDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     mUploadToUBOTimer.start();
     mModelData.pkWorldPosOffset = levelPosOffset;
@@ -7882,14 +7981,14 @@ bool VkRenderer::draw(float deltaTime) {
 
           vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
             mRenderData.rdAssimpSkinningSelectionPipelineLayout, 1, 1,
-           &mRenderData.rdAssimpSkinningSelectionDescriptorSet, 0, nullptr);
+           &mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         } else {
           vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
             mRenderData.rdAssimpSkinningPipeline);
 
           vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
             mRenderData.rdAssimpSkinningPipelineLayout, 1, 1,
-            &mRenderData.rdAssimpSkinningDescriptorSet, 0, nullptr);
+            &mRenderData.rdAssimpSkinningDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         }
 
         mUploadToUBOTimer.start();
@@ -7915,14 +8014,14 @@ bool VkRenderer::draw(float deltaTime) {
 
             vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningMorphSelectionPipelineLayout, 1, 1,
-              &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet, 0, nullptr);
+              &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           } else {
             vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningMorphPipeline);
 
             vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningMorphPipelineLayout, 1, 1,
-              &mRenderData.rdAssimpSkinningMorphDescriptorSet, 0, nullptr);
+              &mRenderData.rdAssimpSkinningMorphDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           }
 
           mUploadToUBOTimer.start();
@@ -7949,12 +8048,12 @@ bool VkRenderer::draw(float deltaTime) {
           vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSelectionPipeline);
 
           vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-            mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSet, 0, nullptr);
+            mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         } else {
           vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
 
           vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-            mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+            mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         }
 
         mUploadToUBOTimer.start();
@@ -7993,7 +8092,7 @@ bool VkRenderer::draw(float deltaTime) {
   /* Composite pass */
   vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
   vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
-    &mRenderData.rdCompositeDescriptorSet, 0, nullptr);
+    &mRenderData.rdCompositeDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
   vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
 
@@ -8007,10 +8106,10 @@ bool VkRenderer::draw(float deltaTime) {
      &mSkyboxTexture.descriptorSet, 0, nullptr);
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdSkyboxPipelineLayout, 1, 1,
-      &mRenderData.rdSkyboxDescriptorSet, 0, nullptr);
+      &mRenderData.rdSkyboxDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mSkyboxBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mSkyboxBuffers.at(mRenderData.currentFrame).buffer, &offset);
 
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mSphereModel.getVertexData().vertices.size()), 1, 0, 0);
   }
@@ -8020,7 +8119,7 @@ bool VkRenderer::draw(float deltaTime) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGridLinePipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+                            mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
     vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 6, 1, 0, 0);
   }
@@ -8031,10 +8130,10 @@ bool VkRenderer::draw(float deltaTime) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLineVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLineVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
   }
@@ -8044,10 +8143,10 @@ bool VkRenderer::draw(float deltaTime) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSet, 0, nullptr);
+      mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mSphereVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mSphereVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], sphereVertexCount, mCollidingSphereCount, 0, 0);
   }
@@ -8060,45 +8159,45 @@ bool VkRenderer::draw(float deltaTime) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
     vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
   }
 
   mLevelCollisionTimer.start();
   if (mRenderData.rdDrawLevelAABB && !mLevelAABBMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelAABBVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelAABBVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawLevelWireframe && !mLevelWireframeMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelWireframeVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelWireframeVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawLevelOctree && !mLevelOctreeMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelOctreeVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mLevelOctreeVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawIKDebugLines && !mIKFootPointMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mIKLinesVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mIKLinesVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
   }
   mRenderData.rdLevelCollisionTime += mLevelCollisionTimer.stop();
 
   if (mRenderData.rdDrawInstancePaths && !mInstancePathMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mInstancePathVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mInstancePathVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawNeighborTriangles && !mLevelGroundNeighborsMesh->vertices.empty()) {
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mGroundMeshNeighborVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mGroundMeshNeighborVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
   }
 
@@ -8107,10 +8206,10 @@ bool VkRenderer::draw(float deltaTime) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSet, 0, nullptr);
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mGroundMeshVertexBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mGroundMeshVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mGroundMeshVertexCount, 1, 0, 0);
   }
   mRenderData.rdLevelGroundNeighborUpdateTime += mLevelGroundNeighborUpdateTimer.stop();
@@ -8162,16 +8261,40 @@ bool VkRenderer::draw(float deltaTime) {
     1, &uiImageMemoryBarrier // pImageMemoryBarriers
   );
 
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
+  // images must be in layout VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL for ImGui
+  transitionImageForImGui(mRenderData.gBuffer.color.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  transitionImageForImGui(mRenderData.gBuffer.position.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  transitionImageForImGui(mRenderData.gBuffer.normal.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  /* imGui overlay */
+  mUIGenerateTimer.start();
+  mUserInterface.createFrame(mRenderData);
+
+  if (mRenderData.rdApplicationMode == appMode::edit) {
+    mUserInterface.hideMouse(mMouseLock);
+    mUserInterface.createSettingsWindow(mRenderData, mModelInstCamData);
+  }
+
+  /* always draw the status bar */
+  mUserInterface.createStatusBar(mRenderData, mModelInstCamData);
+  mUserInterface.createPositionsWindow(mRenderData, mModelInstCamData);
+  mRenderData.rdUIGenerateTime += mUIGenerateTimer.stop();
 
   vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &viewport);
   vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &scissor);
+
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
 
   mUIDrawTimer.start();
   mUserInterface.render(mRenderData);
   mRenderData.rdUIDrawTime = mUIDrawTimer.stop();
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+
+  // transition back to VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ
+  transitionImageForImGui(mRenderData.gBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  transitionImageForImGui(mRenderData.gBuffer.position.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  transitionImageForImGui(mRenderData.gBuffer.normal.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
 
   /* layout transition */
   /* swapchain image to present */
@@ -8208,11 +8331,6 @@ bool VkRenderer::draw(float deltaTime) {
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-  /* compute shader: contine if vertex input ready
-   * vertex shader: wait for color attachment output ready */
-  //std::vector<VkSemaphore> waitSemaphores = { mRenderData.rdComputeSemaphore, mRenderData.rdPresentSemaphore };
-  //std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
   std::vector<VkSemaphore> waitSemaphores = { mRenderData.rdPresentSemaphores[mRenderData.currentFrame] };
   std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
   submitInfo.pWaitDstStageMask = waitStages.data();
@@ -8220,7 +8338,7 @@ bool VkRenderer::draw(float deltaTime) {
   submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
   submitInfo.pWaitSemaphores = waitSemaphores.data();
 
-  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[imageIndex], mRenderData.rdGraphicSemaphores[mRenderData.currentFrame] };
+  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[imageIndex] };
 
   submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
   submitInfo.pSignalSemaphores = signalSemaphores.data();
@@ -8276,6 +8394,8 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
+  mRenderData.currentFrame = (mRenderData.currentFrame + 1) % mRenderData.rdNumFramesInFlight;
+
   return true;
 }
 
@@ -8306,7 +8426,7 @@ void VkRenderer::cleanup() {
   mUserInterface.cleanup(mRenderData);
 
   SyncObjects::cleanup(mRenderData);
-  for (int i = 0; i < mRenderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     CommandBuffer::cleanup(mRenderData, mRenderData.rdCommandPool, mRenderData.rdCommandBuffers[i]);
     CommandBuffer::cleanup(mRenderData, mRenderData.rdComputeCommandPool, mRenderData.rdComputeCommandBuffers[i]);
   }
@@ -8314,16 +8434,16 @@ void VkRenderer::cleanup() {
   CommandPool::cleanup(mRenderData, mRenderData.rdCommandPool);
   CommandPool::cleanup(mRenderData, mRenderData.rdComputeCommandPool);
 
-  VertexBuffer::cleanup(mRenderData, mLineVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mSphereVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mLevelAABBVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mLevelOctreeVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mLevelWireframeVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mIKLinesVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mGroundMeshVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mGroundMeshNeighborVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mInstancePathVertexBuffer);
-  VertexBuffer::cleanup(mRenderData, mSkyboxBuffer);
+  VertexBuffer::cleanup(mRenderData, mLineVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mSphereVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mLevelAABBVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mLevelOctreeVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mLevelWireframeVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mIKLinesVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mGroundMeshVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mGroundMeshNeighborVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mInstancePathVertexBuffers);
+  VertexBuffer::cleanup(mRenderData, mSkyboxBuffers);
 
   SkinningPipeline::cleanup(mRenderData, mRenderData.rdAssimpPipeline);
   SkinningPipeline::cleanup(mRenderData, mRenderData.rdAssimpSkinningPipeline);
@@ -8361,59 +8481,59 @@ void VkRenderer::cleanup() {
   PipelineLayout::cleanup(mRenderData, mRenderData.rdCompositePipelineLayout);
 
   UniformBuffer::cleanup(mRenderData, mPerspectiveViewMatrixUBO);
-  ShaderStorageBuffer::cleanup(mRenderData, mShaderTRSMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mPerInstanceAnimDataBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mShaderModelRootMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mShaderBoneMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mSelectedInstanceBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mBoundingSphereBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mSphereModelRootMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mSpherePerInstanceAnimDataBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mSphereTRSMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mSphereBoneMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mFaceAnimPerInstanceDataBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mShaderLevelRootMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mIKBoneMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mIKTRSMatrixBuffer);
+  ShaderStorageBuffer::cleanup(mRenderData, mShaderTRSMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mPerInstanceAnimDataBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mShaderModelRootMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mShaderBoneMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mSelectedInstanceBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mBoundingSphereBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mSphereModelRootMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mSpherePerInstanceAnimDataBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mSphereTRSMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mSphereBoneMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mFaceAnimPerInstanceDataBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mShaderLevelRootMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mIKBoneMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mIKTRSMatrixBuffers);
 
   Texture::cleanup(mRenderData, mSkyboxTexture);
 
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpSkinningDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeTransformDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeMatrixMultDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpSelectionDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpSkinningSelectionDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpSkinningMorphDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpLevelDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdLineDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdSphereDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdGroundMeshDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdSkyboxDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdCompositeDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeSphereTransformDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeIKDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1,
-    &mRenderData.rdAssimpComputeBoundingSpheresDescriptorSet);
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpSkinningDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeTransformDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeMatrixMultDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpSelectionDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpSkinningSelectionDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpSkinningMorphDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpLevelDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdLineDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdSphereDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdGroundMeshDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdSkyboxDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdCompositeDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeSphereTransformDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeSphereMatrixMultDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeIKDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight,
+    mRenderData.rdAssimpComputeBoundingSpheresDescriptorSets.data());
 
   vkDestroyDescriptorSetLayout(mRenderData.rdVkbDevice.device, mRenderData.rdAssimpDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(mRenderData.rdVkbDevice.device, mRenderData.rdAssimpSkinningDescriptorLayout, nullptr);

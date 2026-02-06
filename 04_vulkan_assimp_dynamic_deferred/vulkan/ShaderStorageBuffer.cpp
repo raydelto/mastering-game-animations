@@ -3,6 +3,16 @@
 
 #include <VkBootstrap.h>
 
+bool ShaderStorageBuffer::init(VkRenderData& renderData, std::vector<VkShaderStorageBufferData> &SSBOData, size_t bufferSize) {
+  bool success = true;
+  for (int i = 0; i < SSBOData.size(); ++i) {
+    if (!init(renderData, SSBOData.at(i), bufferSize)) {
+      success = false;
+    }
+  }
+  return success;
+}
+
 bool ShaderStorageBuffer::init(VkRenderData& renderData, VkShaderStorageBufferData &SSBOData, size_t bufferSize) {
   VkBufferCreateInfo bufferInfo{};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -59,6 +69,12 @@ bool ShaderStorageBuffer::checkForResize(VkRenderData& renderData, VkShaderStora
     return true;
   }
   return false;
+}
+
+void ShaderStorageBuffer::cleanup(VkRenderData& renderData, std::vector<VkShaderStorageBufferData> &SSBOData) {
+  for (int i = 0; i < SSBOData.size(); ++i) {
+    cleanup(renderData, SSBOData.at(i));
+  }
 }
 
 void ShaderStorageBuffer::cleanup(VkRenderData& renderData, VkShaderStorageBufferData &SSBOData) {

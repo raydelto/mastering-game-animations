@@ -130,13 +130,15 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 }
 
 bool VkRenderer::deviceInit() {
-  /* instance and window - we need at least Vukan 1.1 for the "VK_KHR_maintenance1" extension */
+  /* instance and window - we need at least Vukan 1.3 for dynamic rendering */
   vkb::InstanceBuilder instBuild;
   auto instRet = instBuild
-    .use_default_debug_messenger()
-    .request_validation_layers()
-    .require_api_version(1, 3, 0)
-    .build();
+  .use_default_debug_messenger()
+  .request_validation_layers()
+  .enable_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) // required to use VK_EXT_swapchain_maintenance1
+  .enable_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) // required to use VK_EXT_surface_maintenance1
+  .require_api_version(1, 3, 0)
+  .build();
 
   if (!instRet) {
     Logger::log(1, "%s error: could not build vkb instance\n", __FUNCTION__);
@@ -150,39 +152,38 @@ bool VkRenderer::deviceInit() {
     return false;
   }
 
-  /* force anisotropy */
-  VkPhysicalDeviceFeatures requiredFeatures{};
-  requiredFeatures.samplerAnisotropy = VK_TRUE;
+  // enable dynamic rendering
+  VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature{};
+  dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+  dynamicRenderingFeature.dynamicRendering = VK_TRUE;
 
-  /* just get the first available device */
+  // local read, provided by VK_VERSION_1_4
+  VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR dynamicRenderingLocalReadFeature{};
+  dynamicRenderingLocalReadFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR;
+  dynamicRenderingLocalReadFeature.dynamicRenderingLocalRead = VK_TRUE;
+
+  // force anisotropy and line width
+  VkPhysicalDeviceFeatures vk10features{};
+  vk10features.samplerAnisotropy = VK_TRUE;
+  vk10features.wideLines = VK_TRUE;
+
+  // just get the first available device
   vkb::PhysicalDeviceSelector physicalDevSel{mRenderData.rdVkbInstance};
-  auto firstPysicalDevSelRet = physicalDevSel
-    .set_surface(mSurface)
-    .set_required_features(requiredFeatures)
-    .select();
+  auto physicalDevSelRet = physicalDevSel
+  .set_surface(mSurface)
+  .set_required_features(vk10features)
+  .add_required_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+  .add_required_extension_features(dynamicRenderingFeature)
+  .add_required_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME)
+  .add_required_extension_features(dynamicRenderingLocalReadFeature)
+  .select();
 
-  if (!firstPysicalDevSelRet) {
+  if (!physicalDevSelRet) {
     Logger::log(1, "%s error: could not get physical devices\n", __FUNCTION__);
     return false;
   }
 
-  /* a 2nd call is required to enable all the supported features, like wideLines */
-  VkPhysicalDeviceFeatures physFeatures;
-  vkGetPhysicalDeviceFeatures(firstPysicalDevSelRet.value(), &physFeatures);
-
-  auto secondPhysicalDevSelRet = physicalDevSel
-    .set_surface(mSurface)
-    .set_required_features(physFeatures)
-    .add_required_extension("VK_KHR_dynamic_rendering")
-    .add_required_extension("VK_KHR_dynamic_rendering_local_read")
-    .select();
-
-  if (!secondPhysicalDevSelRet) {
-    Logger::log(1, "%s error: could not get physical devices\n", __FUNCTION__);
-    return false;
-  }
-
-  mRenderData.rdVkbPhysicalDevice = secondPhysicalDevSelRet.value();
+  mRenderData.rdVkbPhysicalDevice = physicalDevSelRet.value();
   Logger::log(1, "%s: found physical device '%s'\n", __FUNCTION__, mRenderData.rdVkbPhysicalDevice.name.c_str());
 
   /* required for dynamic buffer with world position matrices */
@@ -191,23 +192,8 @@ bool VkRenderer::deviceInit() {
   mMinSSBOOffsetAlignment = std::max(minSSBOOffsetAlignment, sizeof(glm::mat4));
   Logger::log(1, "%s: SSBO offset has been adjusted to %i bytes\n", __FUNCTION__, mMinSSBOOffsetAlignment);
 
-  // enable dynamic rendering
-  VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature {
-    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
-    .dynamicRendering = VK_TRUE,
-  };
-
-  // Provided by VK_VERSION_1_4
-  VkPhysicalDeviceDynamicRenderingLocalReadFeatures dynamicRenderingLocalReadFeature {
-    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES,
-    .dynamicRenderingLocalRead = VK_TRUE,
-  };
-
   vkb::DeviceBuilder devBuilder{mRenderData.rdVkbPhysicalDevice};
-  auto devBuilderRet = devBuilder
-  .add_pNext(&dynamicRenderingFeature)
-  .add_pNext(&dynamicRenderingLocalReadFeature)
-  .build();
+  auto devBuilderRet = devBuilder.build();
   if (!devBuilderRet) {
     Logger::log(1, "%s error: could not get devices\n", __FUNCTION__);
     return false;
@@ -363,42 +349,51 @@ bool VkRenderer::createDescriptorLayouts() {
 
 bool VkRenderer::createDescriptorSets() {
   /* non-animated models */
+  mRenderData.rdAssimpDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+  // we need a matching number of layouts xD
+  std::vector<VkDescriptorSetLayout> assimpLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpDescriptorLayout);
+
   VkDescriptorSetAllocateInfo descriptorAllocateInfo{};
   descriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   descriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-  descriptorAllocateInfo.descriptorSetCount = 1;
-  descriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpDescriptorLayout;
+  descriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+  descriptorAllocateInfo.pSetLayouts = assimpLayouts.data();
 
   VkResult result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &descriptorAllocateInfo,
-      &mRenderData.rdAssimpDescriptorSet);
+      mRenderData.rdAssimpDescriptorSets.data());
    if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: could not allocate Assimp descriptor set (error: %i)\n", __FUNCTION__, result);
     return false;
   }
 
   /* animated models */
+  mRenderData.rdAssimpSkinningDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+
   VkDescriptorSetAllocateInfo skinningDescriptorAllocateInfo{};
   skinningDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   skinningDescriptorAllocateInfo.descriptorPool = mRenderData.rdDescriptorPool;
-  skinningDescriptorAllocateInfo.descriptorSetCount = 1;
-  skinningDescriptorAllocateInfo.pSetLayouts = &mRenderData.rdAssimpDescriptorLayout;
+  skinningDescriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+  skinningDescriptorAllocateInfo.pSetLayouts = assimpLayouts.data();
 
   result = vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &skinningDescriptorAllocateInfo,
-    &mRenderData.rdAssimpSkinningDescriptorSet);
+    mRenderData.rdAssimpSkinningDescriptorSets.data());
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: could not allocate Assimp Skinning descriptor set (error: %i)\n", __FUNCTION__, result);
     return false;
   }
 
   /* composite */
+  mRenderData.rdCompositeDescriptorSets.resize(mRenderData.rdNumFramesInFlight);
+  std::vector<VkDescriptorSetLayout> compositeLayouts(mRenderData.rdNumFramesInFlight, mRenderData.rdCompositeDescriptorLayout);
+
   VkDescriptorSetAllocateInfo compositeAllocInfo{};
   compositeAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   compositeAllocInfo.descriptorPool = mRenderData.rdDescriptorPool;
-  compositeAllocInfo.descriptorSetCount = 1;
-  compositeAllocInfo.pSetLayouts = &mRenderData.rdCompositeDescriptorLayout;
+  compositeAllocInfo.descriptorSetCount = static_cast<uint32_t>(mRenderData.rdNumFramesInFlight);
+  compositeAllocInfo.pSetLayouts = compositeLayouts.data();
 
   if (vkAllocateDescriptorSets(mRenderData.rdVkbDevice.device, &compositeAllocInfo,
-    &mRenderData.rdCompositeDescriptorSet) != VK_SUCCESS) {
+    mRenderData.rdCompositeDescriptorSets.data()) != VK_SUCCESS) {
     Logger::log(1, "%s error: could not allocate memory for composite descriptor set", __FUNCTION__);
     return false;
   }
@@ -413,7 +408,7 @@ bool VkRenderer::updateDescriptorSets() {
 
   Logger::log(1, "%s: updating descriptor sets\n", __FUNCTION__);
   /* we must update the descriptor sets whenever the buffer size has changed */
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* non-animated shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -421,14 +416,14 @@ bool VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo worldPosInfo{};
-    worldPosInfo.buffer = mWorldPosBuffer.buffer;
+    worldPosInfo.buffer = mWorldPosBuffers.at(i).buffer;
     worldPosInfo.offset = 0;
     worldPosInfo.range = VK_WHOLE_SIZE;
 
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -436,7 +431,7 @@ bool VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet posWriteDescriptorSet{};
     posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSet;
+    posWriteDescriptorSet.dstSet = mRenderData.rdAssimpDescriptorSets.at(i);
     posWriteDescriptorSet.dstBinding = 1;
     posWriteDescriptorSet.descriptorCount = 1;
     posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
@@ -447,7 +442,7 @@ bool VkRenderer::updateDescriptorSets() {
        writeDescriptorSets.data(), 0, nullptr);
   }
 
-  {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     /* animated shader */
     VkDescriptorBufferInfo matrixInfo{};
     matrixInfo.buffer = mPerspectiveViewMatrixUBO.buffer;
@@ -455,7 +450,7 @@ bool VkRenderer::updateDescriptorSets() {
     matrixInfo.range = VK_WHOLE_SIZE;
 
     VkDescriptorBufferInfo boneMatrixInfo{};
-    boneMatrixInfo.buffer = mBoneMatrixBuffer.buffer;
+    boneMatrixInfo.buffer = mBoneMatrixBuffers.at(i).buffer;
     boneMatrixInfo.offset = 0;
     boneMatrixInfo.range = VK_WHOLE_SIZE;
 
@@ -463,7 +458,7 @@ bool VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    matrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     matrixWriteDescriptorSet.dstBinding = 0;
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
@@ -471,7 +466,7 @@ bool VkRenderer::updateDescriptorSets() {
     VkWriteDescriptorSet boneMatrixWriteDescriptorSet{};
     boneMatrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     boneMatrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSet;
+    boneMatrixWriteDescriptorSet.dstSet = mRenderData.rdAssimpSkinningDescriptorSets.at(i);
     boneMatrixWriteDescriptorSet.dstBinding = 1;
     boneMatrixWriteDescriptorSet.descriptorCount = 1;
     boneMatrixWriteDescriptorSet.pBufferInfo = &boneMatrixInfo;
@@ -486,48 +481,50 @@ bool VkRenderer::updateDescriptorSets() {
 
 bool VkRenderer::updateGBufferDescriptorSets() {
   /* composite */
-  VkDescriptorImageInfo colorInfo{};
-  colorInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  colorInfo.imageView = mRenderData.gBuffer.color.imageView;
-  colorInfo.sampler = VK_NULL_HANDLE;
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VkDescriptorImageInfo colorInfo{};
+    colorInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    colorInfo.imageView = mRenderData.gBuffer.color.imageView;
+    colorInfo.sampler = VK_NULL_HANDLE;
 
-  VkDescriptorImageInfo positionInfo{};
-  positionInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  positionInfo.imageView = mRenderData.gBuffer.position.imageView;
-  positionInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo positionInfo{};
+    positionInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    positionInfo.imageView = mRenderData.gBuffer.position.imageView;
+    positionInfo.sampler = VK_NULL_HANDLE;
 
-  VkDescriptorImageInfo normalInfo{};
-  normalInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR;
-  normalInfo.imageView = mRenderData.gBuffer.normal.imageView;
-  normalInfo.sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo normalInfo{};
+    normalInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    normalInfo.imageView = mRenderData.gBuffer.normal.imageView;
+    normalInfo.sampler = VK_NULL_HANDLE;
 
-  VkWriteDescriptorSet colorWrite{};
-  colorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  colorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  colorWrite.descriptorCount = 1;
-  colorWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  colorWrite.dstBinding = 0;
-  colorWrite.pImageInfo = &colorInfo;
+    VkWriteDescriptorSet colorWrite{};
+    colorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    colorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    colorWrite.descriptorCount = 1;
+    colorWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    colorWrite.dstBinding = 0;
+    colorWrite.pImageInfo = &colorInfo;
 
-  VkWriteDescriptorSet positionWrite{};
-  positionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  positionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  positionWrite.descriptorCount = 1;
-  positionWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  positionWrite.dstBinding = 1;
-  positionWrite.pImageInfo = &positionInfo;
+    VkWriteDescriptorSet positionWrite{};
+    positionWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    positionWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    positionWrite.descriptorCount = 1;
+    positionWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    positionWrite.dstBinding = 1;
+    positionWrite.pImageInfo = &positionInfo;
 
-  VkWriteDescriptorSet normalWrite{};
-  normalWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  normalWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-  normalWrite.descriptorCount = 1;
-  normalWrite.dstSet = mRenderData.rdCompositeDescriptorSet;
-  normalWrite.dstBinding = 2;
-  normalWrite.pImageInfo = &normalInfo;
+    VkWriteDescriptorSet normalWrite{};
+    normalWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    normalWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    normalWrite.descriptorCount = 1;
+    normalWrite.dstSet = mRenderData.rdCompositeDescriptorSets.at(i);
+    normalWrite.dstBinding = 2;
+    normalWrite.pImageInfo = &normalInfo;
 
-  std::vector<VkWriteDescriptorSet> writeSets = { colorWrite, positionWrite, normalWrite };
+    std::vector<VkWriteDescriptorSet> writeSets = { colorWrite, positionWrite, normalWrite };
 
-  vkUpdateDescriptorSets(mRenderData.rdVkbDevice.device, static_cast<uint32_t>(writeSets.size()), writeSets.data(), 0, nullptr);
+    vkUpdateDescriptorSets(mRenderData.rdVkbDevice.device, static_cast<uint32_t>(writeSets.size()), writeSets.data(), 0, nullptr);
+  }
 
   return true;
 }
@@ -654,6 +651,9 @@ bool VkRenderer::createSwapchain() {
   mRenderData.rdVkbSwapchain = swapChainBuildRet.value();
   mRenderData.rdSwapchainImages = swapChainBuildRet.value().get_images().value();
   mRenderData.rdSwapchainImageViews = swapChainBuildRet.value().get_image_views().value();
+  mRenderData.rdNumFramesInFlight = mRenderData.rdSwapchainImages.size();
+
+  Logger::log(1, "%s: Swapchain requested %i images, got %i\n", __FUNCTION__, mRenderData.MAX_FRAMES_IN_FLIGHT, mRenderData.rdNumFramesInFlight);
 
   return true;
 }
@@ -705,12 +705,15 @@ bool VkRenderer::createMatrixUBO() {
 }
 
 bool VkRenderer::createSSBOs() {
-  if (!ShaderStorageBuffer::init(mRenderData, mWorldPosBuffer)) {
+  mWorldPosBuffers.resize(mRenderData.rdNumFramesInFlight);
+  mBoneMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
+
+  if (!ShaderStorageBuffer::init(mRenderData, mWorldPosBuffers)) {
     Logger::log(1, "%s error: could not create world position SSBO\n", __FUNCTION__);
     return false;
   }
 
-  if (!ShaderStorageBuffer::init(mRenderData, mBoneMatrixBuffer)) {
+  if (!ShaderStorageBuffer::init(mRenderData, mBoneMatrixBuffers)) {
     Logger::log(1, "%s error: could not create bone matrix SSBO\n", __FUNCTION__);
     return false;
   }
@@ -791,8 +794,8 @@ bool VkRenderer::createCommandPool() {
 }
 
 bool VkRenderer::createCommandBuffer() {
-  mRenderData.rdCommandBuffers.resize(mRenderData.MAX_FRAMES_IN_FLIGHT);
-  for (int i = 0; i < mRenderData.MAX_FRAMES_IN_FLIGHT; ++i) {
+  mRenderData.rdCommandBuffers.resize(mRenderData.rdNumFramesInFlight);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
     if (!CommandBuffer::init(mRenderData, mRenderData.rdCommandBuffers[i])) {
       Logger::log(1, "%s error: could not create command buffers\n", __FUNCTION__);
       return false;
@@ -832,6 +835,34 @@ bool VkRenderer::initUserInterface() {
 
   return true;
 }
+
+void VkRenderer::transitionImageForImGui(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+  VkImageMemoryBarrier imageMemoryBarrier {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    .oldLayout = oldLayout,
+    .newLayout = newLayout,
+    .image = image,
+    .subresourceRange = {
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+    }
+  };
+
+  vkCmdPipelineBarrier(
+    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+    0,
+    0, nullptr, 0, nullptr,
+    1, &imageMemoryBarrier // pImageMemoryBarriers
+  );
+}
+
 
 bool VkRenderer::hasModel(std::string modelFileName) {
   auto modelIter =  std::find_if(mModelInstData.miModelList.begin(), mModelInstData.miModelList.end(),
@@ -1207,8 +1238,8 @@ bool VkRenderer::draw(float deltaTime) {
   /* we need to update descriptors after the upload if buffer size changed */
   bool bufferResized = false;
   mUploadToUBOTimer.start();
-  bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mBoneMatrixBuffer, mModelBoneMatrices);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mWorldPosBuffer, mWorldPosMatrices);
+  bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mBoneMatrixBuffers.at(mRenderData.currentFrame), mModelBoneMatrices);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mWorldPosBuffers.at(mRenderData.currentFrame), mWorldPosMatrices);
 
   if (bufferResized) {
     updateDescriptorSets();
@@ -1368,7 +1399,7 @@ bool VkRenderer::draw(float deltaTime) {
         vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSkinningPipeline);
 
         vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                mRenderData.rdAssimpSkinningPipelineLayout, 1, 1, &mRenderData.rdAssimpSkinningDescriptorSet, 0, nullptr);
+                                mRenderData.rdAssimpSkinningPipelineLayout, 1, 1, &mRenderData.rdAssimpSkinningDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         model->drawInstanced(mRenderData, numberOfInstances);
         worldPosOffsetSkinned += numberOfInstances * numberOfBones;
       } else {
@@ -1382,7 +1413,7 @@ bool VkRenderer::draw(float deltaTime) {
         vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
 
         vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+                                mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         model->drawInstanced(mRenderData, numberOfInstances);
         worldPosOffset += numberOfInstances;
       }
@@ -1406,7 +1437,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
   vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
-                          &mRenderData.rdCompositeDescriptorSet, 0, nullptr);
+                          &mRenderData.rdCompositeDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
   vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
 
@@ -1431,18 +1462,31 @@ bool VkRenderer::draw(float deltaTime) {
     .pColorAttachments = uiAttachmentInfos.data(),
   };
 
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
+  // images must be in layout VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL for ImGui
+  transitionImageForImGui(mRenderData.gBuffer.color.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  transitionImageForImGui(mRenderData.gBuffer.position.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  transitionImageForImGui(mRenderData.gBuffer.normal.image, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
   mUIGenerateTimer.start();
   mUserInterface.hideMouse(mMouseLock);
   mUserInterface.createFrame(mRenderData, mModelInstData);
   mRenderData.rdUIGenerateTime += mUIGenerateTimer.stop();
 
+  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &viewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &scissor);
+
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
+
   mUIDrawTimer.start();
   mUserInterface.render(mRenderData);
   mRenderData.rdUIDrawTime = mUIDrawTimer.stop();
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+
+  // transition back to VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ
+  transitionImageForImGui(mRenderData.gBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  transitionImageForImGui(mRenderData.gBuffer.position.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  transitionImageForImGui(mRenderData.gBuffer.normal.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
 
   // layout transition to present
   VkImageMemoryBarrier secondImageMemoryBarrier {
@@ -1516,7 +1560,7 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
-  mRenderData.currentFrame = (mRenderData.currentFrame + 1) % mRenderData.MAX_FRAMES_IN_FLIGHT;
+  mRenderData.currentFrame = (mRenderData.currentFrame + 1) % mRenderData.rdNumFramesInFlight;
 
   return true;
 }
@@ -1543,7 +1587,7 @@ void VkRenderer::cleanup() {
   cleanupGBuffer();
 
   SyncObjects::cleanup(mRenderData);
-  for (int i = 0; i < mRenderData.MAX_FRAMES_IN_FLIGHT;  ++i) {
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight;  ++i) {
     CommandBuffer::cleanup(mRenderData, mRenderData.rdCommandBuffers[i]);
   }
   CommandPool::cleanup(mRenderData);
@@ -1557,12 +1601,12 @@ void VkRenderer::cleanup() {
   PipelineLayout::cleanup(mRenderData, mRenderData.rdCompositePipelineLayout);
 
   UniformBuffer::cleanup(mRenderData, mPerspectiveViewMatrixUBO);
-  ShaderStorageBuffer::cleanup(mRenderData, mBoneMatrixBuffer);
-  ShaderStorageBuffer::cleanup(mRenderData, mWorldPosBuffer);
+  ShaderStorageBuffer::cleanup(mRenderData, mBoneMatrixBuffers);
+  ShaderStorageBuffer::cleanup(mRenderData, mWorldPosBuffers);
 
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1, &mRenderData.rdAssimpDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1, &mRenderData.rdAssimpSkinningDescriptorSet);
-  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, 1, &mRenderData.rdCompositeDescriptorSet);
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight, mRenderData.rdAssimpSkinningDescriptorSets.data());
+  vkFreeDescriptorSets(mRenderData.rdVkbDevice.device, mRenderData.rdDescriptorPool, mRenderData.rdNumFramesInFlight, mRenderData.rdCompositeDescriptorSets.data());
 
   vkDestroyDescriptorSetLayout(mRenderData.rdVkbDevice.device, mRenderData.rdAssimpDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(mRenderData.rdVkbDevice.device, mRenderData.rdAssimpTextureDescriptorLayout, nullptr);

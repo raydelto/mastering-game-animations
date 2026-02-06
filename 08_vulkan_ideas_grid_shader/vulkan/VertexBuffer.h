@@ -8,6 +8,8 @@
 
 class VertexBuffer {
   public:
+    static bool init(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData,
+      unsigned int bufferSize);
     static bool init(VkRenderData &renderData, VkVertexBufferData &vertexBufferData,
       unsigned int bufferSize);
 
@@ -20,6 +22,7 @@ class VertexBuffer {
     static bool uploadData(VkRenderData &renderData, VkVertexBufferData &vertexBufferData,
       std::vector<glm::vec3> vetrexData);
 
+    static void cleanup(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData);
     static void cleanup(VkRenderData &renderData, VkVertexBufferData &vertexBufferData);
 
   private:

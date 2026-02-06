@@ -68,11 +68,11 @@ class VkRenderer {
 
     /* for non-animated models */
     std::vector<glm::mat4> mWorldPosMatrices{};
-    VkShaderStorageBufferData mWorldPosBuffer{};
+    std::vector<VkShaderStorageBufferData> mWorldPosBuffers{};
 
     /* for animated models */
     std::vector<glm::mat4> mModelBoneMatrices{};
-    VkShaderStorageBufferData mBoneMatrixBuffer{};
+    std::vector<VkShaderStorageBufferData> mBoneMatrixBuffers{};
 
     bool mMouseLock = false;
     int mMouseXPos = 0;
@@ -115,4 +115,6 @@ class VkRenderer {
 
     bool createGBuffer();
     void cleanupGBuffer();
+
+    void transitionImageForImGui(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
 };

@@ -125,9 +125,9 @@ bool UserInterface::init(VkRenderData& renderData) {
 
 void UserInterface::createDescriptorSets(VkRenderData& renderData) {
   /* color attachment textures */
-  renderData.gBuffer.color.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.color.sampler, renderData.gBuffer.color.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
-  renderData.gBuffer.position.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.position.sampler, renderData.gBuffer.position.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
-  renderData.gBuffer.normal.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.normal.sampler, renderData.gBuffer.normal.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  renderData.gBuffer.color.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.color.sampler, renderData.gBuffer.color.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  renderData.gBuffer.position.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.position.sampler, renderData.gBuffer.position.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  renderData.gBuffer.normal.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.gBuffer.normal.sampler, renderData.gBuffer.normal.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSelectionImageUIDescriptorset = ImGui_ImplVulkan_AddTexture(renderData.rdSelectionImageSampler, renderData.rdSelectionImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 

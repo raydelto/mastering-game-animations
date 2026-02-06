@@ -10,6 +10,7 @@
 class ShaderStorageBuffer {
   public:
     /* set an arbitraty buffer size as default */
+    static bool init(VkRenderData &renderData, std::vector<VkShaderStorageBufferData> &SSBOData, size_t bufferSize = 1024);
     static bool init(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, size_t bufferSize = 1024);
 
     static bool uploadSsboData(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData,
@@ -18,5 +19,6 @@ class ShaderStorageBuffer {
     static bool checkForResize(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData,
       size_t bufferSize);
 
+    static void cleanup(VkRenderData &renderData, std::vector<VkShaderStorageBufferData> &SSBOData);
     static void cleanup(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData);
 };

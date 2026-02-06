@@ -131,6 +131,7 @@ struct VkRenderData {
 
   /* Vulkan specific stuff */
   const int MAX_FRAMES_IN_FLIGHT = 3;
+  int rdNumFramesInFlight = 1;
   int currentFrame = 0;
 
   VmaAllocator rdAllocator = nullptr;
@@ -171,9 +172,9 @@ struct VkRenderData {
   VkDescriptorSetLayout rdAssimpTextureDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdCompositeDescriptorLayout = VK_NULL_HANDLE;
 
-  VkDescriptorSet rdAssimpDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdCompositeDescriptorSet = VK_NULL_HANDLE;
+  std::vector<VkDescriptorSet> rdAssimpDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningDescriptorSets{};
+  std::vector<VkDescriptorSet> rdCompositeDescriptorSets{};
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

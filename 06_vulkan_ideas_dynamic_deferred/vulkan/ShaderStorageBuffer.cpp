@@ -3,6 +3,16 @@
 
 #include <VkBootstrap.h>
 
+bool ShaderStorageBuffer::init(VkRenderData& renderData, std::vector<VkShaderStorageBufferData> &SSBOData, size_t bufferSize) {
+  bool success = true;
+  for (int i = 0; i < SSBOData.size(); ++i) {
+    if (!init(renderData, SSBOData.at(i), bufferSize)) {
+      success = false;
+    }
+  }
+  return success;
+}
+
 bool ShaderStorageBuffer::init(VkRenderData& renderData, VkShaderStorageBufferData &SSBOData, size_t bufferSize) {
   /* avoid errors with zero sized buffers */
   if (bufferSize == 0) {
@@ -144,6 +154,12 @@ void ShaderStorageBuffer::cleanup(VkRenderData& renderData, VkShaderStorageBuffe
     Logger::log(1, "%s fatal error: could not wait for device idle (error: %i)\n", __FUNCTION__, result);
   }
   vmaDestroyBuffer(renderData.rdAllocator, SSBOData.buffer, SSBOData.bufferAlloc);
+}
+
+void ShaderStorageBuffer::cleanup(VkRenderData& renderData, std::vector<VkShaderStorageBufferData> &SSBOData) {
+  for (int i = 0; i < SSBOData.size(); ++i) {
+    cleanup(renderData, SSBOData.at(i));
+  }
 }
 
 size_t ShaderStorageBuffer::getBufferSize(VkShaderStorageBufferData& SSBOData) {
