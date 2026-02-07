@@ -705,9 +705,6 @@ bool VkRenderer::createMatrixUBO() {
 }
 
 bool VkRenderer::createSSBOs() {
-  mWorldPosBuffers.resize(mRenderData.rdNumFramesInFlight);
-  mBoneMatrixBuffers.resize(mRenderData.rdNumFramesInFlight);
-
   if (!ShaderStorageBuffer::init(mRenderData, mWorldPosBuffers)) {
     Logger::log(1, "%s error: could not create world position SSBO\n", __FUNCTION__);
     return false;
@@ -854,7 +851,7 @@ void VkRenderer::transitionImageForImGui(VkImage image, VkImageLayout oldLayout,
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
     0,
@@ -1157,7 +1154,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   handleMovementKeys();
 
-  VkResult result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+  VkResult result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: waiting for fence failed (error: %i)\n", __FUNCTION__, result);
     return false;
@@ -1165,7 +1162,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   uint32_t imageIndex = 0;
   result = vkAcquireNextImageKHR(mRenderData.rdVkbDevice.device,
-      mRenderData.rdVkbSwapchain.swapchain, UINT64_MAX, mRenderData.rdPresentSemaphores[mRenderData.currentFrame], VK_NULL_HANDLE,
+      mRenderData.rdVkbSwapchain.swapchain, UINT64_MAX, mRenderData.rdPresentSemaphores.at(mRenderData.currentFrame), VK_NULL_HANDLE,
       &imageIndex);
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -1177,7 +1174,7 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
-  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences[mRenderData.currentFrame]);
+  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error:  fence reset failed (error: %i)\n", __FUNCTION__, result);
     return false;
@@ -1246,12 +1243,12 @@ bool VkRenderer::draw(float deltaTime) {
   }
   mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
-  if (!CommandBuffer::reset(mRenderData.rdCommandBuffers[mRenderData.currentFrame])) {
+  if (!CommandBuffer::reset(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to reset command buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!CommandBuffer::beginSingleShot(mRenderData.rdCommandBuffers[mRenderData.currentFrame])) {
+  if (!CommandBuffer::beginSingleShot(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to begin command buffer\n", __FUNCTION__);
     return false;
   }
@@ -1269,8 +1266,8 @@ bool VkRenderer::draw(float deltaTime) {
   scissor.offset = { 0, 0 };
   scissor.extent = mRenderData.rdVkbSwapchain.extent;
 
-  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &viewport);
-  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &scissor);
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
 
   VkClearValue colorClearValue;
   colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
@@ -1302,7 +1299,7 @@ bool VkRenderer::draw(float deltaTime) {
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
     0,
@@ -1314,7 +1311,7 @@ bool VkRenderer::draw(float deltaTime) {
   firstImageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
   firstImageMemoryBarrier.image = mRenderData.rdDepthImage;
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
     0,
@@ -1374,7 +1371,7 @@ bool VkRenderer::draw(float deltaTime) {
     .pDepthAttachment = &depthAttachmentInfo,
   };
 
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &renderInfo);
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &renderInfo);
 
   /* draw the models */
   uint32_t worldPosOffset = 0;
@@ -1392,13 +1389,13 @@ bool VkRenderer::draw(float deltaTime) {
         mUploadToUBOTimer.start();
         mModelData.pkModelStride = numberOfBones;
         mModelData.pkWorldPosOffset = worldPosOffsetSkinned;
-        vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSkinningPipelineLayout,
+        vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningPipelineLayout,
           VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mModelData);
         mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
-        vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSkinningPipeline);
+        vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSkinningPipeline);
 
-        vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 mRenderData.rdAssimpSkinningPipelineLayout, 1, 1, &mRenderData.rdAssimpSkinningDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         model->drawInstanced(mRenderData, numberOfInstances);
         worldPosOffsetSkinned += numberOfInstances * numberOfBones;
@@ -1406,13 +1403,13 @@ bool VkRenderer::draw(float deltaTime) {
         /* non-animated models */
         mUploadToUBOTimer.start();
         mModelData.pkWorldPosOffset = worldPosOffset;
-        vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpPipelineLayout,
+        vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpPipelineLayout,
           VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mModelData);
         mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
-        vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
+        vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
 
-        vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+        vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
         model->drawInstanced(mRenderData, numberOfInstances);
         worldPosOffset += numberOfInstances;
@@ -1427,7 +1424,7 @@ bool VkRenderer::draw(float deltaTime) {
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // dstStageMask
     VK_DEPENDENCY_BY_REGION_BIT,
@@ -1435,13 +1432,13 @@ bool VkRenderer::draw(float deltaTime) {
     0, nullptr, 0, nullptr
   );
 
-  vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
-  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
+  vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
+  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
                           &mRenderData.rdCompositeDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-  vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
+  vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
 
-  vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
   /* imGui overlay needs a separate rendering pass due to a different internal pipeline */
   VkRenderingAttachmentInfo swapchainUIAttachmentInfo {};
@@ -1472,16 +1469,16 @@ bool VkRenderer::draw(float deltaTime) {
   mUserInterface.createFrame(mRenderData, mModelInstData);
   mRenderData.rdUIGenerateTime += mUIGenerateTimer.stop();
 
-  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &viewport);
-  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &scissor);
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
 
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &uiRenderInfo);
 
   mUIDrawTimer.start();
   mUserInterface.render(mRenderData);
   mRenderData.rdUIDrawTime = mUIDrawTimer.stop();
 
-  vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
   // transition back to VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ
   transitionImageForImGui(mRenderData.gBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
@@ -1505,7 +1502,7 @@ bool VkRenderer::draw(float deltaTime) {
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // dstStageMask
     0,
@@ -1513,7 +1510,7 @@ bool VkRenderer::draw(float deltaTime) {
     1, &secondImageMemoryBarrier // pImageMemoryBarriers
   );
 
-  if (!CommandBuffer::end(mRenderData.rdCommandBuffers[mRenderData.currentFrame])) {
+  if (!CommandBuffer::end(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to end command buffer\n", __FUNCTION__);
     return false;
   }
@@ -1526,15 +1523,15 @@ bool VkRenderer::draw(float deltaTime) {
   submitInfo.pWaitDstStageMask = &waitStage;
 
   submitInfo.waitSemaphoreCount = 1;
-  submitInfo.pWaitSemaphores = &mRenderData.rdPresentSemaphores[mRenderData.currentFrame];
+  submitInfo.pWaitSemaphores = &mRenderData.rdPresentSemaphores.at(mRenderData.currentFrame);
 
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = &mRenderData.rdRenderSemaphores[imageIndex];
 
   submitInfo.commandBufferCount = 1;
-  submitInfo.pCommandBuffers = &mRenderData.rdCommandBuffers[mRenderData.currentFrame];
+  submitInfo.pCommandBuffers = &mRenderData.rdCommandBuffers.at(mRenderData.currentFrame);
 
-  result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences[mRenderData.currentFrame]);
+  result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: failed to submit draw command buffer (%i)\n", __FUNCTION__, result);
     return false;

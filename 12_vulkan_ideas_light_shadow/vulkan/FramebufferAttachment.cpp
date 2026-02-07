@@ -23,6 +23,8 @@ bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferDa
     return false;
   }
 
+  Logger::log(1, "%s: Image %p created\n", __FUNCTION__, bufferData.image);
+
   Logger::log(2, "%s: created frame buffer attachment\n", __FUNCTION__);
   return true;
 }
@@ -59,7 +61,7 @@ bool FramebufferAttachment::createImageView(VkRenderData& renderData, VkImage& i
   VkImageLayout destFormat = VK_IMAGE_LAYOUT_UNDEFINED;
   if (flags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
     aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    destFormat = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
+    destFormat = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   } else  if (flags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
     destFormat = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     if (format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D32_SFLOAT) {

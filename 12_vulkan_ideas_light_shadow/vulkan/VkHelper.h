@@ -47,6 +47,8 @@ class VkHelper {
     static bool createDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData, uint32_t numDynLigthsWithShadow);
     static void cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& imageData);
 
+    static void transitionImageLayout(VkRenderData& renderData, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
+
     static void initSSAO(VkRenderData& renderData);
     static bool createSSAONoiseTexture(VkRenderData& renderData, std::vector<glm::vec4> noiseData);
     static void cleanupSSAONoiseTexture(VkRenderData& renderData);

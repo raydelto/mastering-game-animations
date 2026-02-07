@@ -2,10 +2,10 @@
 layout (location = 0) in vec2 inUV;
 layout (location = 1) in flat uint inInstance;
 
-layout (location = 7) out vec4 FragColor;
+layout (location = 0) out vec4 FragColor;
 
-layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputDepth;
-layout (input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput inputNormal;
+layout (set = 0, binding = 2) uniform sampler2D lightInputDepth;
+layout (set = 0, binding = 3) uniform sampler2D lightInputNormal;
 
 layout (set = 0, binding = 4) uniform samplerCubeArray shadowCubeMap;
 
@@ -48,9 +48,9 @@ float unlinearizeDepth(float depth) {
 vec3 getWorldPosFromDepth(vec2 uv) {
   float depth = 0.0;
   if (farPlane == 0.0) {
-    depth = subpassLoad(inputDepth).r;
+    depth = texture(lightInputDepth, uv).r;
   } else {
-    depth = unlinearizeDepth(subpassLoad(inputDepth).r);
+    depth = unlinearizeDepth(texture(lightInputDepth, uv).r);
   }
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
@@ -79,7 +79,7 @@ void main() {
 
   vec3 viewPos = getWorldPosFromDepth(inUV);
   vec3 worldPos = vec3(invViewMat * vec4(getWorldPosFromDepth(inUV), 1.0));
-  vec3 normal = normalize(subpassLoad(inputNormal).rgb * 2.0 - 1.0);
+  vec3 normal = normalize(texture(lightInputNormal, inUV).rgb * 2.0 - 1.0);
 
   vec3 lightPos = lights[inInstance].position.xyz;
   vec3 lightDir = normalize(lightPos - worldPos);

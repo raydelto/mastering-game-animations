@@ -6,7 +6,9 @@
 
 bool VertexBuffer::init(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData,
     unsigned int bufferSize) {
+  vertexBufferData.resize(renderData.rdNumFramesInFlight);
   bool success = true;
+
   for (int i = 0; i < vertexBufferData.size(); ++i) {
     if (!init(renderData, vertexBufferData.at(i), bufferSize)) {
       success = false;

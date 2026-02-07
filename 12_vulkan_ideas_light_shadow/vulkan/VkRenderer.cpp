@@ -241,9 +241,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mInstancePathMesh = std::make_shared<VkSimpleMesh>();
   Logger::log(1, "%s: line mesh storages initialized\n", __FUNCTION__);
 
-  mAABBMesh = std::make_shared<VkSimpleMesh>();
-  Logger::log(1, "%s: AABB line mesh storage initialized\n", __FUNCTION__);
-
   mSphereModel = SimpleSphereModel(1.0, 5, 8, glm::vec3(1.0f, 1.0f, 1.0f));
   mSphereMesh = mSphereModel.getVertexData();
   Logger::log(1, "%s: Sphere line mesh storage initialized\n", __FUNCTION__);
@@ -254,17 +251,23 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   mFullSphereModel = FullSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
   mFullSphereMesh = mFullSphereModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereVertexBuffer, mFullSphereMesh.vertices);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereVertexBuffers.at(i), mFullSphereMesh.vertices);
+  }
 
   mFullSphereDebugModel = SimpleSphereModel(1.0, 50, 100, glm::vec3(1.0f, 1.0f, 1.0f));
   mFullSphereDebugMesh = mFullSphereDebugModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereDebugVertexBuffer, mFullSphereDebugMesh.vertices);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdLightSphereDebugVertexBuffers.at(i), mFullSphereDebugMesh.vertices);
+  }
 
   Logger::log(1, "%s: Light sphere line mesh storage initialized\n", __FUNCTION__);
 
   mSkyboxModel.init();
   VkSkyboxMesh skyboxMesh = mSkyboxModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdSkyboxBuffer, skyboxMesh.vertices);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdSkyboxBuffers.at(i), skyboxMesh.vertices);
+  }
 
   const std::string texName = "textures/skybox.jpg";
   if (!Texture::loadCubemapTexture(mRenderData, mRenderData.rdSkyboxTexture, texName, false)) {
@@ -275,7 +278,9 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   Logger::log(1, "%s: skybox successfully loaded\n", __FUNCTION__);
 
   VkSimpleMesh lightDebugMesh = mDynLightModel.getVertexData();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdDynamicLightDebugVertexBuffer, lightDebugMesh.vertices);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdDynamicLightDebugVertexBuffers.at(i), lightDebugMesh.vertices);
+  }
   Logger::log(1, "%s: Dynamic light debug line mesh storage initialized\n", __FUNCTION__);
 
   mBehaviorManager = std::make_shared<BehaviorManager>();
@@ -297,18 +302,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
     return false;
   }
   Logger::log(1, "%s: light mode '%s' loaded\n", __FUNCTION__, lightModelName.c_str());
-
-  // signal graphics semaphore before doing anything else to be able to run compute submit
-  VkSubmitInfo submitInfo{};
-  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.signalSemaphoreCount = 1;
-  submitInfo.pSignalSemaphores = &mRenderData.rdGraphicSemaphores[0];
-
-  VkResult result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: failed to submit initial semaphore (%i)\n", __FUNCTION__, result);
-    return false;
-  }
 
   // try to load the default configuration file
   if (loadConfigFile(mDefaultConfigFileName)) {
@@ -1541,7 +1534,9 @@ void VkRenderer::generateGroundTriangleData() {
   mGroundMeshVertexCount = groundMesh->vertices.size();
 
   mRenderData.rdUploadToVBOTimer.start();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdGroundMeshVertexBuffer, groundMesh->vertices);
+  for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdGroundMeshVertexBuffers.at(i), groundMesh->vertices);
+  }
   mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
 }
 
@@ -1574,7 +1569,9 @@ void VkRenderer::generateLevelAABB() {
 
   if (!mLevelAABBMesh->vertices.empty()) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelAABBVertexBuffer, mLevelAABBMesh->vertices);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelAABBVertexBuffers.at(i), mLevelAABBMesh->vertices);
+    }
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 }
@@ -1642,7 +1639,9 @@ void VkRenderer::generateLevelOctree() {
 
   if (!mLevelOctreeMesh->vertices.empty()) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelOctreeVertexBuffer, mLevelOctreeMesh->vertices);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelOctreeVertexBuffers.at(i), mLevelOctreeMesh->vertices);
+    }
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 }
@@ -1719,7 +1718,9 @@ void VkRenderer::generateLevelWireframe() {
 
   if (!mLevelWireframeMesh->vertices.empty()) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelWireframeVertexBuffer, mLevelWireframeMesh->vertices);
+    for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+      VertexBuffer::uploadData(mRenderData, mRenderData.rdLevelWireframeVertexBuffers.at(i), mLevelWireframeMesh->vertices);
+    }
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 
@@ -1840,7 +1841,7 @@ void VkRenderer::generateShaderLightData() {
     mRenderData.rdDynamicLightShadowMapData.cascades.resize(mRenderData.rdNumDynamicLightsWithShadow * 6);
 
     size_t shadowMapCascadeSize = sizeof(ShadowMapCascades) * std::max(static_cast<size_t>(mRenderData.rdNumDynamicLightsWithShadow * 6), static_cast<size_t>(4));
-    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffer, shadowMapCascadeSize);
+    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffers.at(mRenderData.currentFrame), shadowMapCascadeSize);
 
     if (bufferResized) {
       VkHelper::updateDescriptorSets(mRenderData);
@@ -2628,12 +2629,12 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
     // we need to update descriptors after the upload if buffer size changed
     bool bufferResized = false;
     mRenderData.rdUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdPerInstanceAnimDataBuffer, mPerInstanceAnimData);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdPerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mPerInstanceAnimData);
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
     // resize SSBO if needed
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       VkHelper::updateDescriptorSets(mRenderData);
@@ -2641,18 +2642,18 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
     }
 
     // record compute commands
-    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
       return false;
     }
 
-    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
       Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
       return false;
     }
 
-    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -2669,7 +2670,7 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
       computeShaderInstanceOffset += numberOfClips;
     }
 
-    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -2678,16 +2679,16 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
+    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
 
     // we must wait for the compute shaders to finish before we can read the bone data
-    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -2695,7 +2696,7 @@ bool VkRenderer::createAABBLookup(std::shared_ptr<AssimpModel> model) {
 
     // extract bone matrix from SSBO
     mRenderData.rdDownloadFromUBOTimer.start();
-    std::vector<glm::mat4> boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffer,
+    std::vector<glm::mat4> boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame),
       0, LOOKUP_SIZE * numberOfClips * numberOfBones);
     mRenderData.rdDownloadFromUBOTime += mRenderData.rdDownloadFromUBOTimer.stop();
 
@@ -2779,7 +2780,7 @@ bool VkRenderer::checkForInstanceCollisions() {
     }
 
     // resize SSBO if needed
-    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+    bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
     if (bufferResized) {
       VkHelper::updateSphereComputeDescriptorSets(mRenderData);
@@ -2826,13 +2827,13 @@ bool VkRenderer::checkForInstanceCollisions() {
       // we need to update descriptors after the upload if buffer size changed
       bool bufferResized = false;
       mRenderData.rdUploadToUBOTimer.start();
-      bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-      bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+      bufferResized =  ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+      bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
       mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
       // resize SSBO if needed
-      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffer, bufferMatrixSize);
-      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffer, trsMatrixSize);
+      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+      bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
       if (bufferResized) {
         VkHelper::updateDescriptorSets(mRenderData);
@@ -2843,18 +2844,18 @@ bool VkRenderer::checkForInstanceCollisions() {
       model->updateBoundingSphereAdjustments(mRenderData);
 
       // record compute commands
-      VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+      VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
       if (result != VK_SUCCESS) {
         Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
         return false;
       }
 
-      if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+      if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
         Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
         return false;
       }
 
-      if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+      if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
         Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
         return false;
       }
@@ -2862,7 +2863,7 @@ bool VkRenderer::checkForInstanceCollisions() {
       VkHelper::runBoundingSphereComputeShaders(mRenderData, model, numInstances, sphereModelOffset);
       sphereModelOffset += numberOfSpheres;
 
-      if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+      if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
         Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
         return false;
       }
@@ -2871,16 +2872,16 @@ bool VkRenderer::checkForInstanceCollisions() {
       VkSubmitInfo computeSubmitInfo{};
       computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
       computeSubmitInfo.commandBufferCount = 1;
-      computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
+      computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-      result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+      result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
       if (result != VK_SUCCESS) {
         Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
         return false;
       };
 
       // we must wait for the compute shaders to finish before we can read the bone data
-      result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+      result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
       if (result != VK_SUCCESS) {
         Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
         return false;
@@ -2890,7 +2891,7 @@ bool VkRenderer::checkForInstanceCollisions() {
 
     // read sphere SSBO
     mRenderData.rdDownloadFromUBOTimer.start();
-    std::vector<glm::vec4> boundingSpheres = ShaderStorageBuffer::getSsboDataVec4(mRenderData, mRenderData.rdBoundingSphereBuffer, totalSpheres);
+    std::vector<glm::vec4> boundingSpheres = ShaderStorageBuffer::getSsboDataVec4(mRenderData, mRenderData.rdBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres);
     mRenderData.rdDownloadFromUBOTime += mRenderData.rdDownloadFromUBOTimer.stop();
 
     sphereModelOffset = 0;
@@ -3539,14 +3540,14 @@ bool VkRenderer::createSelectedBoundingSpheres() {
     // resize SSBOs if needed
     bool bufferResized = false;
     mRenderData.rdUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
     // resize SSBO if needed
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffer, trsMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffer, numberOfSpheres * sizeof(glm::vec4));
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffers.at(mRenderData.currentFrame), numberOfSpheres * sizeof(glm::vec4));
 
     if (bufferResized) {
       VkHelper::updateDescriptorSets(mRenderData);
@@ -3557,18 +3558,18 @@ bool VkRenderer::createSelectedBoundingSpheres() {
     model->updateBoundingSphereAdjustments(mRenderData);
 
     // record compute commands
-    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
       return false;
     }
 
-    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
       Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
       return false;
     }
 
-    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3576,7 +3577,7 @@ bool VkRenderer::createSelectedBoundingSpheres() {
     VkHelper::runBoundingSphereComputeShaders(mRenderData, model, 1, 0);
     mCollidingSphereCount = numberOfSpheres;
 
-    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3585,16 +3586,16 @@ bool VkRenderer::createSelectedBoundingSpheres() {
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
+    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
 
     // we must wait for the compute shaders to finish before we can read the bone data
-    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -3603,7 +3604,7 @@ bool VkRenderer::createSelectedBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffer, mSphereMesh.vertices);
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffers.at(mRenderData.currentFrame), mSphereMesh.vertices);
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 
@@ -3639,7 +3640,7 @@ bool VkRenderer::createCollidingBoundingSpheres() {
 
   // resize SSBO if needed
   bool bufferResized = false;
-  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
   if (bufferResized) {
     VkHelper::updateSphereComputeDescriptorSets(mRenderData);
@@ -3685,13 +3686,13 @@ bool VkRenderer::createCollidingBoundingSpheres() {
     // we need to update descriptors after the upload if buffer size changed
     bool bufferResized = false;
     mRenderData.rdUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
     // resize SSBO if needed
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       VkHelper::updateDescriptorSets(mRenderData);
@@ -3702,18 +3703,18 @@ bool VkRenderer::createCollidingBoundingSpheres() {
     model->updateBoundingSphereAdjustments(mRenderData);
 
     // record compute commands
-    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
       return false;
     }
 
-    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
       Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
       return false;
     }
 
-    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3722,7 +3723,7 @@ bool VkRenderer::createCollidingBoundingSpheres() {
     sphereModelOffset += numberOfSpheres;
     mCollidingSphereCount += numberOfSpheres;
 
-    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3731,16 +3732,16 @@ bool VkRenderer::createCollidingBoundingSpheres() {
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
+    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
 
     // we must wait for the compute shaders to finish before we can read the bone data
-    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -3749,7 +3750,7 @@ bool VkRenderer::createCollidingBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffer, mCollidingSphereMesh.vertices);
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffers.at(mRenderData.currentFrame), mCollidingSphereMesh.vertices);
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 
@@ -3776,7 +3777,7 @@ bool VkRenderer::createAllBoundingSpheres() {
 
   // resize SSBO if needed
   bool bufferResized = false;
-  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffer, totalSpheres * sizeof(glm::vec4));
+  bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdBoundingSphereBuffers.at(mRenderData.currentFrame), totalSpheres * sizeof(glm::vec4));
 
   if (bufferResized) {
     VkHelper::updateSphereComputeDescriptorSets(mRenderData);
@@ -3821,13 +3822,13 @@ bool VkRenderer::createAllBoundingSpheres() {
     // we need to update descriptors after the upload if buffer size changed
     bool bufferResized = false;
     mRenderData.rdUploadToUBOTimer.start();
-    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffer, mSpherePerInstanceAnimData);
-    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffer, mSphereWorldPosMatrices);
+    bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSpherePerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mSpherePerInstanceAnimData);
+    bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSphereModelRootMatrixBuffers.at(mRenderData.currentFrame), mSphereWorldPosMatrices);
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
     // resize SSBO if needed
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffer, bufferMatrixSize);
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffer, trsMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereBoneMatrixBuffers.at(mRenderData.currentFrame), bufferMatrixSize);
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdSphereTRSMatrixBuffers.at(mRenderData.currentFrame), trsMatrixSize);
 
     if (bufferResized) {
       VkHelper::updateDescriptorSets(mRenderData);
@@ -3838,18 +3839,18 @@ bool VkRenderer::createAllBoundingSpheres() {
     model->updateBoundingSphereAdjustments(mRenderData);
 
     // record compute commands
-    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
       return false;
     }
 
-    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
       Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
       return false;
     }
 
-    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3858,7 +3859,7 @@ bool VkRenderer::createAllBoundingSpheres() {
     sphereModelOffset += numberOfSpheres;
     mCollidingSphereCount += numberOfSpheres;
 
-    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -3867,16 +3868,16 @@ bool VkRenderer::createAllBoundingSpheres() {
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
+    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
 
     // we must wait for the compute shaders to finish before we can read the bone data
-    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
@@ -3885,7 +3886,7 @@ bool VkRenderer::createAllBoundingSpheres() {
 
   if (mCollidingSphereCount > 0) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffer, mSphereMesh.vertices);
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdSphereVertexBuffers.at(mRenderData.currentFrame), mSphereMesh.vertices);
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 
@@ -4013,22 +4014,22 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
     }
 
     if (shadowMapPass) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdShadowMapAssimpLevelPipeline);
-      vkCmdSetDepthBias(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
+      vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
     } else {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
         mRenderData.rdAssimpLevelPipeline);
     }
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdAssimpLevelPipelineLayout, 1, 1,
-      &mRenderData.rdAssimpLevelDescriptorSet, 0, nullptr);
+      &mRenderData.rdAssimpLevelDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
     mRenderData.rdUploadToUBOTimer.start();
     mRenderData.rdModelData.pkWorldPosOffset = levelPosOffset;
     mRenderData.rdModelData.pShadowMapLayerIndex = shadowMapLayer;
-    vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpLevelPipelineLayout,
+    vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpLevelPipelineLayout,
       VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
 
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -4050,29 +4051,29 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
 
         // draw all meshes without morph anims first
         if (shadowMapPass) {
-          vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+          vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
             mRenderData.rdShadowMapAssimpSkinningPipeline);
 
-          vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+          vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
             mRenderData.rdAssimpSkinningPipelineLayout, 1, 1,
-            &mRenderData.rdAssimpSkinningDescriptorSet, 0, nullptr);
+            &mRenderData.rdAssimpSkinningDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-          vkCmdSetDepthBias(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
+          vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
         } else {
           if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
-            vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningSelectionPipeline);
 
-            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningSelectionPipelineLayout, 1, 1,
-             &mRenderData.rdAssimpSkinningSelectionDescriptorSet, 0, nullptr);
+             &mRenderData.rdAssimpSkinningSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           } else {
-            vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningPipeline);
 
-            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningPipelineLayout, 1, 1,
-              &mRenderData.rdAssimpSkinningDescriptorSet, 0, nullptr);
+              &mRenderData.rdAssimpSkinningDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           }
         }
 
@@ -4082,10 +4083,10 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
         mRenderData.rdModelData.pkSkinMatOffset = skinMatOffset;
         mRenderData.rdModelData.pShadowMapLayerIndex = shadowMapLayer;
         if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
-          vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSkinningSelectionPipelineLayout,
+          vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningSelectionPipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         } else {
-          vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSkinningPipelineLayout,
+          vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningPipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         }
         mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -4095,29 +4096,29 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
         // and if the model has morph anims, draw them in a separate pass 
         if (model->hasAnimMeshes()) {
           if (shadowMapPass) {
-            vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdShadowMapAssimpSkinningMorphPipeline);
 
-            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
               mRenderData.rdAssimpSkinningMorphPipelineLayout, 1, 1,
-              &mRenderData.rdAssimpSkinningMorphDescriptorSet, 0, nullptr);
+              &mRenderData.rdAssimpSkinningMorphDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-            vkCmdSetDepthBias(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
+            vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
           } else {
             if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
-              vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+              vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                 mRenderData.rdAssimpSkinningMorphSelectionPipeline);
 
-              vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+              vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                 mRenderData.rdAssimpSkinningMorphSelectionPipelineLayout, 1, 1,
-                &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSet, 0, nullptr);
+                &mRenderData.rdAssimpSkinningMorphSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
             } else {
-              vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+              vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                 mRenderData.rdAssimpSkinningMorphPipeline);
 
-              vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+              vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
                 mRenderData.rdAssimpSkinningMorphPipelineLayout, 1, 1,
-                &mRenderData.rdAssimpSkinningMorphDescriptorSet, 0, nullptr);
+                &mRenderData.rdAssimpSkinningMorphDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
             }
           }
 
@@ -4127,10 +4128,10 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
           mRenderData.rdModelData.pkSkinMatOffset = skinMatOffset;
           mRenderData.rdModelData.pShadowMapLayerIndex = shadowMapLayer;
           if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
-            vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSkinningMorphSelectionPipelineLayout,
+            vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningMorphSelectionPipelineLayout,
               VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
           } else {
-            vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSkinningMorphPipelineLayout,
+            vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningMorphPipelineLayout,
               VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
           }
           mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -4143,23 +4144,23 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
       } else {
         // non-animated models
         if (shadowMapPass) {
-          vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdShadowMapAssimpPipeline);
+          vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdShadowMapAssimpPipeline);
 
-          vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-            mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+          vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+            mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-          vkCmdSetDepthBias(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
+          vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
         } else {
           if (mMousePick) {
-            vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSelectionPipeline);
+            vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpSelectionPipeline);
 
-            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-              mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSet, 0, nullptr);
+            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+              mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           } else {
-            vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
+            vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPipeline);
 
-            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-              mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+            vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+              mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
           }
         }
 
@@ -4167,10 +4168,10 @@ void VkRenderer::drawScene(bool shadowMapPass, uint32_t shadowMapLayer) {
         mRenderData.rdModelData.pkWorldPosOffset = mWorldPosOffset;
         mRenderData.rdModelData.pShadowMapLayerIndex = shadowMapLayer;
         if (mMousePick) {
-          vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSelectionPipelineLayout,
+          vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSelectionPipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         } else {
-          vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpPipelineLayout,
+          vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpPipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         }
         mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -4226,7 +4227,11 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderData.rdLevelGroundNeighborUpdateTime = 0.0f;
 
   // wait for both fences before getting the new framebuffer image
-  std::vector<VkFence> waitFences = { mRenderData.rdComputeFences[mRenderData.currentFrame], mRenderData.rdRenderFences[mRenderData.currentFrame] };
+  std::vector<VkFence> waitFences = {
+    mRenderData.rdComputeFences.at(mRenderData.currentFrame),
+    mRenderData.rdRenderFences.at(mRenderData.currentFrame)
+  };
+
   VkResult result = vkWaitForFences(mRenderData.rdVkbDevice.device,
     static_cast<uint32_t>(waitFences.size()), waitFences.data(), VK_TRUE, UINT64_MAX);
   if (result != VK_SUCCESS) {
@@ -4238,7 +4243,7 @@ bool VkRenderer::draw(float deltaTime) {
   result = vkAcquireNextImageKHR(mRenderData.rdVkbDevice.device,
       mRenderData.rdVkbSwapchain.swapchain,
       UINT64_MAX,
-      mRenderData.rdPresentSemaphores[mRenderData.currentFrame],
+      mRenderData.rdPresentSemaphores.at(mRenderData.currentFrame),
       VK_NULL_HANDLE,
       &imageIndex);
 
@@ -4673,43 +4678,43 @@ bool VkRenderer::draw(float deltaTime) {
 
   // upload vertex data for instance paths and neighbor triangles
   mRenderData.rdUploadToVBOTimer.start();
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdInstancePathVertexBuffer, mInstancePathMesh->vertices);
-  VertexBuffer::uploadData(mRenderData, mRenderData.rdGroundMeshNeighborVertexBuffer, mLevelGroundNeighborsMesh->vertices);
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdInstancePathVertexBuffers.at(mRenderData.currentFrame), mInstancePathMesh->vertices);
+  VertexBuffer::uploadData(mRenderData, mRenderData.rdGroundMeshNeighborVertexBuffers.at(mRenderData.currentFrame), mLevelGroundNeighborsMesh->vertices);
   mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
 
   // we need to update descriptors after the upload if buffer size changed
   bool bufferResized = false;
   mRenderData.rdUploadToUBOTimer.start();
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdPerInstanceAnimDataBuffer, mPerInstanceAnimData);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSelectedInstanceBuffer, mSelectedInstance);
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdFaceAnimPerInstanceDataBuffer, mFaceAnimPerInstanceData);
+  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdPerInstanceAnimDataBuffers.at(mRenderData.currentFrame), mPerInstanceAnimData);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdSelectedInstanceBuffers.at(mRenderData.currentFrame), mSelectedInstance);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdFaceAnimPerInstanceDataBuffers.at(mRenderData.currentFrame), mFaceAnimPerInstanceData);
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   // resize SSBO if needed
-  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderTRSMatrixBuffer, boneMatrixBufferSize * 3 * sizeof(glm::vec4));
-  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderBoneMatrixBuffer, boneMatrixBufferSize * sizeof(glm::mat4));
+  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderTRSMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * 3 * sizeof(glm::vec4));
+  bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * sizeof(glm::mat4));
 
   if (bufferResized) {
     VkHelper::updateDescriptorSets(mRenderData);
     VkHelper::updateComputeDescriptorSets(mRenderData);
   }
 
-  // record compute commands
-  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame]);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
-    return false;
-  }
-
   if (animatedModelLoaded) {
+    // record compute commands
+    result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame));
+    if (result != VK_SUCCESS) {
+      Logger::log(1, "%s error: compute fence reset failed (error: %i)\n", __FUNCTION__, result);
+      return false;
+    }
+
     uint32_t computeShaderModelOffset = 0;
     uint32_t computeShaderInstanceOffset = 0;
-    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame], 0)) {
+    if (!CommandBuffer::reset(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame), 0)) {
       Logger::log(1, "%s error: failed to reset compute command buffer\n", __FUNCTION__);
       return false;
     }
 
-    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::beginSingleShot(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to begin compute command buffer\n", __FUNCTION__);
       return false;
     }
@@ -4730,49 +4735,29 @@ bool VkRenderer::draw(float deltaTime) {
       }
     }
 
-    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame])) {
+    if (!CommandBuffer::end(mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame))) {
       Logger::log(1, "%s error: failed to end compute command buffer\n", __FUNCTION__);
       return false;
     }
 
     // submit compute commands
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers[mRenderData.currentFrame];
-    computeSubmitInfo.waitSemaphoreCount = 1;
-    computeSubmitInfo.pWaitSemaphores = &mRenderData.rdGraphicSemaphores[mRenderData.currentFrame];
-    computeSubmitInfo.pWaitDstStageMask = &waitStage;
+    computeSubmitInfo.pCommandBuffers = &mRenderData.rdComputeCommandBuffers.at(mRenderData.currentFrame);
 
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences.at(mRenderData.currentFrame));
     if (result != VK_SUCCESS) {
       Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
       return false;
     };
-  } else {
-    // do an empty submit if we don't have animated models to satisfy fence and semaphore
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
-    VkSubmitInfo computeSubmitInfo{};
-    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    computeSubmitInfo.waitSemaphoreCount = 1;
-    computeSubmitInfo.pWaitSemaphores = &mRenderData.rdGraphicSemaphores[mRenderData.currentFrame];
-    computeSubmitInfo.pWaitDstStageMask = &waitStage;
-
-    result = vkQueueSubmit(mRenderData.rdComputeQueue, 1, &computeSubmitInfo, mRenderData.rdComputeFences[mRenderData.currentFrame]);
+    // we must wait for the compute shaders to finish before we can read the bone data
+    result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences.at(mRenderData.currentFrame), VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
-      Logger::log(1, "%s error: failed to submit compute command buffer (%i)\n", __FUNCTION__, result);
+      Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
       return false;
-    };
-  }
-
-  // we must wait for the compute shaders to finish before we can read the bone data
-  result = vkWaitForFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdComputeFences[mRenderData.currentFrame], VK_TRUE, UINT64_MAX);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: waiting for compute fence failed (error: %i)\n", __FUNCTION__, result);
-    return false;
+    }
   }
 
   // first person follow cam node
@@ -4786,7 +4771,7 @@ bool VkRenderer::draw(float deltaTime) {
 
       // get the bone matrix of the selected bone from the SSBO
       mRenderData.rdDownloadFromUBOTimer.start();
-      glm::mat4 boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffer,
+      glm::mat4 boneMatrix = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame),
         firstPersonCamBoneMatrixPos + selectedBone);
       mRenderData.rdDownloadFromUBOTime += mRenderData.rdDownloadFromUBOTimer.stop();
 
@@ -4812,14 +4797,14 @@ bool VkRenderer::draw(float deltaTime) {
 
     // read back all node positions for foot positions 
     mRenderData.rdDownloadFromUBOTimer.start();
-    mRenderData.rdIKMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffer, 0, boneMatrixBufferSize);
-    mRenderData.rdTRSData = ShaderStorageBuffer::getSsboDataTRSMatrixData(mRenderData, mRenderData.rdShaderTRSMatrixBuffer, 0, boneMatrixBufferSize);
+    mRenderData.rdIKMatrices = ShaderStorageBuffer::getSsboDataMat4(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame), 0, boneMatrixBufferSize);
+    mRenderData.rdTRSData = ShaderStorageBuffer::getSsboDataTRSMatrixData(mRenderData, mRenderData.rdShaderTRSMatrixBuffers.at(mRenderData.currentFrame), 0, boneMatrixBufferSize);
     mRenderData.rdDownloadFromUBOTime += mRenderData.rdDownloadFromUBOTimer.stop();
 
     // resize SSBO if needed
     bool bufferResized = false;
-    bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdIKBoneMatrixBuffer, boneMatrixBufferSize * sizeof(glm::mat4));
-    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdIKTRSMatrixBuffer, boneMatrixBufferSize * 3 * sizeof(glm::vec4));
+    bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdIKBoneMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * sizeof(glm::mat4));
+    bufferResized |= ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdIKTRSMatrixBuffers.at(mRenderData.currentFrame), boneMatrixBufferSize * 3 * sizeof(glm::vec4));
 
     if (bufferResized) {
       VkHelper::updateIKComputeDescriptorSets(mRenderData);
@@ -4988,13 +4973,13 @@ bool VkRenderer::draw(float deltaTime) {
 
     if (!mIKFootPointMesh->vertices.empty()) {
       mRenderData.rdUploadToVBOTimer.start();
-      VertexBuffer::uploadData(mRenderData, mRenderData.rdIKLinesVertexBuffer, mIKFootPointMesh->vertices);
+      VertexBuffer::uploadData(mRenderData, mRenderData.rdIKLinesVertexBuffers.at(mRenderData.currentFrame), mIKFootPointMesh->vertices);
       mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
     }
 
     // update original bone matrix buffer for drawing
     mRenderData.rdUploadToUBOTimer.start();
-    ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderBoneMatrixBuffer, mRenderData.rdIKMatrices);
+    ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderBoneMatrixBuffers.at(mRenderData.currentFrame), mRenderData.rdIKMatrices);
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
     mRenderData.rdIKTime += mRenderData.rdIKTimer.stop();
@@ -5117,12 +5102,12 @@ bool VkRenderer::draw(float deltaTime) {
   // we need to update descriptors after the upload if buffer size changed
   mRenderData.rdUploadToUBOTimer.start();
   UniformBuffer::uploadData(mRenderData, mRenderData.rdRenderUploadDataUBO, mRenderUploadData);
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffer, mWorldPosMatrices);
+  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffers.at(mRenderData.currentFrame), mWorldPosMatrices);
 
   // light data uses different descriptors
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffer, mRenderData.rdLightData);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffers.at(mRenderData.currentFrame), mRenderData.rdLightData);
   // reuse the sphere drawing shader for light debug
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffer, mRenderData.rdLightDebugData);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffers.at(mRenderData.currentFrame), mRenderData.rdLightDebugData);
 
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -5141,7 +5126,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   // we need to update descriptors after the upload if buffer size changed
   mRenderData.rdUploadToUBOTimer.start();
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderLevelRootMatrixBuffer, mLevelWorldPosMatrices);
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderLevelRootMatrixBuffers.at(mRenderData.currentFrame), mLevelWorldPosMatrices);
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   if (bufferResized) {
@@ -5250,7 +5235,7 @@ bool VkRenderer::draw(float deltaTime) {
   // upload lines
   if (mLineIndexCount > 0) {
     mRenderData.rdUploadToVBOTimer.start();
-    VertexBuffer::uploadData(mRenderData, mRenderData.rdLineVertexBuffer, mLineMesh->vertices);
+    VertexBuffer::uploadData(mRenderData, mRenderData.rdLineVertexBuffers.at(mRenderData.currentFrame), mLineMesh->vertices);
     mRenderData.rdUploadToVBOTime += mRenderData.rdUploadToVBOTimer.stop();
   }
 
@@ -5279,18 +5264,18 @@ bool VkRenderer::draw(float deltaTime) {
   }
 
   // start with graphics rendering
-  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences[mRenderData.currentFrame]);
+  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error:  fence reset failed (error: %i)\n", __FUNCTION__, result);
     return false;
   }
 
-  if (!CommandBuffer::reset(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0)) {
+  if (!CommandBuffer::reset(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0)) {
     Logger::log(1, "%s error: failed to reset command buffer\n", __FUNCTION__);
     return false;
   }
 
-  if (!CommandBuffer::beginSingleShot(mRenderData.rdCommandBuffers[mRenderData.currentFrame])) {
+  if (!CommandBuffer::beginSingleShot(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to begin command buffer\n", __FUNCTION__);
     return false;
   }
@@ -5333,18 +5318,17 @@ bool VkRenderer::draw(float deltaTime) {
   dynLightShadowMapScissor.offset = { 0, 0 };
   dynLightShadowMapScissor.extent = mRenderData.rdDynLightShadowMapSize;
 
-  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &dynLightShadowMapViewport);
-  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &dynLightShadowMapScissor);
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &dynLightShadowMapViewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &dynLightShadowMapScissor);
 
   VkRect2D dynLightShadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdDynLightShadowMapSize};
-
 
   // Dynamic light shadow pass
   if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
     VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo {};
     dynShadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     dynShadowMapBufferAttachmentInfo.imageView = mRenderData.rdDynamicLightShadowData.imageView;
-    dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     dynShadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     dynShadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     dynShadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
@@ -5356,16 +5340,16 @@ bool VkRenderer::draw(float deltaTime) {
       .pDepthAttachment = &dynShadowMapBufferAttachmentInfo
     };
 
-      // update shadow map data of dynamic lights
-    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, mRenderData.rdNumDynamicLightsWithShadow * 6 * sizeof(ShadowMapCascades),
+    // update shadow map data of dynamic lights
+    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      mRenderData.rdShadowMapCascadeDataBuffers.at(mRenderData.currentFrame).buffer, 0, mRenderData.rdNumDynamicLightsWithShadow * 6 * sizeof(ShadowMapCascades),
       mRenderData.rdDynamicLightShadowMapData.cascades.data());
 
-    vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &dynShadowMapRenderInfo);
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &dynShadowMapRenderInfo);
     for (int i = 0; i <  mRenderData.rdDynamicLightShadowData.numLayers; ++i) {
       drawScene(true, i);
     }
-    vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+    vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
     auto iter = std::find(mRenderData.rdLightIndices.begin(), mRenderData.rdLightIndices.end(),
       mModelInstCamData.micSelectedDynLight);
@@ -5389,7 +5373,7 @@ bool VkRenderer::draw(float deltaTime) {
 
       VkImageMemoryBarrier firstSrcBarrier{};
       firstSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-      firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       firstSrcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
       firstSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
       firstSrcBarrier.subresourceRange = srcBlitRange;
@@ -5405,10 +5389,10 @@ bool VkRenderer::draw(float deltaTime) {
       firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
       firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &firstSrcBarrier);
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
 
       VkImageBlit depthBlit{};
@@ -5488,7 +5472,7 @@ bool VkRenderer::draw(float deltaTime) {
             break;
         }
 
-        vkCmdBlitImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+        vkCmdBlitImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
           mRenderData.rdDynamicLightShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
           mRenderData.rdDynamicLightCombinedShadowData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
           1, &depthBlit, VK_FILTER_NEAREST);
@@ -5497,7 +5481,7 @@ bool VkRenderer::draw(float deltaTime) {
       VkImageMemoryBarrier secondSrcBarrier{};
       secondSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
       secondSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-      secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       secondSrcBarrier.image = mRenderData.rdDynamicLightShadowData.image;
       secondSrcBarrier.subresourceRange = srcBlitRange;
       secondSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -5512,10 +5496,10 @@ bool VkRenderer::draw(float deltaTime) {
       secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
       secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &secondSrcBarrier);
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
     } else {
       // clear image when we don't blit
@@ -5535,12 +5519,12 @@ bool VkRenderer::draw(float deltaTime) {
       firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
       firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
 
       VkClearDepthStencilValue clearShadowMapDepth = { .depth = 0.0f };
 
-      vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdDynamicLightCombinedShadowData.image,
+      vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdDynamicLightCombinedShadowData.image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearShadowMapDepth, 1, &blitRange);
 
       VkImageMemoryBarrier secondDstBarrier{};
@@ -5552,55 +5536,77 @@ bool VkRenderer::draw(float deltaTime) {
       secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
       secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
     }
   }
 
   // sun light shadow map pass
-  VkViewport shadowMapViewport{};
-  shadowMapViewport.x = 0.0f;
-  shadowMapViewport.y = 0.0f;
-  shadowMapViewport.width = static_cast<float>(mRenderData.rdShadowMapSize.width);
-  shadowMapViewport.height = static_cast<float>(mRenderData.rdShadowMapSize.height);
-  shadowMapViewport.minDepth = 0.0f;
-  shadowMapViewport.maxDepth = 1.0f;
-
-  VkRect2D shadowMapScissor{};
-  shadowMapScissor.offset = { 0, 0 };
-  shadowMapScissor.extent = mRenderData.rdShadowMapSize;
-
-  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &shadowMapViewport);
-  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &shadowMapScissor);
-
-  VkRect2D shadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdShadowMapSize};
-
-  VkRenderingAttachmentInfo shadowMapBufferAttachmentInfo {};
-  shadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  shadowMapBufferAttachmentInfo.imageView = mRenderData.rdShadowMapDepthBufferData.imageView;
-  shadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-  shadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  shadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  shadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
-
-  VkRenderingInfo shadowMapRenderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = shadowMapenderArea,
-    .layerCount = mRenderData.rdShadowMapDepthBufferData.numLayers,
-    .pDepthAttachment = &shadowMapBufferAttachmentInfo
-  };
-
   if (mRenderData.rdEnableShadowMap) {
-    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      mRenderData.rdShadowMapCascadeDataBuffer.buffer, 0, 4 * sizeof(ShadowMapCascades),
+    VkViewport shadowMapViewport{};
+    shadowMapViewport.x = 0.0f;
+    shadowMapViewport.y = 0.0f;
+    shadowMapViewport.width = static_cast<float>(mRenderData.rdShadowMapSize.width);
+    shadowMapViewport.height = static_cast<float>(mRenderData.rdShadowMapSize.height);
+    shadowMapViewport.minDepth = 0.0f;
+    shadowMapViewport.maxDepth = 1.0f;
+
+    VkRect2D shadowMapScissor{};
+    shadowMapScissor.offset = { 0, 0 };
+    shadowMapScissor.extent = mRenderData.rdShadowMapSize;
+
+    vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &shadowMapViewport);
+    vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &shadowMapScissor);
+
+    VkRect2D shadowMapenderArea = VkRect2D{VkOffset2D{}, mRenderData.rdShadowMapSize};
+    VkRenderingAttachmentInfo shadowMapBufferAttachmentInfo {};
+    shadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    shadowMapBufferAttachmentInfo.imageView = mRenderData.rdShadowMapDepthBufferData.imageView;
+    shadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    shadowMapBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    shadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    shadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
+
+    VkRenderingInfo shadowMapRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = shadowMapenderArea,
+      .layerCount = mRenderData.rdShadowMapDepthBufferData.numLayers,
+      .pDepthAttachment = &shadowMapBufferAttachmentInfo
+    };
+
+    VkImageSubresourceRange shadowMapDepthBufferSubresourceRangeOne{};
+    shadowMapDepthBufferSubresourceRangeOne.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    shadowMapDepthBufferSubresourceRangeOne.baseArrayLayer = 0;
+    shadowMapDepthBufferSubresourceRangeOne.layerCount = mRenderData.SHADOW_MAP_LAYERS;
+    shadowMapDepthBufferSubresourceRangeOne.baseMipLevel = 0;
+    shadowMapDepthBufferSubresourceRangeOne.levelCount = 1;
+
+    VkImageMemoryBarrier shadowMapDepthBufferImageMemoryBarrierOne {};
+    shadowMapDepthBufferImageMemoryBarrierOne.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    shadowMapDepthBufferImageMemoryBarrierOne.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    shadowMapDepthBufferImageMemoryBarrierOne.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    shadowMapDepthBufferImageMemoryBarrierOne.image = mRenderData.rdShadowMapDepthBufferData.image;
+    shadowMapDepthBufferImageMemoryBarrierOne.subresourceRange = shadowMapDepthBufferSubresourceRangeOne;
+
+    vkCmdPipelineBarrier(
+      mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+      0,
+      0, nullptr, 0, nullptr,
+      1, &shadowMapDepthBufferImageMemoryBarrierOne // pImageMemoryBarriers
+    );
+
+    vkCmdUpdateBuffer(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      mRenderData.rdShadowMapCascadeDataBuffers.at(mRenderData.currentFrame).buffer, 0, 4 * sizeof(ShadowMapCascades),
       mRenderData.rdShadowMapCascadeData.cascades.data());
 
-    vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &shadowMapRenderInfo);
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &shadowMapRenderInfo);
     drawScene(true, 0);
     drawScene(true, 1);
     drawScene(true, 2);
     drawScene(true, 3);
-    vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+    vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
     // combine all four depth images into a single image for debug display (ImGui can't handle array textures)
     VkImageSubresourceRange srcBlitRange{};
@@ -5619,7 +5625,7 @@ bool VkRenderer::draw(float deltaTime) {
 
     VkImageMemoryBarrier firstSrcBarrier{};
     firstSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    firstSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     firstSrcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     firstSrcBarrier.image = mRenderData.rdShadowMapDepthBufferData.image;
     firstSrcBarrier.subresourceRange = srcBlitRange;
@@ -5635,10 +5641,10 @@ bool VkRenderer::draw(float deltaTime) {
     firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &firstSrcBarrier);
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
 
     VkImageBlit depthBlit{};
@@ -5698,7 +5704,7 @@ bool VkRenderer::draw(float deltaTime) {
           break;
       }
 
-      vkCmdBlitImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      vkCmdBlitImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
         mRenderData.rdShadowMapDepthBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         mRenderData.rdShadowMapCombinedDepthBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1, &depthBlit, VK_FILTER_NEAREST);
@@ -5707,7 +5713,7 @@ bool VkRenderer::draw(float deltaTime) {
     VkImageMemoryBarrier secondSrcBarrier{};
     secondSrcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     secondSrcBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    secondSrcBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     secondSrcBarrier.image = mRenderData.rdShadowMapDepthBufferData.image;
     secondSrcBarrier.subresourceRange = srcBlitRange;
     secondSrcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -5722,10 +5728,10 @@ bool VkRenderer::draw(float deltaTime) {
     secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &secondSrcBarrier);
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
   } else {
     // clear image when we don't blit
@@ -5745,12 +5751,12 @@ bool VkRenderer::draw(float deltaTime) {
     firstDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     firstDstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &firstDstBarrier);
 
     VkClearDepthStencilValue clearShadowMapDepth = { .depth = 1.0f };
 
-    vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdShadowMapCombinedDepthBufferData.image,
+    vkCmdClearDepthStencilImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapCombinedDepthBufferData.image,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearShadowMapDepth, 1, &blitRange);
 
     VkImageMemoryBarrier secondDstBarrier{};
@@ -5762,15 +5768,355 @@ bool VkRenderer::draw(float deltaTime) {
     secondDstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     secondDstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+    vkCmdPipelineBarrier(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
       0, 0, nullptr, 0, nullptr, 1, &secondDstBarrier);
+
+    // Shadowmap depth, image conversion happens already in shadow map combined blitting if enabled
+    VkImageSubresourceRange shadowMapDepthBufferSubresourceRangeTwo{};
+    shadowMapDepthBufferSubresourceRangeTwo.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    shadowMapDepthBufferSubresourceRangeTwo.baseArrayLayer = 0;
+    shadowMapDepthBufferSubresourceRangeTwo.layerCount = mRenderData.SHADOW_MAP_LAYERS;
+    shadowMapDepthBufferSubresourceRangeTwo.baseMipLevel = 0;
+    shadowMapDepthBufferSubresourceRangeTwo.levelCount = 1;
+
+    VkImageMemoryBarrier shadowMapDepthBufferImageMemoryBarrierTwo {};
+    shadowMapDepthBufferImageMemoryBarrierTwo.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    shadowMapDepthBufferImageMemoryBarrierTwo.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    shadowMapDepthBufferImageMemoryBarrierTwo.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    shadowMapDepthBufferImageMemoryBarrierTwo.image = mRenderData.rdShadowMapDepthBufferData.image;
+    shadowMapDepthBufferImageMemoryBarrierTwo.subresourceRange = shadowMapDepthBufferSubresourceRangeTwo;
+
+    vkCmdPipelineBarrier(
+      mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+      0,
+      0, nullptr, 0, nullptr,
+      1, &shadowMapDepthBufferImageMemoryBarrierTwo // pImageMemoryBarriers
+    );
   }
 
-  // deferred pass
+  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdVkbSwapchain.extent.width, mRenderData.rdVkbSwapchain.extent.height}};
 
-  // layout transitions
-  // swapchain image
-  VkImageMemoryBarrier firstImageMemoryBarrier {
+  VkRenderingAttachmentInfo colorAttachmentInfo {};
+  colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  colorAttachmentInfo.imageView = mRenderData.rdGBuffer.color.imageView;
+  colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  colorAttachmentInfo.clearValue = colorClearValue;
+
+  VkRenderingAttachmentInfo depthImageAttachmentInfo {};
+  depthImageAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  depthImageAttachmentInfo.imageView = mRenderData.rdGBuffer.depth.imageView;
+  depthImageAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  depthImageAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depthImageAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  depthImageAttachmentInfo.clearValue = depthImageClearValue;
+
+  VkRenderingAttachmentInfo normalAttachmentInfo {};
+  normalAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  normalAttachmentInfo.imageView = mRenderData.rdGBuffer.normal.imageView;
+  normalAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  normalAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  normalAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  normalAttachmentInfo.clearValue = normalClearValue;
+
+  VkRenderingAttachmentInfo selectionAttachmentInfo {};
+  selectionAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  selectionAttachmentInfo.imageView = mRenderData.rdSelectionImageData.imageView;
+  selectionAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  selectionAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  selectionAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  selectionAttachmentInfo.clearValue = selectionClearValue;
+
+  VkRenderingAttachmentInfo depthAttachmentInfo {};
+  depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  depthAttachmentInfo.imageView = mRenderData.rdDepthBufferData.imageView;
+  depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+  depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  depthAttachmentInfo.clearValue = depthClearValue;
+
+  std::vector<VkRenderingAttachmentInfo> attachmentInfos {
+    colorAttachmentInfo,
+    depthImageAttachmentInfo,
+    normalAttachmentInfo,
+    selectionAttachmentInfo,
+  };
+
+  VkRenderingInfo renderInfo {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+    .renderArea = renderArea,
+    .layerCount = 1,
+    .colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size()),
+    .pColorAttachments = attachmentInfos.data(),
+    .pDepthAttachment = &depthAttachmentInfo,
+  };
+
+  VkViewport viewport{};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = static_cast<float>(mRenderData.rdVkbSwapchain.extent.width);
+  viewport.height = static_cast<float>(mRenderData.rdVkbSwapchain.extent.height);
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+
+  VkRect2D scissor{};
+  scissor.offset = { 0, 0 };
+  scissor.extent = mRenderData.rdVkbSwapchain.extent;
+
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.depth.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.normal.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSelectionImageData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdLightSpheresBufferData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdShadowMapCombinedDepthBufferData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &renderInfo);
+
+  drawScene();
+
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.color.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.depth.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.normal.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOBlurBufferData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+  VkDeviceSize offset = 0;
+
+  // light sphere pass
+  if (mRenderData.rdNumDynamicLights > 0) {
+    VkRenderingAttachmentInfo lightSphereBufferAttachmentInfo {};
+    lightSphereBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    lightSphereBufferAttachmentInfo.imageView = mRenderData.rdLightSpheresBufferData.imageView;
+    lightSphereBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    lightSphereBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    lightSphereBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    lightSphereBufferAttachmentInfo.clearValue = blackClearValue;
+
+    std::vector<VkRenderingAttachmentInfo> lightSphereAttachmentInfos {
+      lightSphereBufferAttachmentInfo,
+    };
+
+    VkRenderingInfo lightSphereRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = renderArea,
+      .layerCount = 1,
+      .colorAttachmentCount = static_cast<uint32_t>(lightSphereAttachmentInfos.size()),
+      .pColorAttachments = lightSphereAttachmentInfos.data(),
+    };
+
+    // transition to shader read only
+    VkImageSubresourceRange dynLightShadowDataSubresourceRangeTwo{};
+    dynLightShadowDataSubresourceRangeTwo.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    dynLightShadowDataSubresourceRangeTwo.baseArrayLayer = 0;
+    dynLightShadowDataSubresourceRangeTwo.layerCount = mRenderData.rdDynamicLightShadowData.numLayers;
+    dynLightShadowDataSubresourceRangeTwo.baseMipLevel = 0;
+    dynLightShadowDataSubresourceRangeTwo.levelCount = 1;
+
+    VkImageMemoryBarrier dynLightShadowDataImageMemoryBarrierTwo {};
+    dynLightShadowDataImageMemoryBarrierTwo.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    dynLightShadowDataImageMemoryBarrierTwo.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    dynLightShadowDataImageMemoryBarrierTwo.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    dynLightShadowDataImageMemoryBarrierTwo.image = mRenderData.rdDynamicLightShadowData.image;
+    dynLightShadowDataImageMemoryBarrierTwo.subresourceRange = dynLightShadowDataSubresourceRangeTwo;
+
+    vkCmdPipelineBarrier(
+      mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+      0,
+      0, nullptr, 0, nullptr,
+      1, &dynLightShadowDataImageMemoryBarrierTwo // pImageMemoryBarriers
+    );
+
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &lightSphereRenderInfo);
+
+    if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipeline);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipelineLayout, 0, 1,
+        &mRenderData.rdLightSphereShadowsDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLightSphereVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+
+      vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLightsWithShadow, 0, 1);
+    }
+
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipeline);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipelineLayout, 0, 1,
+      &mRenderData.rdLightSphereDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLightSphereVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLights - mRenderData.rdNumDynamicLightsWithShadow, 0, mRenderData.rdNumDynamicLightsWithShadow + 1);
+
+    vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+
+    // transition back
+    VkImageSubresourceRange dynLightShadowDataSubresourceRangeThree{};
+    dynLightShadowDataSubresourceRangeThree.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    dynLightShadowDataSubresourceRangeThree.baseArrayLayer = 0;
+    dynLightShadowDataSubresourceRangeThree.layerCount = mRenderData.rdDynamicLightShadowData.numLayers;
+    dynLightShadowDataSubresourceRangeThree.baseMipLevel = 0;
+    dynLightShadowDataSubresourceRangeThree.levelCount = 1;
+
+    VkImageMemoryBarrier dynLightShadowDataImageMemoryBarrierThree{};
+    dynLightShadowDataImageMemoryBarrierThree.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    dynLightShadowDataImageMemoryBarrierThree.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    dynLightShadowDataImageMemoryBarrierThree.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    dynLightShadowDataImageMemoryBarrierThree.image = mRenderData.rdDynamicLightShadowData.image;
+    dynLightShadowDataImageMemoryBarrierThree.subresourceRange = dynLightShadowDataSubresourceRangeThree;
+
+    vkCmdPipelineBarrier(
+      mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
+      0,
+      0, nullptr, 0, nullptr,
+      1, &dynLightShadowDataImageMemoryBarrierThree // pImageMemoryBarriers
+    );
+  }
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdLightSpheresBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  // SSAO pass
+  if (mRenderData.rdEnableSSAO) {
+    VkClearValue ssaoClearValue;
+    ssaoClearValue.color = { { 1.0f } };
+
+    VkRenderingAttachmentInfo ssaoColorBufferAttachmentInfo {};
+    ssaoColorBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    ssaoColorBufferAttachmentInfo.imageView = mRenderData.rdSSAOColorBufferData.imageView;
+    ssaoColorBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ssaoColorBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ssaoColorBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ssaoColorBufferAttachmentInfo.clearValue = ssaoClearValue;
+
+    std::vector<VkRenderingAttachmentInfo> ssaoAttachmentInfos {
+      ssaoColorBufferAttachmentInfo,
+    };
+
+    VkRenderingInfo ssaoRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = renderArea,
+      .layerCount = 1,
+      .colorAttachmentCount = static_cast<uint32_t>(ssaoAttachmentInfos.size()),
+      .pColorAttachments = ssaoAttachmentInfos.data(),
+    };
+
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &ssaoRenderInfo);
+
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOPipeline);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOPipelineLayout, 0, 1,
+      &mRenderData.rdSSAODescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
+
+    vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+
+    // SSAO Blur pass
+    // runs always to avoid blinking when swichting off 
+    VkClearValue ssaoBlurClearValue;
+    ssaoBlurClearValue.color = { { 1.0f } };
+
+    VkRenderingAttachmentInfo ssaoBlurBufferAttachmentInfo {};
+    ssaoBlurBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    ssaoBlurBufferAttachmentInfo.imageView = mRenderData.rdSSAOBlurBufferData.imageView;
+    ssaoBlurBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ssaoBlurBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ssaoBlurBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ssaoBlurBufferAttachmentInfo.clearValue = ssaoBlurClearValue;
+
+    std::vector<VkRenderingAttachmentInfo> ssaoBlurAttachmentInfos {
+      ssaoBlurBufferAttachmentInfo,
+    };
+
+    VkRenderingInfo ssaoBlurRenderInfo {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = renderArea,
+      .layerCount = 1,
+      .colorAttachmentCount = static_cast<uint32_t>(ssaoBlurAttachmentInfos.size()),
+      .pColorAttachments = ssaoBlurAttachmentInfos.data(),
+    };
+
+    VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &ssaoBlurRenderInfo);
+
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOBlurPipeline);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOBlurPipelineLayout, 0, 1,
+      &mRenderData.rdSSAOBlurDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
+    vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+  }
+  else {
+    // clear SSAO buffers to avoid artifacts when swichting off SSAO
+    VkImageSubresourceRange subresourceRange{};
+    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = 1;
+    subresourceRange.baseArrayLayer = 0;
+    subresourceRange.layerCount = 1;
+
+    VkClearColorValue clearValue = { { 1.0f, 1.0f, 1.0f, 1.0f } };
+
+    VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOBlurBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    vkCmdClearColorImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdSSAOBlurBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &subresourceRange);
+
+    VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOBlurBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    vkCmdClearColorImage(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &subresourceRange);
+
+    VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  }
+
+  // Composite pass
+  VkRenderingAttachmentInfo swapchainAttachmentInfo {};
+  swapchainAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  swapchainAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(imageIndex);
+  swapchainAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  swapchainAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  swapchainAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  swapchainAttachmentInfo.clearValue = colorClearValue;
+
+  // we need to retain the previous contents of the buffer
+  selectionAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD ;
+  depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+
+  std::vector<VkRenderingAttachmentInfo> compositeAttachmentInfos {
+    swapchainAttachmentInfo,
+    selectionAttachmentInfo
+  };
+
+  // clear depth buffer if we draw for shadow map debug
+  if (mRenderData.rdCompositeDebug == compositeDebugDisplay::shadowMap) {
+    VkClearValue depthClearValueZero;
+    depthClearValueZero.depthStencil.depth = 0.0f;
+    depthAttachmentInfo.clearValue = depthClearValueZero;
+    depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  }
+
+  VkRenderingInfo compositeRenderInfo {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+    .renderArea = renderArea,
+    .layerCount = 1,
+    .colorAttachmentCount = static_cast<uint32_t>(compositeAttachmentInfos.size()),
+    .pColorAttachments = compositeAttachmentInfos.data(),
+    .pDepthAttachment = &depthAttachmentInfo,
+  };
+
+  // swapchain image layout transition
+  VkImageMemoryBarrier swapchainImageMemoryBarrier {
     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
     .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -5786,340 +6132,98 @@ bool VkRenderer::draw(float deltaTime) {
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
     0,
     0, nullptr, 0, nullptr,
-    1, &firstImageMemoryBarrier // pImageMemoryBarriers
+    1, &swapchainImageMemoryBarrier // pImageMemoryBarriers
   );
 
-  // selection image
-  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-  firstImageMemoryBarrier.image = mRenderData.rdSelectionImageData.image;
+  VkImageSubresourceRange shadowMapDepthBufferSubresourceRangeThree{};
+  shadowMapDepthBufferSubresourceRangeThree.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  shadowMapDepthBufferSubresourceRangeThree.baseArrayLayer = 0;
+  shadowMapDepthBufferSubresourceRangeThree.layerCount = mRenderData.SHADOW_MAP_LAYERS;
+  shadowMapDepthBufferSubresourceRangeThree.baseMipLevel = 0;
+  shadowMapDepthBufferSubresourceRangeThree.levelCount = 1;
+
+  VkImageMemoryBarrier shadowMapDepthBufferImageMemoryBarrierThree {};
+  shadowMapDepthBufferImageMemoryBarrierThree.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  shadowMapDepthBufferImageMemoryBarrierThree.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+  shadowMapDepthBufferImageMemoryBarrierThree.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+  shadowMapDepthBufferImageMemoryBarrierThree.image = mRenderData.rdShadowMapDepthBufferData.image;
+  shadowMapDepthBufferImageMemoryBarrierThree.subresourceRange = shadowMapDepthBufferSubresourceRangeThree;
+
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
     0,
     0, nullptr, 0, nullptr,
-    1, &firstImageMemoryBarrier // pImageMemoryBarriers
+    1, &shadowMapDepthBufferImageMemoryBarrierThree // pImageMemoryBarriers
   );
 
-  // ssao color image
-  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-  firstImageMemoryBarrier.image = mRenderData.rdSSAOColorBufferData.image;
-  vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
-    0,
-    0, nullptr, 0, nullptr,
-    1, &firstImageMemoryBarrier // pImageMemoryBarriers
-  );
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOBlurBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-  // SSAO blur image
-  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  firstImageMemoryBarrier.image = mRenderData.rdSSAOBlurBufferData.image;
-  vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
-    0,
-    0, nullptr, 0, nullptr,
-    1, &firstImageMemoryBarrier // pImageMemoryBarriers
-  );
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &compositeRenderInfo);
 
-  // light sphere image
-  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  firstImageMemoryBarrier.image = mRenderData.rdLightSpheresBufferData.image;
-  vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
-    0,
-    0, nullptr, 0, nullptr,
-    1, &firstImageMemoryBarrier // pImageMemoryBarriers
-  );
+  vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
+  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
+    &mRenderData.rdCompositeDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-  // Shadowmap depth, image conversion happens already in shadow map combined blitting if enabled 
-  if (!mRenderData.rdEnableShadowMap) {
-    firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    firstImageMemoryBarrier.image = mRenderData.rdShadowMapDepthBufferData.image;
-    firstImageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    firstImageMemoryBarrier.subresourceRange.layerCount = mRenderData.SHADOW_MAP_LAYERS;
-    vkCmdPipelineBarrier(
-      mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
-      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
-      0,
-      0, nullptr, 0, nullptr,
-      1, &firstImageMemoryBarrier // pImageMemoryBarriers
-    );
-  }
-
-  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdVkbSwapchain.extent.width, mRenderData.rdVkbSwapchain.extent.height}};
-
-  // 0
-  VkRenderingAttachmentInfo swapchainAttachmentInfo {};
-  swapchainAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  swapchainAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(imageIndex);
-  swapchainAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  swapchainAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  swapchainAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  swapchainAttachmentInfo.clearValue = colorClearValue;
-
-  // 1
-  VkRenderingAttachmentInfo colorAttachmentInfo {};
-  colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  colorAttachmentInfo.imageView = mRenderData.rdGBuffer.color.imageView;
-  colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  colorAttachmentInfo.clearValue = colorClearValue;
-
-  // 2
-  VkRenderingAttachmentInfo depthImageAttachmentInfo {};
-  depthImageAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  depthImageAttachmentInfo.imageView = mRenderData.rdGBuffer.depth.imageView;
-  depthImageAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  depthImageAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  depthImageAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depthImageAttachmentInfo.clearValue = depthImageClearValue;
-
-  // 3
-  VkRenderingAttachmentInfo normalAttachmentInfo {};
-  normalAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  normalAttachmentInfo.imageView = mRenderData.rdGBuffer.normal.imageView;
-  normalAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  normalAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  normalAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  normalAttachmentInfo.clearValue = normalClearValue;
-
-  // 4
-  VkRenderingAttachmentInfo selectionAttachmentInfo {};
-  selectionAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  selectionAttachmentInfo.imageView = mRenderData.rdSelectionImageData.imageView;
-  selectionAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  selectionAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  selectionAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  selectionAttachmentInfo.clearValue = selectionClearValue;
-
-  // 5
-  VkRenderingAttachmentInfo ssaoColorBufferAttachmentInfo {};
-  ssaoColorBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  ssaoColorBufferAttachmentInfo.imageView = mRenderData.rdSSAOColorBufferData.imageView;
-  ssaoColorBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  ssaoColorBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  ssaoColorBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  ssaoColorBufferAttachmentInfo.clearValue = ssaoClearValue;
-
-  // 6
-  VkRenderingAttachmentInfo ssaoBlurBufferAttachmentInfo {};
-  ssaoBlurBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  ssaoBlurBufferAttachmentInfo.imageView = mRenderData.rdSSAOBlurBufferData.imageView;
-  ssaoBlurBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  ssaoBlurBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  ssaoBlurBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  ssaoBlurBufferAttachmentInfo.clearValue = ssaoBlurClearValue;
-
-  // 7
-  VkRenderingAttachmentInfo lightSphereBufferAttachmentInfo {};
-  lightSphereBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  lightSphereBufferAttachmentInfo.imageView = mRenderData.rdLightSpheresBufferData.imageView;
-  lightSphereBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ;
-  lightSphereBufferAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  lightSphereBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  lightSphereBufferAttachmentInfo.clearValue = blackClearValue;
-
-  VkRenderingAttachmentInfo depthAttachmentInfo {};
-  depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  depthAttachmentInfo.imageView = mRenderData.rdDepthBufferData.imageView;
-  depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-  depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
-  depthAttachmentInfo.clearValue = depthClearValue;
-
-  std::vector<VkRenderingAttachmentInfo> attachmentInfos {
-    swapchainAttachmentInfo,
-    colorAttachmentInfo,
-    depthImageAttachmentInfo,
-    normalAttachmentInfo,
-    selectionAttachmentInfo,
-    ssaoColorBufferAttachmentInfo,
-    ssaoBlurBufferAttachmentInfo,
-    lightSphereBufferAttachmentInfo,
-  };
-
-  VkRenderingInfo renderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size()),
-    .pColorAttachments = attachmentInfos.data(),
-  };
-
-  // do not attach a depth buffer if we draw for shadow map debug
-  if (mRenderData.rdCompositeDebug != compositeDebugDisplay::shadowMap) {
-    renderInfo.pDepthAttachment = &depthAttachmentInfo;
-  }
-
-  VkViewport viewport{};
-  viewport.x = 0.0f;
-  viewport.y = 0.0f;
-  viewport.width = static_cast<float>(mRenderData.rdVkbSwapchain.extent.width);
-  viewport.height = static_cast<float>(mRenderData.rdVkbSwapchain.extent.height);
-  viewport.minDepth = 0.0f;
-  viewport.maxDepth = 1.0f;
-
-  VkRect2D scissor{};
-  scissor.offset = { 0, 0 };
-  scissor.extent = mRenderData.rdVkbSwapchain.extent;
-
-  vkCmdSetViewport(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &viewport);
-  vkCmdSetScissor(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &scissor);
-
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &renderInfo);
-
-  drawScene();
-
-  // barrier to make sure the G-Buffer data is fully written
-  VkMemoryBarrier midMemBarrier {
-    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-    .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-  };
-
-  vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  // srcStageMask
-    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // dstStageMask
-    VK_DEPENDENCY_BY_REGION_BIT,
-    1, &midMemBarrier,
-    0, nullptr, 0, nullptr
-  );
-
-  VkDeviceSize offset = 0;
-
-  // light sphere pass
-  if (mRenderData.rdNumDynamicLights > 0) {
-    if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipeline);
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSphereShadowPipelineLayout, 0, 1,
-        &mRenderData.rdLightSphereShadowsDescriptorSet, 0, nullptr);
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereVertexBuffer.buffer, &offset);
-
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLightsWithShadow, 0, 1);
-    }
-
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipeline);
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLightSpherePipelineLayout, 0, 1,
-      &mRenderData.rdLightSphereDescriptorSet, 0, nullptr);
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereVertexBuffer.buffer, &offset);
-
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mFullSphereMesh.vertices.size()), mRenderData.rdNumDynamicLights - mRenderData.rdNumDynamicLightsWithShadow, 0, mRenderData.rdNumDynamicLightsWithShadow + 1);
-  }
-
-  // SSAO pass
-  if (mRenderData.rdEnableSSAO) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOPipeline);
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOPipelineLayout, 0, 1,
-      &mRenderData.rdSSAODescriptorSet, 0, nullptr);
-
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
-
-    // we need another barrier here to wait for the SSAO pass
-    vkCmdPipelineBarrier(
-      mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  // srcStageMask
-      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // dstStageMask
-      VK_DEPENDENCY_BY_REGION_BIT,
-      1, &midMemBarrier,
-      0, nullptr, 0, nullptr
-    );
-
-    // SSAO Blur pass
-    // runs always to avoid blinking when swichting off 
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOBlurPipeline);
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSSAOBlurPipelineLayout, 0, 1,
-      &mRenderData.rdSSAOBlurDescriptorSet, 0, nullptr);
-
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
-
-    // we need another barrier here to wait for the blur pass
-    vkCmdPipelineBarrier(
-      mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  // srcStageMask
-      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // dstStageMask
-      VK_DEPENDENCY_BY_REGION_BIT,
-      1, &midMemBarrier,
-      0, nullptr, 0, nullptr
-    );
-  }
-
-  // Composite pass
-  vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipeline);
-  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdCompositePipelineLayout, 0, 1,
-    &mRenderData.rdCompositeDescriptorSet, 0, nullptr);
-
-  vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3, 1, 0, 0);
+  vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
 
   // draw skybox into swapchain image, depth writes are disabled
   // XXX: sybox doest not work in ortho projection, disable for now
   if (mRenderData.rdDrawSkybox && camSettings.csCamProjection == cameraProjection::perspective) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdSkyboxPipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
      mRenderData.rdSkyboxPipelineLayout, 0, 1,
      &mRenderData.rdSkyboxTexture.descriptorSet, 0, nullptr);
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdSkyboxPipelineLayout, 1, 1,
-      &mRenderData.rdSkyboxDescriptorSet, 0, nullptr);
+      &mRenderData.rdSkyboxDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSkyboxBuffer.buffer, &offset);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdSkyboxBuffers.at(mRenderData.currentFrame).buffer, &offset);
 
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mSphereModel.getVertexData().vertices.size()), 1, 0, 0);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mSphereModel.getVertexData().vertices.size()), 1, 0, 0);
   }
 
   // draw infinte grid
   if (mRenderData.rdEnableInfiniteGrid && mRenderData.rdApplicationMode == appMode::edit) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGridLinePipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGridLinePipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
-    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 6, 1, 0, 0);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 1.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 6, 1, 0, 0);
   }
 
   // draw lines also into swapchain image
   mRenderData.rdCollisionDebugDrawTimer.start();
   if (mLineIndexCount > 0) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLineVertexBuffer.buffer, &offset);
-    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLineVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mLineMesh->vertices.size()), 1, 0, 0);
   }
 
   // draw colliding spheres
   if (mCollidingSphereCount > 0) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdSphereDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdSphereVertexBuffer.buffer, &offset);
-    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], sphereVertexCount, mCollidingSphereCount, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdSphereVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3.0f);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), sphereVertexCount, mCollidingSphereCount, 0, 0);
   }
 
   mRenderData.rdCollisionDebugDrawTime += mRenderData.rdCollisionDebugDrawTimer.stop();
@@ -6127,80 +6231,80 @@ bool VkRenderer::draw(float deltaTime) {
   if (mRenderData.rdDrawLevelAABB || mRenderData.rdDrawLevelWireframe ||
       mRenderData.rdDrawLevelOctree || mRenderData.rdDrawIKDebugLines ||
       mRenderData.rdDrawInstancePaths || mRenderData.rdDrawNeighborTriangles) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdLinePipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSet, 0, nullptr);
-    vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdLineDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+    vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3.0f);
   }
 
   mRenderData.rdLevelCollisionTimer.start();
   if (mRenderData.rdDrawLevelAABB && !mLevelAABBMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelAABBVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLevelAABBVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mLevelAABBMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawLevelWireframe && !mLevelWireframeMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelWireframeVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLevelWireframeVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mLevelWireframeMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawLevelOctree && !mLevelOctreeMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLevelOctreeVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLevelOctreeVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mLevelOctreeMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawIKDebugLines && !mIKFootPointMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdIKLinesVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdIKLinesVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mIKFootPointMesh->vertices.size()), 1, 0, 0);
   }
   mRenderData.rdLevelCollisionTime += mRenderData.rdLevelCollisionTimer.stop();
 
   if (mRenderData.rdDrawInstancePaths && !mInstancePathMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdInstancePathVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdInstancePathVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mInstancePathMesh->vertices.size()), 1, 0, 0);
   }
 
   if (mRenderData.rdDrawNeighborTriangles && !mLevelGroundNeighborsMesh->vertices.empty()) {
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshNeighborVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdGroundMeshNeighborVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), static_cast<uint32_t>(mLevelGroundNeighborsMesh->vertices.size()), 1, 0, 0);
   }
 
   mRenderData.rdLevelGroundNeighborUpdateTimer.start();
   if (mRenderData.rdDrawGroundTriangles) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
 
-    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+      mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdGroundMeshVertexBuffer.buffer, &offset);
-    vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mGroundMeshVertexCount, 1, 0, 0);
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdGroundMeshVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mGroundMeshVertexCount, 1, 0, 0);
   }
   mRenderData.rdLevelGroundNeighborUpdateTime += mRenderData.rdLevelGroundNeighborUpdateTimer.stop();
 
   // draw in forward rendering after composite pass to avoid model light problems
   if (mRenderData.rdApplicationMode == appMode::edit) {
     if (mMousePick) {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
         VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositeSelectionPipeline);
 
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSet, 0, nullptr);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdAssimpSelectionPipelineLayout, 1, 1, &mRenderData.rdAssimpSelectionDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
     } else {
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
         VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdAssimpPostCompositePipeline);
 
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSet, 0, nullptr);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdAssimpPipelineLayout, 1, 1, &mRenderData.rdAssimpDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
     }
 
     mRenderData.rdUploadToUBOTimer.start();
     mRenderData.rdModelData.pkWorldPosOffset = mWorldPosOffset;
     if (mMousePick) {
-      vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpSelectionPipelineLayout,
+      vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSelectionPipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
     } else {
-      vkCmdPushConstants(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mRenderData.rdAssimpPipelineLayout,
+      vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpPipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
     }
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
@@ -6209,30 +6313,30 @@ bool VkRenderer::draw(float deltaTime) {
 
     if (mRenderData.rdEnableLightDebug) {
       uint32_t dynLightVertexCount = static_cast<uint32_t>(mDynLightModel.getVertexData().vertices.size());
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdDynamicLightDebugVertexBuffer.buffer, &offset);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 3.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdDynamicLightDebugVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+      vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3.0f);
+      vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
     }
 
     if (mRenderData.rdEnableLightSphereDebug) {
       uint32_t dynLightVertexCount = static_cast<uint32_t>(mFullSphereDebugMesh.vertices.size());
-      vkCmdBindPipeline(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSpherePipeline);
 
-      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers[mRenderData.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSet, 0, nullptr);
+      vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdSpherePipelineLayout, 0, 1, &mRenderData.rdDynLightDebugSphereDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
 
-      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mRenderData.rdLightSphereDebugVertexBuffer.buffer, &offset);
-      vkCmdSetLineWidth(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 1.0f);
-      vkCmdDraw(mRenderData.rdCommandBuffers[mRenderData.currentFrame], dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
+      vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdLightSphereDebugVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
+      vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 1.0f);
+      vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
     }
   }
 
-  vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
   // imGui overlay needs a separate rendering pass due to a different internal pipeline
   VkRenderingAttachmentInfo swapchainUIAttachmentInfo {};
@@ -6253,39 +6357,15 @@ bool VkRenderer::draw(float deltaTime) {
     .pColorAttachments = uiAttachmentInfos.data(),
   };
 
-  // layout transition
-  // selection image back to color attachment
-  VkImageMemoryBarrier uiImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    .image = mRenderData.rdSelectionImageData.image,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSelectionImageData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-  vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
-    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // dstStageMask
-    0,
-    0, nullptr, 0, nullptr,
-    1, &uiImageMemoryBarrier // pImageMemoryBarriers
-  );
-
-  vkCmdBeginRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame], &uiRenderInfo);
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &uiRenderInfo);
 
   mRenderData.rdUIDrawTimer.start();
   mUserInterface.render(mRenderData);
   mRenderData.rdUIDrawTime = mRenderData.rdUIDrawTimer.stop();
 
-  vkCmdEndRendering(mRenderData.rdCommandBuffers[mRenderData.currentFrame]);
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
   // layout transition
   // swapchain image to present
@@ -6305,7 +6385,7 @@ bool VkRenderer::draw(float deltaTime) {
   };
 
   vkCmdPipelineBarrier(
-    mRenderData.rdCommandBuffers[mRenderData.currentFrame],
+    mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // srcStageMask
     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // dstStageMask
     0,
@@ -6313,7 +6393,7 @@ bool VkRenderer::draw(float deltaTime) {
     1, &secondImageMemoryBarrier // pImageMemoryBarriers
   );
 
-  if (!CommandBuffer::end(mRenderData.rdCommandBuffers[mRenderData.currentFrame])) {
+  if (!CommandBuffer::end(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to end ImGui command buffer\n", __FUNCTION__);
     return false;
   }
@@ -6322,30 +6402,25 @@ bool VkRenderer::draw(float deltaTime) {
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-  /* compute shader: contine if vertex input ready
-   * vertex shader: wait for color attachment output ready */
-  //std::vector<VkSemaphore> waitSemaphores = { mRenderData.rdComputeSemaphore, mRenderData.rdPresentSemaphore };
-  //std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
-  std::vector<VkSemaphore> waitSemaphores = { mRenderData.rdPresentSemaphores[mRenderData.currentFrame] };
+  std::vector<VkSemaphore> waitSemaphores = { mRenderData.rdPresentSemaphores.at(mRenderData.currentFrame) };
   std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
   submitInfo.pWaitDstStageMask = waitStages.data();
 
   submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
   submitInfo.pWaitSemaphores = waitSemaphores.data();
 
-  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[imageIndex], mRenderData.rdGraphicSemaphores[mRenderData.currentFrame] };
+  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[imageIndex] };
 
   submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
   submitInfo.pSignalSemaphores = signalSemaphores.data();
 
   std::vector<VkCommandBuffer> commandBuffers =
-    { mRenderData.rdCommandBuffers[mRenderData.currentFrame] };
+    { mRenderData.rdCommandBuffers.at(mRenderData.currentFrame) };
 
   submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
   submitInfo.pCommandBuffers = commandBuffers.data();
 
-  result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences[mRenderData.currentFrame]);
+  result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: failed to submit draw command buffer (%i)\n", __FUNCTION__, result);
     return false;
@@ -6398,6 +6473,8 @@ bool VkRenderer::draw(float deltaTime) {
       return false;
     }
   }
+
+  mRenderData.currentFrame = (mRenderData.currentFrame + 1) % mRenderData.rdNumFramesInFlight;
 
   return true;
 }

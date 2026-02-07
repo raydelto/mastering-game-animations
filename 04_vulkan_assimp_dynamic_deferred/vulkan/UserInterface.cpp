@@ -680,7 +680,7 @@ void UserInterface::createFrame(VkRenderData &renderData, ModelAndInstanceData &
 
 void UserInterface::render(VkRenderData& renderData) {
   ImGui::Render();
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers[renderData.currentFrame]);
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers.at(renderData.currentFrame));
 }
 
 void UserInterface::removeDescriptorSets(VkRenderData& renderData) {

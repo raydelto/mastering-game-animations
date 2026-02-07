@@ -126,16 +126,15 @@ bool UserInterface::init(VkRenderData& renderData) {
 
 void UserInterface::createDescriptorSets(VkRenderData& renderData) {
   // color attachment textures
-  renderData.rdGBuffer.color.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.color.sampler, renderData.rdGBuffer.color.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
-  renderData.rdGBuffer.depth.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.depth.sampler, renderData.rdGBuffer.depth.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
-  renderData.rdGBuffer.normal.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.normal.sampler, renderData.rdGBuffer.normal.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
+  renderData.rdGBuffer.color.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.color.sampler, renderData.rdGBuffer.color.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  renderData.rdGBuffer.depth.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.depth.sampler, renderData.rdGBuffer.depth.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  renderData.rdGBuffer.normal.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdGBuffer.normal.sampler, renderData.rdGBuffer.normal.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSelectionImageData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSelectionImageData.sampler, renderData.rdSelectionImageData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAONoiseBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAONoiseBufferData.sampler, renderData.rdSSAONoiseBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOColorBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOColorBufferData.sampler, renderData.rdSSAOColorBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdSSAOBlurBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdSSAOBlurBufferData.sampler, renderData.rdSSAOBlurBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  renderData.rdLightSpheresBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightSpheresBufferData.sampler, renderData.rdLightSpheresBufferData.imageView, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ);
   renderData.rdDynamicLightCombinedShadowData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdDynamicLightCombinedShadowData.sampler, renderData.rdDynamicLightCombinedShadowData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-
+  renderData.rdLightSpheresBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdLightSpheresBufferData.sampler, renderData.rdLightSpheresBufferData.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   renderData.rdShadowMapCombinedDepthBufferData.descriptorSet = ImGui_ImplVulkan_AddTexture(renderData.rdShadowMapCombinedDepthBufferData.sampler, renderData.rdShadowMapCombinedDepthBufferData.imageView, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
 
@@ -4297,7 +4296,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
 
 void UserInterface::render(VkRenderData& renderData) {
   ImGui::Render();
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers[renderData.currentFrame]);
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers.at(renderData.currentFrame));
 }
 
 void UserInterface::removeDescriptorSets(VkRenderData& renderData) {

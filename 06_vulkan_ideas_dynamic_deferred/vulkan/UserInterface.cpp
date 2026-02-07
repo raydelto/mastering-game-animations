@@ -3826,7 +3826,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
 
 void UserInterface::render(VkRenderData& renderData) {
   ImGui::Render();
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers[renderData.currentFrame]);
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), renderData.rdCommandBuffers.at(renderData.currentFrame));
 }
 
 void UserInterface::removeDescriptorSets(VkRenderData& renderData) {

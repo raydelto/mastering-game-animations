@@ -1,14 +1,14 @@
 #version 460 core
 
-layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput inputColor;
-layout (input_attachment_index = 1, set = 0, binding = 3) uniform subpassInput inputDepth;
-layout (input_attachment_index = 2, set = 0, binding = 4) uniform subpassInput inputNormal;
-layout (input_attachment_index = 3, set = 0, binding = 5) uniform subpassInput lightSpheres;
+layout (set = 0, binding = 2) uniform sampler2D inputColor;
+layout (set = 0, binding = 3) uniform sampler2D inputDepth;
+layout (set = 0, binding = 4) uniform sampler2D inputNormal;
 
-layout (set = 0, binding = 6) uniform sampler2D ssao;
-layout (set = 0, binding = 7) uniform sampler2D ssaoBlur;
-layout (set = 0, binding = 8) uniform sampler2DArray shadowMapDepth;
-layout (set = 0, binding = 9) uniform sampler2D shadowMapCombinedDepth;
+layout (set = 0, binding = 6) uniform sampler2D lightSpheres;
+layout (set = 0, binding = 7) uniform sampler2D ssao;
+layout (set = 0, binding = 8) uniform sampler2D ssaoBlur;
+layout (set = 0, binding = 9) uniform sampler2DArray shadowMapDepth;
+layout (set = 0, binding = 10) uniform sampler2D shadowMapCombinedDepth;
 
 layout (location = 0) in vec2 inUV;
 
@@ -65,7 +65,7 @@ struct dynamicLight {
   float quadraticAttFactor;
 };
 
-layout (std430, set = 0, binding = 10) readonly restrict buffer DynamicLights {
+layout (std430, set = 0, binding = 11) readonly restrict buffer DynamicLights {
   dynamicLight lights[];
 };
 
@@ -91,9 +91,9 @@ float unlinearizeDepth(float depth) {
 vec3 getWorldPosFromDepth(vec2 uv) {
   float depth = 0.0;
   if (farPlane == 0.0) {
-    depth = subpassLoad(inputDepth).r;
+    depth = texture(inputDepth, uv).r;
   } else {
-    depth = unlinearizeDepth(subpassLoad(inputDepth).r);
+    depth = unlinearizeDepth(texture(inputDepth, uv).r);
   }
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
@@ -149,8 +149,8 @@ void main() {
   vec3 viewPos = getWorldPosFromDepth(inUV);
   vec3 worldPos = vec3(invViewMat * vec4(getWorldPosFromDepth(inUV), 1.0));
   float fragDepth = viewPos.z;
-  vec3 normal = normalize(subpassLoad(inputNormal).rgb * 2.0 - 1.0);
-  vec3 albedo = subpassLoad(inputColor).rgb;
+  vec3 normal = normalize(texture(inputNormal, inUV).rgb * 2.0 - 1.0);
+  vec3 albedo = texture(inputColor, inUV).rgb;
 
   float ao = texture(ssao, inUV).r;
   float aoBlur = texture(ssaoBlur, inUV).r;
@@ -194,7 +194,7 @@ void main() {
         }
       }
 
-      vec3 dynamicDiffuse = subpassLoad(lightSpheres).rgb * albedo;
+      vec3 dynamicDiffuse = texture(lightSpheres, inUV).rgb * albedo;
 
       outColor = mix(vec4(clamp(ambient + diffuse * ssaoValue * shadowFactor + dynamicDiffuse, 0.0, 1.0), 1.0), fogColor, fogAmount);
 
@@ -221,7 +221,7 @@ void main() {
       outColor = vec4(albedo, 1.0);
       break;
     case 2:
-      outColor = vec4(vec3(subpassLoad(inputDepth).r), 1.0);
+      outColor = vec4(vec3(texture(inputDepth, inUV).r), 1.0);
       break;
     case 3:
       outColor = vec4(normal * 0.5 + 0.5, 1.0);
@@ -236,7 +236,7 @@ void main() {
       outColor = vec4(vec3(aoBlur), 1.0);
       break;
     case 7:
-      outColor = vec4(subpassLoad(lightSpheres).rgb, 1.0);
+      outColor = vec4(texture(lightSpheres, inUV).rgb, 1.0);
       break;
     case 8:
       outColor = vec4(vec3(texture(shadowMapCombinedDepth, inUV).r), 1.0);

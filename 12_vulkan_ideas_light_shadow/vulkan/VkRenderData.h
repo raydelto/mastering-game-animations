@@ -424,40 +424,42 @@ struct VkRenderData {
   VkTextureData rdSkyboxTexture{};
 
   VkVertexBufferData rdFullscreenQuadBufferData{};
-  VkVertexBufferData rdLineVertexBuffer{};
-  VkVertexBufferData rdSphereVertexBuffer{};
-  VkVertexBufferData rdLevelAABBVertexBuffer{};
-  VkVertexBufferData rdLevelOctreeVertexBuffer{};
-  VkVertexBufferData rdLevelWireframeVertexBuffer{};
-  VkVertexBufferData rdIKLinesVertexBuffer{};
-  VkVertexBufferData rdGroundMeshVertexBuffer{};
-  VkVertexBufferData rdGroundMeshNeighborVertexBuffer{};
-  VkVertexBufferData rdInstancePathVertexBuffer{};
-  VkVertexBufferData rdSkyboxBuffer{};
-  VkVertexBufferData rdDynamicLightDebugVertexBuffer{};
-  VkVertexBufferData rdLightSphereVertexBuffer{};
-  VkVertexBufferData rdLightSphereDebugVertexBuffer{};
 
-  VkShaderStorageBufferData rdShaderModelRootMatrixBuffer{};
-  VkShaderStorageBufferData rdSelectedInstanceBuffer{};
-  VkShaderStorageBufferData rdShaderBoneMatrixBuffer{};
-  VkShaderStorageBufferData rdPerInstanceAnimDataBuffer{};
-  VkShaderStorageBufferData rdShaderTRSMatrixBuffer{};
-  VkShaderStorageBufferData rdSphereModelRootMatrixBuffer{};
-  VkShaderStorageBufferData rdSpherePerInstanceAnimDataBuffer{};
-  VkShaderStorageBufferData rdSphereTRSMatrixBuffer{};
-  VkShaderStorageBufferData rdSphereBoneMatrixBuffer{};
-  VkShaderStorageBufferData rdBoundingSphereBuffer{};
-  VkShaderStorageBufferData rdFaceAnimPerInstanceDataBuffer{};
-  VkShaderStorageBufferData rdShaderLevelRootMatrixBuffer{};
-  VkShaderStorageBufferData rdIKBoneMatrixBuffer{};
-  VkShaderStorageBufferData rdIKTRSMatrixBuffer{};
-  VkShaderStorageBufferData rdShadowMapCascadeDataBuffer{};
-  VkShaderStorageBufferData rdDynamicLightBuffer{};
-  VkShaderStorageBufferData rdDynamicLightDebugBuffer{};
+  std::vector<VkVertexBufferData> rdLineVertexBuffers{};
+  std::vector<VkVertexBufferData> rdSphereVertexBuffers{};
+  std::vector<VkVertexBufferData> rdLevelAABBVertexBuffers{};
+  std::vector<VkVertexBufferData> rdLevelOctreeVertexBuffers{};
+  std::vector<VkVertexBufferData> rdLevelWireframeVertexBuffers{};
+  std::vector<VkVertexBufferData> rdIKLinesVertexBuffers{};
+  std::vector<VkVertexBufferData> rdGroundMeshVertexBuffers{};
+  std::vector<VkVertexBufferData> rdGroundMeshNeighborVertexBuffers{};
+  std::vector<VkVertexBufferData> rdInstancePathVertexBuffers{};
+  std::vector<VkVertexBufferData> rdSkyboxBuffers{};
+  std::vector<VkVertexBufferData> rdDynamicLightDebugVertexBuffers{};
+  std::vector<VkVertexBufferData> rdLightSphereVertexBuffers{};
+  std::vector<VkVertexBufferData> rdLightSphereDebugVertexBuffers{};
+
+  std::vector<VkShaderStorageBufferData> rdShaderModelRootMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdSelectedInstanceBuffers{};
+  std::vector<VkShaderStorageBufferData> rdShaderBoneMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdPerInstanceAnimDataBuffers{};
+  std::vector<VkShaderStorageBufferData> rdShaderTRSMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdSphereModelRootMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdSpherePerInstanceAnimDataBuffers{};
+  std::vector<VkShaderStorageBufferData> rdSphereTRSMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdSphereBoneMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdBoundingSphereBuffers{};
+  std::vector<VkShaderStorageBufferData> rdFaceAnimPerInstanceDataBuffers{};
+  std::vector<VkShaderStorageBufferData> rdShaderLevelRootMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdIKBoneMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdIKTRSMatrixBuffers{};
+  std::vector<VkShaderStorageBufferData> rdShadowMapCascadeDataBuffers{};
+  std::vector<VkShaderStorageBufferData> rdDynamicLightBuffers{};
+  std::vector<VkShaderStorageBufferData> rdDynamicLightDebugBuffers{};
 
   // Vulkan specific stuff
   const int MAX_FRAMES_IN_FLIGHT = 3;
+  int rdNumFramesInFlight = 1;
   int currentFrame = 0;
 
   VkSurfaceKHR rdSurface = VK_NULL_HANDLE;
@@ -548,13 +550,11 @@ struct VkRenderData {
 
   std::vector<VkSemaphore> rdPresentSemaphores{};
   std::vector<VkSemaphore> rdRenderSemaphores{};
-  std::vector<VkSemaphore> rdGraphicSemaphores{};
   std::vector<VkSemaphore> rdComputeSemaphores{};
   std::vector<VkSemaphore> rdCollisionSemaphores{};
 
   std::vector<VkFence> rdRenderFences{};
   std::vector<VkFence> rdComputeFences{};
-  std::vector<VkFence> rdCollisionFences{};
 
   VkDescriptorSetLayout rdAssimpDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdAssimpSkinningDescriptorLayout = VK_NULL_HANDLE;
@@ -581,29 +581,29 @@ struct VkRenderData {
   VkDescriptorSetLayout rdLightSphereDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdLightSphereShadowDescriptorLayout = VK_NULL_HANDLE;
 
-  VkDescriptorSet rdAssimpDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeTransformDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeMatrixMultDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningMorphDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpSkinningMorphSelectionDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeSphereTransformDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeSphereMatrixMultDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeBoundingSpheresDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpComputeIKDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdAssimpLevelDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdLineDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSphereDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdGroundMeshDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSkyboxDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdCompositeDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSSAODescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdSSAOBlurDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdDynLightDebugSphereDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdLightSphereDescriptorSet = VK_NULL_HANDLE;
-  VkDescriptorSet rdLightSphereShadowsDescriptorSet = VK_NULL_HANDLE;
+  std::vector<VkDescriptorSet> rdAssimpDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeTransformDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeMatrixMultDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningMorphDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpSkinningMorphSelectionDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeSphereTransformDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeSphereMatrixMultDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeBoundingSpheresDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpComputeIKDescriptorSets{};
+  std::vector<VkDescriptorSet> rdAssimpLevelDescriptorSets{};
+  std::vector<VkDescriptorSet> rdLineDescriptorSets{};
+  std::vector<VkDescriptorSet> rdSphereDescriptorSets{};
+  std::vector<VkDescriptorSet> rdGroundMeshDescriptorSets{};
+  std::vector<VkDescriptorSet> rdSkyboxDescriptorSets{};
+  std::vector<VkDescriptorSet> rdCompositeDescriptorSets{};
+  std::vector<VkDescriptorSet> rdSSAODescriptorSets{};
+  std::vector<VkDescriptorSet> rdSSAOBlurDescriptorSets{};
+  std::vector<VkDescriptorSet> rdDynLightDebugSphereDescriptorSets{};
+  std::vector<VkDescriptorSet> rdLightSphereDescriptorSets{};
+  std::vector<VkDescriptorSet> rdLightSphereShadowsDescriptorSets{};
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

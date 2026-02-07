@@ -4,7 +4,9 @@
 #include <VkBootstrap.h>
 
 bool ShaderStorageBuffer::init(VkRenderData& renderData, std::vector<VkShaderStorageBufferData> &SSBOData, size_t bufferSize) {
+  SSBOData.resize(renderData.rdNumFramesInFlight);
   bool success = true;
+
   for (int i = 0; i < SSBOData.size(); ++i) {
     if (!init(renderData, SSBOData.at(i), bufferSize)) {
       success = false;

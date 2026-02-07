@@ -9,8 +9,10 @@
 
 class VertexBuffer {
   public:
+    static bool init(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData,
+      unsigned int bufferSize = 1024);
     static bool init(VkRenderData &renderData, VkVertexBufferData &vertexBufferData,
-      unsigned int bufferSize);
+      unsigned int bufferSize = 1024);
 
     template <typename T>
     static bool uploadData(VkRenderData &renderData, VkVertexBufferData &vertexBufferData, std::vector<T> vertexData) {
@@ -44,6 +46,7 @@ class VertexBuffer {
       return uploadToGPU(renderData, vertexBufferData);
     }
 
+    static void cleanup(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData);
     static void cleanup(VkRenderData &renderData, VkVertexBufferData &vertexBufferData);
 
   private:

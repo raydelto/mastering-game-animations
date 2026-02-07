@@ -3,6 +3,19 @@
 #include <VertexBuffer.h>
 #include <CommandBuffer.h>
 
+bool VertexBuffer::init(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData,
+    unsigned int bufferSize) {
+  vertexBufferData.resize(renderData.rdNumFramesInFlight);
+  bool success = true;
+
+  for (int i = 0; i < vertexBufferData.size(); ++i) {
+    if (!init(renderData, vertexBufferData.at(i), bufferSize)) {
+      success = false;
+    }
+  }
+  return success;
+}
+
 bool VertexBuffer::init(VkRenderData &renderData, VkVertexBufferData &vertexBufferData,
     unsigned int bufferSize) {
   /* avoid errors causes by zero buffer size */
@@ -76,6 +89,12 @@ bool VertexBuffer::uploadToGPU(VkRenderData &renderData, VkVertexBufferData &ver
   }
 
   return true;
+}
+
+void VertexBuffer::cleanup(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData) {
+  for (int i = 0; i < vertexBufferData.size(); ++i) {
+    cleanup(renderData, vertexBufferData.at(i));
+  }
 }
 
 void VertexBuffer::cleanup(VkRenderData &renderData, VkVertexBufferData &vertexBufferData) {

@@ -4,10 +4,10 @@ layout (location = 1) in vec3 normal;
 layout (location = 2) in vec2 texCoord;
 layout (location = 3) flat in float selectInfo;
 
-layout (location = 1) out vec4 FragColor;
-layout (location = 2) out float outDepth;
-layout (location = 3) out vec4 outNormal;
-layout (location = 4) out float SelectedInstance;
+layout (location = 0) out vec4 FragColor;
+layout (location = 1) out float outDepth;
+layout (location = 2) out vec4 outNormal;
+layout (location = 3) out float SelectedInstance;
 
 layout (set = 0, binding = 0) uniform sampler2D tex;
 

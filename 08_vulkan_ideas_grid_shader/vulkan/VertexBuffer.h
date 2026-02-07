@@ -9,9 +9,9 @@
 class VertexBuffer {
   public:
     static bool init(VkRenderData &renderData, std::vector<VkVertexBufferData> &vertexBufferData,
-      unsigned int bufferSize);
+      unsigned int bufferSize = 1024);
     static bool init(VkRenderData &renderData, VkVertexBufferData &vertexBufferData,
-      unsigned int bufferSize);
+      unsigned int bufferSize = 1024);
 
     static bool uploadData(VkRenderData& renderData, VkVertexBufferData &vertexBufferData,
       VkMesh vertexData);

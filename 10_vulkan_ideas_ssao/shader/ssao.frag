@@ -1,10 +1,10 @@
 #version 460 core
 layout (location = 0) in vec2 inUV;
 
-layout (location = 5) out float outColor;
+layout (location = 0) out float outColor;
 
-layout (set = 0, binding = 2) uniform sampler2D inputDepth;
-layout (set = 0, binding = 3) uniform sampler2D inputNormal;
+layout (set = 0, binding = 2) uniform sampler2D ssaoInputDepth;
+layout (set = 0, binding = 3) uniform sampler2D ssaoInputNormal;
 layout (set = 0, binding = 4) uniform sampler2D ssaoNoise;
 
 layout (std140, set = 0, binding = 0) uniform Matrices {
@@ -33,8 +33,17 @@ layout (std140, set = 0, binding = 5) uniform SSAOSamples {
   vec4 samples[SSAO_KERNEL_SIZE];
 };
 
-vec3 getPosFromDepth(vec2 uv) {
-  float depth = texture(inputDepth, uv).r;
+float unlinearizeDepth(float depth) {
+  return -(2.0 * nearPlane / depth - farPlane + nearPlane)/  (farPlane - nearPlane);
+}
+
+vec3 getWorldPosFromDepth(vec2 uv) {
+  float depth = 1.0;
+  if (farPlane == 0.0) {
+    depth = texture(ssaoInputDepth, uv).r;
+  } else {
+    depth = unlinearizeDepth(texture(ssaoInputDepth, uv).r);
+  }
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
   pos = invProjectionMat * pos;
@@ -44,11 +53,11 @@ vec3 getPosFromDepth(vec2 uv) {
 }
 
 void main() {
-  vec3 fragPos = getPosFromDepth(inUV);
+  vec3 fragPos = getWorldPosFromDepth(inUV);
   // set w to zero to nullify translation
-  vec3 normal = (viewMat * vec4(normalize(texture(inputNormal, inUV).rgb * 2.0 - 1.0), 0.0)).xyz;
+  vec3 normal = (viewMat * vec4(normalize(texture(ssaoInputNormal, inUV).rgb * 2.0 - 1.0), 0.0)).xyz;
 
-  ivec2 texDim = textureSize(inputDepth, 0);
+  ivec2 texDim = textureSize(ssaoInputDepth, 0);
   ivec2 noiseDim = textureSize(ssaoNoise, 0);
   const float scalingFactor = 0.5;
   const vec2 noiseUV = vec2(float(texDim.x)/float(noiseDim.x),
@@ -69,8 +78,8 @@ void main() {
     offset.xy /= offset.w;
     offset.xy = offset.xy * 0.5 + 0.5;
 
-    float sampleDepth = getPosFromDepth(offset.xy).z;
-    vec3 sampleNormal = (viewMat * vec4(normalize(texture(inputNormal,offset.xy).rgb * 2.0 - 1.0), 0.0)).xyz;
+    float sampleDepth = getWorldPosFromDepth(offset.xy).z;
+    vec3 sampleNormal = (viewMat * vec4(normalize(texture(ssaoInputNormal,offset.xy).rgb * 2.0 - 1.0), 0.0)).xyz;
 
     if (dot(sampleNormal, normal) < 0.99) {
       float rangeCheck = smoothstep(0.0, 1.0, ssaoRadius / abs(fragPos.z - sampleDepth));

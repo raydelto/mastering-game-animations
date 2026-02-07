@@ -1,8 +1,8 @@
 #version 460 core
 
-layout (input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput inputColor;
-layout (input_attachment_index = 1, set = 0, binding = 2) uniform subpassInput inputDepth;
-layout (input_attachment_index = 2, set = 0, binding = 3) uniform subpassInput inputNormal;
+layout (set = 0, binding = 1) uniform sampler2D inputColor;
+layout (set = 0, binding = 2) uniform sampler2D inputDepth;
+layout (set = 0, binding = 3) uniform sampler2D inputNormal;
 
 layout (set = 0, binding = 5) uniform sampler2D ssao;
 layout (set = 0, binding = 6) uniform sampler2D ssaoBlur;
@@ -36,8 +36,21 @@ vec3 sRGB(vec3 c) {
   return vec3(toSRGB(c.x), toSRGB(c.y), toSRGB(c.z));
 }
 
-vec3 getPosFromDepth(vec2 uv) {
-  float depth = subpassLoad(inputDepth).r;
+float linearDepth(float depth) {
+  return 2.0 * nearPlane / (farPlane + nearPlane - depth * (farPlane - nearPlane));
+}
+
+float unlinearizeDepth(float depth) {
+  return -(2.0 * nearPlane / depth - farPlane - nearPlane) / (farPlane - nearPlane);
+}
+
+vec3 getWorldPosFromDepth(vec2 uv) {
+  float depth = 0.0;
+  if (farPlane == 0.0) {
+    depth = texture(inputDepth, uv).r;
+  } else {
+    depth = unlinearizeDepth(texture(inputDepth, uv).r);
+  }
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
   pos = invProjectionMat * pos;
@@ -46,15 +59,11 @@ vec3 getPosFromDepth(vec2 uv) {
   return pos.xyz;
 }
 
-float linearDepth(float depth) {
-  return 2.0 * nearPlane / (farPlane + nearPlane - depth * (farPlane - nearPlane));
-}
-
 void main() {
   /* Read G-Buffer values from previous sub pass */
-  float fragDepth = getPosFromDepth(inUV).z;
-  vec3 normal = normalize(subpassLoad(inputNormal).rgb * 2.0 - 1.0);
-  vec3 albedo = subpassLoad(inputColor).rgb;
+  float fragDepth = getWorldPosFromDepth(inUV).z;
+  vec3 normal = normalize(texture(inputNormal, inUV).rgb * 2.0 - 1.0);
+  vec3 albedo = texture(inputColor, inUV).rgb;
 
   float ao = texture(ssao, inUV).r;
   float aoBlur = texture(ssaoBlur, inUV).r;
@@ -86,11 +95,7 @@ void main() {
       outColor = vec4(albedo, 1.0);
       break;
     case 2:
-      if (farPlane == 0.0) {
-        outColor = vec4(vec3(subpassLoad(inputDepth).r), 1.0);
-      } else {
-        outColor = vec4(vec3(linearDepth(subpassLoad(inputDepth).r)), 1.0);
-      }
+      outColor = vec4(vec3(texture(inputDepth, inUV).r), 1.0);
       break;
     case 3:
       outColor = vec4(normal * 0.5 + 0.5, 1.0);

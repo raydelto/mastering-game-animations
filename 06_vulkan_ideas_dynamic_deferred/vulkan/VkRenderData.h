@@ -388,7 +388,6 @@ struct VkRenderData {
 
   std::vector<VkFence> rdRenderFences{};
   std::vector<VkFence> rdComputeFences{};
-  std::vector<VkFence> rdCollisionFences{};
 
   VkDescriptorSetLayout rdAssimpDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdAssimpSkinningDescriptorLayout = VK_NULL_HANDLE;

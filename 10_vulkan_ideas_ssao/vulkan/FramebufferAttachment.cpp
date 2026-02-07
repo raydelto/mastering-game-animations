@@ -67,7 +67,7 @@ bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferDa
     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
     .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ,
+    .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     .image = bufferData.image,
     .subresourceRange = {
       .aspectMask = aspectMask,

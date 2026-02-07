@@ -12,6 +12,7 @@
 class ShaderStorageBuffer {
   public:
     // set an arbitraty buffer size as default
+    static bool init(VkRenderData &renderData, std::vector<VkShaderStorageBufferData> &SSBOData, size_t bufferSize = 1024);
     static bool init(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData, size_t bufferSize = 1024);
 
     template <typename T>
@@ -80,5 +81,6 @@ class ShaderStorageBuffer {
     static std::vector<TRSMatrixData> getSsboDataTRSMatrixData(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData,
       size_t offset, int numberOfElements);
 
+    static void cleanup(VkRenderData &renderData, std::vector<VkShaderStorageBufferData> &SSBOData);
     static void cleanup(VkRenderData &renderData, VkShaderStorageBufferData &SSBOData);
 };
