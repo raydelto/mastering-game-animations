@@ -1844,6 +1844,11 @@ void VkRenderer::generateShaderLightData() {
     bool bufferResized = ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffers.at(mRenderData.currentFrame), shadowMapCascadeSize);
 
     if (bufferResized) {
+      for (int i = 0; i < mRenderData.rdNumFramesInFlight; ++i) {
+        // resize all SSBOs
+        ShaderStorageBuffer::checkForResize(mRenderData, mRenderData.rdShadowMapCascadeDataBuffers.at(i), shadowMapCascadeSize);
+      }
+
       VkHelper::updateDescriptorSets(mRenderData);
       VkHelper::updateImageDescriptorSets(mRenderData);
       VkHelper::updateLevelDescriptorSets(mRenderData);
