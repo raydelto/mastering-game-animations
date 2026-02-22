@@ -1068,20 +1068,20 @@ bool VkRenderer::draw(float deltaTime) {
   std::vector<VkClearValue> clearValues = { colorClearValue, depthValue };
 
   // layout transitions
-  VkImageMemoryBarrier firstImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR{};
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier firstImageMemoryBarrier {};
+  firstImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  firstImageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  firstImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  firstImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffer,
@@ -1124,14 +1124,13 @@ bool VkRenderer::draw(float deltaTime) {
 
   std::vector<VkRenderingAttachmentInfo> attachmentInfos { colorAttachmentInfo };
 
-  VkRenderingInfo renderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size()),
-    .pColorAttachments = attachmentInfos.data(),
-    .pDepthAttachment = &depthAttachmentInfo,
-  };
+  VkRenderingInfo renderInfo{};
+  renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderInfo.renderArea = renderArea;
+  renderInfo.layerCount = 1;
+  renderInfo.colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size());
+  renderInfo.pColorAttachments = attachmentInfos.data();
+  renderInfo.pDepthAttachment = &depthAttachmentInfo;
 
   vkCmdBeginRendering(mRenderData.rdCommandBuffer, &renderInfo);
 
@@ -1192,20 +1191,13 @@ bool VkRenderer::draw(float deltaTime) {
   vkCmdEndRendering(mRenderData.rdCommandBuffer);
 
   // layout transition to present
-  VkImageMemoryBarrier secondImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageMemoryBarrier secondImageMemoryBarrier{};
+  secondImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  secondImageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  secondImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  secondImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  secondImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  secondImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffer,

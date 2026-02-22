@@ -4047,7 +4047,7 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
   ImGuiWindowFlags posWinFlags = 0;
   ImGui::SetNextWindowBgAlpha(0.5f);
 
-  if (!ImGui::Begin("Shsder Debug", &mDebugWindowOpen, posWinFlags)) {
+  if (!ImGui::Begin("Shader Debug", &mDebugWindowOpen, posWinFlags)) {
     // window collapsed
     ImGui::End();
     return;

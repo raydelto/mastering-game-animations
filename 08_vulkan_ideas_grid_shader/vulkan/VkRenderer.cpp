@@ -2835,20 +2835,20 @@ bool VkRenderer::createDepthBuffer() {
 
   VkCommandBuffer imageTransitionBuffer = CommandBuffer::createSingleShotBuffer(mRenderData, mRenderData.rdCommandPool);
 
-  VkImageMemoryBarrier imageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-    .image = mRenderData.rdDepthImage,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier imageMemoryBarrier{};
+  imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+  imageMemoryBarrier.image = mRenderData.rdDepthImage;
+  imageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     imageTransitionBuffer,
@@ -3718,20 +3718,20 @@ bool VkRenderer::initUserInterface() {
 
 void VkRenderer::transitionImageForImGui(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-  VkImageMemoryBarrier imageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = oldLayout,
-    .newLayout = newLayout,
-    .image = image,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier imageMemoryBarrier{};
+  imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imageMemoryBarrier.oldLayout = oldLayout;
+  imageMemoryBarrier.newLayout = newLayout;
+  imageMemoryBarrier.image = image;
+  imageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -3742,7 +3742,6 @@ void VkRenderer::transitionImageForImGui(VkImage image, VkImageLayout oldLayout,
     1, &imageMemoryBarrier // pImageMemoryBarriers
   );
 }
-
 
 bool VkRenderer::hasModel(std::string modelFileName) {
   auto modelIter =  std::find_if(mModelInstCamData.micModelList.begin(), mModelInstCamData.micModelList.end(),
@@ -7812,20 +7811,20 @@ bool VkRenderer::draw(float deltaTime) {
 
   /* layout transitions */
   /* swapchain image */
-  VkImageMemoryBarrier firstImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier firstImageMemoryBarrier{};
+  firstImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  firstImageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  firstImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  firstImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  firstImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  firstImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -7901,14 +7900,13 @@ bool VkRenderer::draw(float deltaTime) {
 
   std::vector<VkRenderingAttachmentInfo> attachmentInfos { swapchainAttachmentInfo, colorAttachmentInfo, positionAttachmentInfo, normalAttachmentInfo, selectionAttachmentInfo };
 
-  VkRenderingInfo renderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size()),
-    .pColorAttachments = attachmentInfos.data(),
-    .pDepthAttachment = &depthAttachmentInfo,
-  };
+  VkRenderingInfo renderInfo{};
+  renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderInfo.renderArea = renderArea;
+  renderInfo.layerCount = 1;
+  renderInfo.colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size());
+  renderInfo.pColorAttachments = attachmentInfos.data();
+  renderInfo.pDepthAttachment = &depthAttachmentInfo;
 
   /* draw levels first */
   vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &renderInfo);
@@ -8047,11 +8045,10 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
-  VkMemoryBarrier midMemBarrier {
-    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-    .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-  };
+  VkMemoryBarrier midMemBarrier{};
+  midMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+  midMemBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  midMemBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -8200,30 +8197,22 @@ bool VkRenderer::draw(float deltaTime) {
 
   std::vector<VkRenderingAttachmentInfo> uiAttachmentInfos { swapchainUIAttachmentInfo };
 
-  VkRenderingInfo uiRenderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(uiAttachmentInfos.size()),
-    .pColorAttachments = uiAttachmentInfos.data(),
-  };
+  VkRenderingInfo uiRenderInfo{};
+  uiRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  uiRenderInfo.renderArea = renderArea;
+  uiRenderInfo.layerCount = 1;
+  uiRenderInfo.colorAttachmentCount = static_cast<uint32_t>(uiAttachmentInfos.size());
+  uiRenderInfo.pColorAttachments = uiAttachmentInfos.data();
 
   /* layout transition */
   /* selection image back to color attachment */
-  VkImageMemoryBarrier uiImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    .image = mRenderData.rdSelectionImage,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageMemoryBarrier uiImageMemoryBarrier{};
+  uiImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  uiImageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  uiImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  uiImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  uiImageMemoryBarrier.image = mRenderData.rdSelectionImage;
+  uiImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -8271,20 +8260,13 @@ bool VkRenderer::draw(float deltaTime) {
 
   /* layout transition */
   /* swapchain image to present */
-  VkImageMemoryBarrier secondImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageMemoryBarrier secondImageMemoryBarrier{};
+  secondImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  secondImageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  secondImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  secondImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  secondImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  secondImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),

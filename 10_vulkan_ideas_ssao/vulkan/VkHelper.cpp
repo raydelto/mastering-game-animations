@@ -3194,20 +3194,20 @@ bool VkHelper::createDepthBuffer(VkRenderData& renderData) {
 
   VkCommandBuffer imageTransitionBuffer = CommandBuffer::createSingleShotBuffer(renderData, renderData.rdCommandPool);
 
-  VkImageMemoryBarrier imageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-    .image = renderData.rdDepthBufferData.image,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier imageMemoryBarrier{};
+  imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+  imageMemoryBarrier.image = renderData.rdDepthBufferData.image;
+  imageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     imageTransitionBuffer,
@@ -3513,20 +3513,20 @@ void VkHelper::cleanupGBuffer(VkRenderData& renderData) {
 
 void VkHelper::transitionImageLayout(VkRenderData& renderData, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-  VkImageMemoryBarrier imageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = oldLayout,
-    .newLayout = newLayout,
-    .image = image,
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier imageMemoryBarrier{};
+  imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imageMemoryBarrier.oldLayout = oldLayout;
+  imageMemoryBarrier.newLayout = newLayout;
+  imageMemoryBarrier.image = image;
+  imageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     renderData.rdCommandBuffers.at(renderData.currentFrame),

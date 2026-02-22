@@ -153,12 +153,11 @@ bool SkinningPipeline::init(VkRenderData& renderData, VkPipelineLayout& pipeline
 
 
   // dynamic rendering
-  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo {
-    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-    .colorAttachmentCount = 1,
-    .pColorAttachmentFormats = &renderData.rdVkbSwapchain.image_format,
-    .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-  };
+  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+  pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+  pipelineRenderingCreateInfo.colorAttachmentCount = 1;
+  pipelineRenderingCreateInfo.pColorAttachmentFormats = &renderData.rdVkbSwapchain.image_format;
+  pipelineRenderingCreateInfo.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
   pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

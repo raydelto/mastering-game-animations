@@ -137,12 +137,11 @@ bool GroundMeshPipeline::init(VkRenderData& renderData,std::vector<VkFormat> col
   dynStatesInfo.pDynamicStates = dynStates.data();
 
   // dynamic rendering
-  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo {
-    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-    .colorAttachmentCount = static_cast<uint32_t>(colorAttachmentFormats.size()),
-    .pColorAttachmentFormats = colorAttachmentFormats.data(),
-    .depthAttachmentFormat = renderData.rdDepthFormat,
-  };
+  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+  pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+  pipelineRenderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachmentFormats.size());
+  pipelineRenderingCreateInfo.pColorAttachmentFormats = colorAttachmentFormats.data();
+  pipelineRenderingCreateInfo.depthAttachmentFormat = renderData.rdDepthFormat;
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
   pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

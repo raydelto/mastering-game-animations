@@ -136,10 +136,9 @@ bool ShadowMapPipeline::init(VkRenderData& renderData,
   dynStatesInfo.pDynamicStates = dynStates.data();
 
   // dynamic rendering
-  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo {
-    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-    .depthAttachmentFormat = renderData.rdShadowMapDepthBufferData.format,
-  };
+  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+  pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+  pipelineRenderingCreateInfo.depthAttachmentFormat = renderData.rdShadowMapDepthBufferData.format;
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
   pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

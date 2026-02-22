@@ -5330,7 +5330,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   // Dynamic light shadow pass
   if (mRenderData.rdNumDynamicLightsWithShadow > 0) {
-    VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo {};
+    VkRenderingAttachmentInfo dynShadowMapBufferAttachmentInfo{};
     dynShadowMapBufferAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     dynShadowMapBufferAttachmentInfo.imageView = mRenderData.rdDynamicLightShadowData.imageView;
     dynShadowMapBufferAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -5338,12 +5338,11 @@ bool VkRenderer::draw(float deltaTime) {
     dynShadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     dynShadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
 
-    VkRenderingInfo dynShadowMapRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = dynLightShadowMapenderArea,
-      .layerCount = mRenderData.rdDynamicLightShadowData.numLayers,
-      .pDepthAttachment = &dynShadowMapBufferAttachmentInfo
-    };
+    VkRenderingInfo dynShadowMapRenderInfo{};
+    dynShadowMapRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    dynShadowMapRenderInfo.renderArea = dynLightShadowMapenderArea;
+    dynShadowMapRenderInfo.layerCount = mRenderData.rdDynamicLightShadowData.numLayers;
+    dynShadowMapRenderInfo.pDepthAttachment = &dynShadowMapBufferAttachmentInfo;
 
     // update shadow map data of dynamic lights
     vkCmdUpdateBuffer(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -5572,12 +5571,11 @@ bool VkRenderer::draw(float deltaTime) {
     shadowMapBufferAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     shadowMapBufferAttachmentInfo.clearValue = depthImageClearValue;
 
-    VkRenderingInfo shadowMapRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = shadowMapenderArea,
-      .layerCount = mRenderData.rdShadowMapDepthBufferData.numLayers,
-      .pDepthAttachment = &shadowMapBufferAttachmentInfo
-    };
+    VkRenderingInfo shadowMapRenderInfo{};
+    shadowMapRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    shadowMapRenderInfo.renderArea = shadowMapenderArea;
+    shadowMapRenderInfo.layerCount = mRenderData.rdShadowMapDepthBufferData.numLayers;
+    shadowMapRenderInfo.pDepthAttachment = &shadowMapBufferAttachmentInfo;
 
     VkImageSubresourceRange shadowMapDepthBufferSubresourceRangeOne{};
     shadowMapDepthBufferSubresourceRangeOne.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -5850,14 +5848,13 @@ bool VkRenderer::draw(float deltaTime) {
     selectionAttachmentInfo,
   };
 
-  VkRenderingInfo renderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size()),
-    .pColorAttachments = attachmentInfos.data(),
-    .pDepthAttachment = &depthAttachmentInfo,
-  };
+  VkRenderingInfo renderInfo{};
+  renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderInfo.renderArea = renderArea;
+  renderInfo.layerCount = 1;
+  renderInfo.colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size());
+  renderInfo.pColorAttachments = attachmentInfos.data();
+  renderInfo.pDepthAttachment = &depthAttachmentInfo;
 
   VkViewport viewport{};
   viewport.x = 0.0f;
@@ -5911,13 +5908,12 @@ bool VkRenderer::draw(float deltaTime) {
       lightSphereBufferAttachmentInfo,
     };
 
-    VkRenderingInfo lightSphereRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = renderArea,
-      .layerCount = 1,
-      .colorAttachmentCount = static_cast<uint32_t>(lightSphereAttachmentInfos.size()),
-      .pColorAttachments = lightSphereAttachmentInfos.data(),
-    };
+    VkRenderingInfo lightSphereRenderInfo{};
+    lightSphereRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    lightSphereRenderInfo.renderArea = renderArea;
+    lightSphereRenderInfo.layerCount = 1;
+    lightSphereRenderInfo.colorAttachmentCount = static_cast<uint32_t>(lightSphereAttachmentInfos.size());
+    lightSphereRenderInfo.pColorAttachments = lightSphereAttachmentInfos.data();
 
     // transition to shader read only
     VkImageSubresourceRange dynLightShadowDataSubresourceRangeTwo{};
@@ -6007,13 +6003,12 @@ bool VkRenderer::draw(float deltaTime) {
       ssaoColorBufferAttachmentInfo,
     };
 
-    VkRenderingInfo ssaoRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = renderArea,
-      .layerCount = 1,
-      .colorAttachmentCount = static_cast<uint32_t>(ssaoAttachmentInfos.size()),
-      .pColorAttachments = ssaoAttachmentInfos.data(),
-    };
+    VkRenderingInfo ssaoRenderInfo{};
+    ssaoRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    ssaoRenderInfo.renderArea = renderArea;
+    ssaoRenderInfo.layerCount = 1;
+    ssaoRenderInfo.colorAttachmentCount = static_cast<uint32_t>(ssaoAttachmentInfos.size());
+    ssaoRenderInfo.pColorAttachments = ssaoAttachmentInfos.data();
 
     vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &ssaoRenderInfo);
 
@@ -6042,13 +6037,12 @@ bool VkRenderer::draw(float deltaTime) {
       ssaoBlurBufferAttachmentInfo,
     };
 
-    VkRenderingInfo ssaoBlurRenderInfo {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = renderArea,
-      .layerCount = 1,
-      .colorAttachmentCount = static_cast<uint32_t>(ssaoBlurAttachmentInfos.size()),
-      .pColorAttachments = ssaoBlurAttachmentInfos.data(),
-    };
+    VkRenderingInfo ssaoBlurRenderInfo{};
+    ssaoBlurRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    ssaoBlurRenderInfo.renderArea = renderArea;
+    ssaoBlurRenderInfo.layerCount = 1;
+    ssaoBlurRenderInfo.colorAttachmentCount = static_cast<uint32_t>(ssaoBlurAttachmentInfos.size());
+    ssaoBlurRenderInfo.pColorAttachments = ssaoBlurAttachmentInfos.data();
 
     VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSSAOColorBufferData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -6111,30 +6105,29 @@ bool VkRenderer::draw(float deltaTime) {
     depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   }
 
-  VkRenderingInfo compositeRenderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(compositeAttachmentInfos.size()),
-    .pColorAttachments = compositeAttachmentInfos.data(),
-    .pDepthAttachment = &depthAttachmentInfo,
-  };
+  VkRenderingInfo compositeRenderInfo{};
+  compositeRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  compositeRenderInfo.renderArea = renderArea;
+  compositeRenderInfo.layerCount = 1;
+  compositeRenderInfo.colorAttachmentCount = static_cast<uint32_t>(compositeAttachmentInfos.size());
+  compositeRenderInfo.pColorAttachments = compositeAttachmentInfos.data();
+  compositeRenderInfo.pDepthAttachment = &depthAttachmentInfo;
 
   // swapchain image layout transition
-  VkImageMemoryBarrier swapchainImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = 1;
+
+  VkImageMemoryBarrier swapchainImageMemoryBarrier{};
+  swapchainImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  swapchainImageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  swapchainImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  swapchainImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  swapchainImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  swapchainImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
@@ -6354,13 +6347,12 @@ bool VkRenderer::draw(float deltaTime) {
 
   std::vector<VkRenderingAttachmentInfo> uiAttachmentInfos { swapchainUIAttachmentInfo };
 
-  VkRenderingInfo uiRenderInfo {
-    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-    .renderArea = renderArea,
-    .layerCount = 1,
-    .colorAttachmentCount = static_cast<uint32_t>(uiAttachmentInfos.size()),
-    .pColorAttachments = uiAttachmentInfos.data(),
-  };
+  VkRenderingInfo uiRenderInfo{};
+  uiRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  uiRenderInfo.renderArea = renderArea;
+  uiRenderInfo.layerCount = 1;
+  uiRenderInfo.colorAttachmentCount = static_cast<uint32_t>(uiAttachmentInfos.size());
+  uiRenderInfo.pColorAttachments = uiAttachmentInfos.data();
 
   VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSelectionImageData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -6374,20 +6366,13 @@ bool VkRenderer::draw(float deltaTime) {
 
   // layout transition
   // swapchain image to present
-  VkImageMemoryBarrier secondImageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    .image = mRenderData.rdSwapchainImages.at(imageIndex),
-    .subresourceRange = {
-      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
-  };
+  VkImageMemoryBarrier secondImageMemoryBarrier{};
+  secondImageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  secondImageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  secondImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  secondImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+  secondImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  secondImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),

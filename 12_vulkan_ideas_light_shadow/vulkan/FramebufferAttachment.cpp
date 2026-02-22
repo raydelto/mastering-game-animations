@@ -97,20 +97,20 @@ bool FramebufferAttachment::createImageView(VkRenderData& renderData, VkImage& i
 
   VkCommandBuffer imageTransitionBuffer = CommandBuffer::createSingleShotBuffer(renderData, renderData.rdCommandPool);
 
-  VkImageMemoryBarrier imageMemoryBarrier {
-    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    .newLayout = destFormat,
-    .image = image,
-    .subresourceRange = {
-      .aspectMask = aspectMask,
-      .baseMipLevel = 0,
-      .levelCount = 1,
-      .baseArrayLayer = 0,
-      .layerCount = numLayers,
-    }
-  };
+  VkImageSubresourceRange imageSSR;
+  imageSSR.aspectMask = aspectMask;
+  imageSSR.baseMipLevel = 0;
+  imageSSR.levelCount = 1;
+  imageSSR.baseArrayLayer = 0;
+  imageSSR.layerCount = numLayers;
+
+  VkImageMemoryBarrier imageMemoryBarrier{};
+  imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  imageMemoryBarrier.newLayout = destFormat;
+  imageMemoryBarrier.image = image;
+  imageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
     imageTransitionBuffer,
