@@ -4109,9 +4109,13 @@ bool VkHelper::createImage(VkRenderData& renderData, VkImageData& image) {
   return true;
 }
 
-float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage, unsigned int xPos, unsigned int yPos) {
+float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage, int xPos, int yPos) {
   // random default value to detect errors
   float pixelColor = -444.0f;
+
+  if (xPos < 0 || yPos < 0 || xPos >= renderData.rdWidth || yPos >= renderData.rdHeight) {
+    return pixelColor;
+  }
 
   VkImage readbackImage;
   VmaAllocation readbackImageAlloc;
@@ -4866,7 +4870,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   GridLinePipeline::cleanup(renderData, renderData.rdGridLinePipeline);
   GroundMeshPipeline::cleanup(renderData, renderData.rdGroundMeshPipeline);
   SkyboxPipeline::cleanup(renderData, renderData.rdSkyboxPipeline);
-  SkyboxPipeline::cleanup(renderData, renderData.rdCompositePipeline);
+  CompositePipeline::cleanup(renderData, renderData.rdCompositePipeline);
   SSAOPipeline::cleanup(renderData, renderData.rdSSAOPipeline);
   SSAOPipeline::cleanup(renderData, renderData.rdSSAOBlurPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpPipeline);

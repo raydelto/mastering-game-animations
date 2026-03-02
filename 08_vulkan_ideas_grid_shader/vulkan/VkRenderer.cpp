@@ -2997,9 +2997,13 @@ void VkRenderer::cleanupSelectionImage() {
   vmaDestroyImage(mRenderData.rdAllocator, mRenderData.rdSelectionImage, mRenderData.rdSelectionImageAlloc);
 }
 
-float VkRenderer::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage, unsigned int xPos, unsigned int yPos) {
+float VkRenderer::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage, int xPos, int yPos) {
   /* random default value to detect errors */
   float pixelColor = -444.0f;
+
+  if (xPos < 0 || yPos < 0 || xPos >= renderData.rdWidth || yPos >= renderData.rdHeight) {
+    return pixelColor;
+  }
 
   VkImage readbackImage;
   VmaAllocation readbackImageAlloc;
@@ -8412,7 +8416,7 @@ void VkRenderer::cleanup() {
   GridLinePipeline::cleanup(mRenderData, mRenderData.rdGridLinePipeline);
   GroundMeshPipeline::cleanup(mRenderData, mRenderData.rdGroundMeshPipeline);
   SkyboxPipeline::cleanup(mRenderData, mRenderData.rdSkyboxPipeline);
-  SkyboxPipeline::cleanup(mRenderData, mRenderData.rdCompositePipeline);
+  CompositePipeline::cleanup(mRenderData, mRenderData.rdCompositePipeline);
 
   ComputePipeline::cleanup(mRenderData, mRenderData.rdAssimpComputeTransformPipeline);
   ComputePipeline::cleanup(mRenderData, mRenderData.rdAssimpComputeHeadMoveTransformPipeline);

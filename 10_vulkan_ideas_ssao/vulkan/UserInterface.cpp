@@ -655,125 +655,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("ImGui Window Position:  %10s", imgWindowPos.c_str());
   }
 
-  if (ImGui::CollapsingHeader("General")) {
-    std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
-    CameraSettings settings = cam->getCameraSettings();
-
-    if (settings.csCamProjection == cameraProjection::perspective) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Near/Far Planes: ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##OrthoNearFarPlane", &renderData.rdOrhtoNearFar, 0.1f, 100.0f, "%.3f", flags);
-
-    if (settings.csCamProjection == cameraProjection::perspective) {
-      ImGui::EndDisabled();
-    }
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Near Plane:      ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##NearPlane", &renderData.rdNearPlane, 0.1f, 10.0f, "%.3f", flags);
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Far Plane:       ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##FarPlane", &renderData.rdFarPlane, 1.0f, 1000.0f, "%.3f", flags);
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::EndDisabled();
-    }
-  }
-
-  if (ImGui::CollapsingHeader("Deferred Shading")) {
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Deferred Output: ");
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Composite##CompositeOut",
-      renderData.rdCompositeDebug == compositeDebugDisplay::composite)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::composite;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Albedo##CompositeAlbedo",
-      renderData.rdCompositeDebug == compositeDebugDisplay::albedo)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::albedo;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Depth##CompositeDepth",
-      renderData.rdCompositeDebug == compositeDebugDisplay::depth)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::depth;
-    }
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("                 ");
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Normals##CompositeNormals",
-      renderData.rdCompositeDebug == compositeDebugDisplay::normals)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::normals;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("SSAO##CompositeSSAO",
-      renderData.rdCompositeDebug == compositeDebugDisplay::ssao)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::ssao;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("SSAO Blur##CompositeSSAOBlur",
-      renderData.rdCompositeDebug == compositeDebugDisplay::ssaoBlur)) {
-      renderData.rdCompositeDebug = compositeDebugDisplay::ssaoBlur;
-    }
-  }
-
-  if (ImGui::CollapsingHeader("SSAO")) {
-    ImGui::Text("Enable SSAO:     ");
-    ImGui::SameLine();
-    ImGui::Checkbox("##EnableSSAO", &renderData.rdEnableSSAO);
-
-    if (!renderData.rdEnableSSAO) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("SSAO Radius:     ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##SSAORadius", &renderData.rdSSAORadius, 0.1f, 25.0f, "%.3f", flags);
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("SSAO Bias:       ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##SSAOBias", &renderData.rdSSAOBias, 0.001f, 1.0f, "%.3f", flags);
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("SSAO Exponent    ");
-    ImGui::SameLine();
-    ImGui::SliderInt("##SSAOExp", &renderData.rdSSAOExponent, 1, 16, "%d", flags);
-
-    ImGui::Text("Enable SSAO Blur ");
-    ImGui::SameLine();
-    ImGui::Checkbox("##EnableSSAOBlur", &renderData.rdEnableSSAOBlur);
-
-    if (!renderData.rdEnableSSAOBlur) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("SSAO Blur Radius:");
-    ImGui::SameLine();
-    ImGui::SliderInt("##SSAOBlurRadius", &renderData.rdSSAOBlurRadius, 1, 5, "%d", flags);
-
-    if (!renderData.rdEnableSSAOBlur) {
-      ImGui::EndDisabled();
-    }
-
-    if (!renderData.rdEnableSSAO) {
-      ImGui::EndDisabled();
-    }
-  }
-
   if (ImGui::CollapsingHeader("Timers")) {
     ImGui::Text("Frame Time:              %10.4f ms", renderData.rdFrameTime);
 
@@ -1072,6 +953,125 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::PlotLines("##PathFinding", mPathFindingValues.data(), mPathFindingValues.size(), mPathFindingOffset,
         pathFindingOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
       ImGui::EndTooltip();
+    }
+  }
+
+  if (ImGui::CollapsingHeader("General")) {
+    std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
+    CameraSettings settings = cam->getCameraSettings();
+
+    if (settings.csCamProjection == cameraProjection::perspective) {
+      ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Near/Far Planes: ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##OrthoNearFarPlane", &renderData.rdOrhtoNearFar, 0.1f, 100.0f, "%.3f", flags);
+
+    if (settings.csCamProjection == cameraProjection::perspective) {
+      ImGui::EndDisabled();
+    }
+
+    if (settings.csCamProjection == cameraProjection::orthogonal) {
+      ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Near Plane:      ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##NearPlane", &renderData.rdNearPlane, 0.1f, 10.0f, "%.3f", flags);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Far Plane:       ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##FarPlane", &renderData.rdFarPlane, 1.0f, 1000.0f, "%.3f", flags);
+
+    if (settings.csCamProjection == cameraProjection::orthogonal) {
+      ImGui::EndDisabled();
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Deferred Shading")) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Deferred Output: ");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Composite##CompositeOut",
+      renderData.rdCompositeDebug == compositeDebugDisplay::composite)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::composite;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Albedo##CompositeAlbedo",
+      renderData.rdCompositeDebug == compositeDebugDisplay::albedo)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::albedo;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Depth##CompositeDepth",
+      renderData.rdCompositeDebug == compositeDebugDisplay::depth)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::depth;
+    }
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("                 ");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Normals##CompositeNormals",
+      renderData.rdCompositeDebug == compositeDebugDisplay::normals)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::normals;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("SSAO##CompositeSSAO",
+      renderData.rdCompositeDebug == compositeDebugDisplay::ssao)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::ssao;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("SSAO Blur##CompositeSSAOBlur",
+      renderData.rdCompositeDebug == compositeDebugDisplay::ssaoBlur)) {
+      renderData.rdCompositeDebug = compositeDebugDisplay::ssaoBlur;
+    }
+  }
+
+  if (ImGui::CollapsingHeader("SSAO")) {
+    ImGui::Text("Enable SSAO:     ");
+    ImGui::SameLine();
+    ImGui::Checkbox("##EnableSSAO", &renderData.rdEnableSSAO);
+
+    if (!renderData.rdEnableSSAO) {
+      ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("SSAO Radius:     ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##SSAORadius", &renderData.rdSSAORadius, 0.1f, 25.0f, "%.3f", flags);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("SSAO Bias:       ");
+    ImGui::SameLine();
+    ImGui::SliderFloat("##SSAOBias", &renderData.rdSSAOBias, 0.001f, 1.0f, "%.3f", flags);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("SSAO Exponent    ");
+    ImGui::SameLine();
+    ImGui::SliderInt("##SSAOExp", &renderData.rdSSAOExponent, 1, 16, "%d", flags);
+
+    ImGui::Text("Enable SSAO Blur ");
+    ImGui::SameLine();
+    ImGui::Checkbox("##EnableSSAOBlur", &renderData.rdEnableSSAOBlur);
+
+    if (!renderData.rdEnableSSAOBlur) {
+      ImGui::BeginDisabled();
+    }
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("SSAO Blur Radius:");
+    ImGui::SameLine();
+    ImGui::SliderInt("##SSAOBlurRadius", &renderData.rdSSAOBlurRadius, 1, 5, "%d", flags);
+
+    if (!renderData.rdEnableSSAOBlur) {
+      ImGui::EndDisabled();
+    }
+
+    if (!renderData.rdEnableSSAO) {
+      ImGui::EndDisabled();
     }
   }
 

@@ -58,20 +58,6 @@ vec3 getWorldPosFromDepth(vec2 uv) {
   return pos.xyz;
 }
 
-float vectorToDepth(vec3 vec) {
-  vec3 absVec = abs(vec);
-  float localZcomp = max(absVec.x, max(absVec.y, absVec.z));
-
-  // OpenGL version
-  //float normZComp = (farPlane + nearPlane) / (farPlane - nearPlane) - (2.0 * farPlane * nearPlane) / ((farPlane - nearPlane) * localZcomp);
-  //return (normZComp + 1.0) * 0.5;
-
-  // Vulkan version
-  float normZComp = farPlane / (farPlane - nearPlane) - (farPlane * nearPlane) / (localZcomp * (farPlane - nearPlane));
-
-  return normZComp;
-}
-
 void main() {
   vec3 lightDynDiff = vec3(0.0);
 

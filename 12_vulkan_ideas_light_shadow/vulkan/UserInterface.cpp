@@ -660,6 +660,307 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("ImGui Window Position:  %10s", imgWindowPos.c_str());
   }
 
+  if (ImGui::CollapsingHeader("Timers")) {
+    ImGui::Text("Frame Time:              %10.4f ms", renderData.rdFrameTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageFrameTime = 0.0f;
+      for (const auto value : mFrameTimeValues) {
+        averageFrameTime += value;
+      }
+      averageFrameTime /= static_cast<float>(mNumMatrixGenerationValues);
+      std::string frameTimeOverlay = "now:     " + std::to_string(renderData.rdFrameTime) +
+        " ms\n30s avg: " + std::to_string(averageFrameTime) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("Frame Time       ");
+      ImGui::SameLine();
+      ImGui::PlotLines("##FrameTime", mFrameTimeValues.data(), mFrameTimeValues.size(), mFrameTimeOffset,
+        frameTimeOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Model Upload Time:       %10.4f ms", renderData.rdUploadToVBOTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageModelUpload = 0.0f;
+      for (const auto value : mModelUploadValues) {
+        averageModelUpload += value;
+      }
+      averageModelUpload /= static_cast<float>(mNumModelUploadValues);
+      std::string modelUploadOverlay = "now:     " + std::to_string(renderData.rdUploadToVBOTime) +
+        " ms\n30s avg: " + std::to_string(averageModelUpload) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("VBO Upload");
+      ImGui::SameLine();
+      ImGui::PlotLines("##ModelUploadTimes", mModelUploadValues.data(), mModelUploadValues.size(), mModelUploadOffset,
+        modelUploadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Matrix Generation Time:  %10.4f ms", renderData.rdMatrixGenerateTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageMatGen = 0.0f;
+      for (const auto value : mMatrixGenerationValues) {
+        averageMatGen += value;
+      }
+      averageMatGen /= static_cast<float>(mNumMatrixGenerationValues);
+      std::string matrixGenOverlay = "now:     " + std::to_string(renderData.rdMatrixGenerateTime) +
+        " ms\n30s avg: " + std::to_string(averageMatGen) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("Matrix Generation");
+      ImGui::SameLine();
+      ImGui::PlotLines("##MatrixGenTimes", mMatrixGenerationValues.data(), mMatrixGenerationValues.size(), mMatrixGenOffset,
+        matrixGenOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Matrix Upload Time:      %10.4f ms", renderData.rdUploadToUBOTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageMatrixUpload = 0.0f;
+      for (const auto value : mMatrixUploadValues) {
+        averageMatrixUpload += value;
+      }
+      averageMatrixUpload /= static_cast<float>(mNumMatrixUploadValues);
+      std::string matrixUploadOverlay = "now:     " + std::to_string(renderData.rdUploadToUBOTime) +
+        " ms\n30s avg: " + std::to_string(averageMatrixUpload) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("UBO Upload");
+      ImGui::SameLine();
+      ImGui::PlotLines("##MatrixUploadTimes", mMatrixUploadValues.data(), mMatrixUploadValues.size(), mMatrixUploadOffset,
+        matrixUploadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Matrix Download Time:    %10.4f ms", renderData.rdDownloadFromUBOTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageMatrixDownload = 0.0f;
+      for (const auto value : mMatrixDownloadValues) {
+        averageMatrixDownload += value;
+      }
+      averageMatrixDownload /= static_cast<float>(mNumMatrixDownloadValues);
+      std::string matrixDownloadOverlay = "now:     " + std::to_string(renderData.rdDownloadFromUBOTime) +
+        " ms\n30s avg: " + std::to_string(averageMatrixDownload) + " ms";
+      ImGui::Text("UBO Download");
+      ImGui::SameLine();
+      ImGui::PlotLines("##MatrixDownloadTimes", mMatrixDownloadValues.data(), mMatrixDownloadValues.size(), mMatrixDownloadOffset,
+        matrixDownloadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("UI Generation Time:      %10.4f ms", renderData.rdUIGenerateTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageUiGen = 0.0f;
+      for (const auto value : mUiGenValues) {
+        averageUiGen += value;
+      }
+      averageUiGen /= static_cast<float>(mNumUiGenValues);
+      std::string uiGenOverlay = "now:     " + std::to_string(renderData.rdUIGenerateTime) +
+        " ms\n30s avg: " + std::to_string(averageUiGen) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("UI Generation");
+      ImGui::SameLine();
+      ImGui::PlotLines("##UIGenTimes", mUiGenValues.data(), mUiGenValues.size(), mUiGenOffset,
+        uiGenOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("UI Draw Time:            %10.4f ms", renderData.rdUIDrawTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageUiDraw = 0.0f;
+      for (const auto value : mUiDrawValues) {
+        averageUiDraw += value;
+      }
+      averageUiDraw /= static_cast<float>(mNumUiDrawValues);
+      std::string uiDrawOverlay = "now:     " + std::to_string(renderData.rdUIDrawTime) +
+        " ms\n30s avg: " + std::to_string(averageUiDraw) + " ms";
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("UI Draw");
+      ImGui::SameLine();
+      ImGui::PlotLines("##UIDrawTimes", mUiDrawValues.data(), mUiDrawValues.size(), mUiDrawOffset,
+        uiDrawOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Collision Debug Draw:    %10.4f ms", renderData.rdCollisionDebugDrawTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageCollisionDebugDraw = 0.0f;
+      for (const auto value : mCollisionDebugDrawValues) {
+        averageCollisionDebugDraw += value;
+      }
+      averageCollisionDebugDraw /= static_cast<float>(mNumCollisionDebugDrawValues);
+      std::string collisionDebugOverlay = "now:     " + std::to_string(renderData.rdCollisionDebugDrawTime) +
+        " ms\n30s avg: " + std::to_string(averageCollisionDebugDraw) + " ms";
+      ImGui::Text("Collision Debug Draw");
+      ImGui::SameLine();
+      ImGui::PlotLines("##CollisionDebugDrawTimes", mCollisionDebugDrawValues.data(),
+        mCollisionDebugDrawValues.size(), mCollisionDebugDrawOffset,
+        collisionDebugOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Collision Check Time:    %10.4f ms", renderData.rdCollisionCheckTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageCollisionCheck = 0.0f;
+      for (const auto value : mCollisionCheckValues) {
+        averageCollisionCheck += value;
+      }
+      averageCollisionCheck /= static_cast<float>(mNumCollisionCheckValues);
+      std::string collisionCheckOverlay = "now:     " + std::to_string(renderData.rdCollisionCheckTime) +
+        " ms\n30s avg: " + std::to_string(averageCollisionCheck) + " ms";
+      ImGui::Text("Collision Check");
+      ImGui::SameLine();
+      ImGui::PlotLines("##CollisionCheckTimes", mCollisionCheckValues.data(),
+        mCollisionCheckValues.size(), mCollisionCheckOffset,
+        collisionCheckOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Behavior Update Time:    %10.4f ms", renderData.rdBehaviorTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageBehavior = 0.0f;
+      for (const auto value : mBehaviorManagerValues) {
+        averageBehavior += value;
+      }
+      averageBehavior /= static_cast<float>(mNumBehaviorManagerValues);
+      std::string behaviorOverlay = "now:     " + std::to_string(renderData.rdBehaviorTime) +
+        " ms\n30s avg: " + std::to_string(averageBehavior) + " ms";
+      ImGui::Text("Behavior Update");
+      ImGui::SameLine();
+      ImGui::PlotLines("##BehaviorUpdateTimes", mBehaviorManagerValues.data(), mBehaviorManagerValues.size(), mBehaviorManagerOffset,
+        behaviorOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Interaction Update Time: %10.4f ms", renderData.rdInteractionTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageInteraction = 0.0f;
+      for (const auto value : mInteractionValues) {
+        averageInteraction += value;
+      }
+      averageInteraction /= static_cast<float>(mNumInteractionValues);
+      std::string interactionOverlay = "now:     " + std::to_string(renderData.rdInteractionTime) +
+        " ms\n30s avg: " + std::to_string(averageInteraction) + " ms";
+      ImGui::Text("Interaction Update");
+      ImGui::SameLine();
+      ImGui::PlotLines("##InteractionUpdateTimes", mInteractionValues.data(), mInteractionValues.size(), mInteractionOffset,
+        interactionOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Face Animation Time:     %10.4f ms", renderData.rdFaceAnimTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageFaceAnim = 0.0f;
+      for (const auto value : mFaceAnimValues) {
+        averageFaceAnim += value;
+      }
+      averageFaceAnim /= static_cast<float>(mNumFaceAnimValues);
+      std::string faceAnimOverlay = "now:     " + std::to_string(renderData.rdFaceAnimTime) +
+        " ms\n30s avg: " + std::to_string(averageFaceAnim) + " ms";
+      ImGui::Text("Face Anim Time");
+      ImGui::SameLine();
+      ImGui::PlotLines("##FaceAnimTimes", mFaceAnimValues.data(), mFaceAnimValues.size(), mFaceAnimOffset,
+        faceAnimOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Level Collision Check:   %10.4f ms", renderData.rdLevelCollisionTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageLevelCollisionCheck = 0.0f;
+      for (const auto value : mLevelCollisionCheckValues) {
+        averageLevelCollisionCheck += value;
+      }
+      averageLevelCollisionCheck /= static_cast<float>(mNumLevelCollisionCheckValues);
+      std::string levelCollisionCheckOverlay = "now:     " + std::to_string(renderData.rdLevelCollisionTime) +
+        " ms\n30s avg: " + std::to_string(averageLevelCollisionCheck) + " ms";
+      ImGui::Text("Level Collision Check");
+      ImGui::SameLine();
+      ImGui::PlotLines("##LevelCollisionCheck", mLevelCollisionCheckValues.data(),
+        mLevelCollisionCheckValues.size(), mLevelCollisionOffset,
+        levelCollisionCheckOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Inverse Kinematics:      %10.4f ms", renderData.rdIKTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageIk = 0.0f;
+      for (const auto value : mIKValues) {
+        averageIk += value;
+      }
+      averageIk /= static_cast<float>(mNumIKValues);
+      std::string ikOverlay = "now:     " + std::to_string(renderData.rdIKTime) +
+        " ms\n30s avg: " + std::to_string(averageIk) + " ms";
+      ImGui::Text("Inverse Kinematics");
+      ImGui::SameLine();
+      ImGui::PlotLines("##InverseKinematice", mIKValues.data(), mIKValues.size(), mIkOffset,
+        ikOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+
+    }
+
+    ImGui::Text("Ground Neighbor Update:  %10.4f ms", renderData.rdLevelGroundNeighborUpdateTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averageNeighborUpdate = 0.0f;
+      for (const auto value : mLevelGroundNeighborUpdateValues) {
+        averageNeighborUpdate += value;
+      }
+      averageNeighborUpdate /= static_cast<float>(mNumLevelCollisionCheckValues);
+      std::string neighborUpdateOverlay = "now:     " + std::to_string(renderData.rdLevelGroundNeighborUpdateTime) +
+        " ms\n30s avg: " + std::to_string(averageNeighborUpdate) + " ms";
+      ImGui::Text("Ground Neighbor Update");
+      ImGui::SameLine();
+      ImGui::PlotLines("##GroundNeighborUpdate", mLevelGroundNeighborUpdateValues.data(),
+        mLevelGroundNeighborUpdateValues.size(), mLevelGroundNeighborOffset,
+        neighborUpdateOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+
+    ImGui::Text("Path Finding:            %10.4f ms", renderData.rdPathFindingTime);
+
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      float averagePathFinding = 0.0f;
+      for (const auto value : mPathFindingValues) {
+        averagePathFinding += value;
+      }
+      averagePathFinding /= static_cast<float>(mNumPathFindingValues);
+      std::string pathFindingOverlay = "now:     " + std::to_string(renderData.rdPathFindingTime) +
+        " ms\n30s avg: " + std::to_string(averagePathFinding) + " ms";
+      ImGui::Text("Path Finding");
+      ImGui::SameLine();
+      ImGui::PlotLines("##PathFinding", mPathFindingValues.data(), mPathFindingValues.size(), mPathFindingOffset,
+        pathFindingOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
+      ImGui::EndTooltip();
+    }
+  }
+
   if (ImGui::CollapsingHeader("General")) {
     std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
     CameraSettings settings = cam->getCameraSettings();
@@ -1066,307 +1367,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     // regenerate shadow data after light/shadow settings were saved
     if (regenerateShaderData) {
       modInstCamData.dynLightSphereShadowChangedCallbackFunction();
-    }
-  }
-
-  if (ImGui::CollapsingHeader("Timers")) {
-    ImGui::Text("Frame Time:              %10.4f ms", renderData.rdFrameTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageFrameTime = 0.0f;
-      for (const auto value : mFrameTimeValues) {
-        averageFrameTime += value;
-      }
-      averageFrameTime /= static_cast<float>(mNumMatrixGenerationValues);
-      std::string frameTimeOverlay = "now:     " + std::to_string(renderData.rdFrameTime) +
-        " ms\n30s avg: " + std::to_string(averageFrameTime) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("Frame Time       ");
-      ImGui::SameLine();
-      ImGui::PlotLines("##FrameTime", mFrameTimeValues.data(), mFrameTimeValues.size(), mFrameTimeOffset,
-        frameTimeOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Model Upload Time:       %10.4f ms", renderData.rdUploadToVBOTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageModelUpload = 0.0f;
-      for (const auto value : mModelUploadValues) {
-        averageModelUpload += value;
-      }
-      averageModelUpload /= static_cast<float>(mNumModelUploadValues);
-      std::string modelUploadOverlay = "now:     " + std::to_string(renderData.rdUploadToVBOTime) +
-        " ms\n30s avg: " + std::to_string(averageModelUpload) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("VBO Upload");
-      ImGui::SameLine();
-      ImGui::PlotLines("##ModelUploadTimes", mModelUploadValues.data(), mModelUploadValues.size(), mModelUploadOffset,
-        modelUploadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Matrix Generation Time:  %10.4f ms", renderData.rdMatrixGenerateTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageMatGen = 0.0f;
-      for (const auto value : mMatrixGenerationValues) {
-        averageMatGen += value;
-      }
-      averageMatGen /= static_cast<float>(mNumMatrixGenerationValues);
-      std::string matrixGenOverlay = "now:     " + std::to_string(renderData.rdMatrixGenerateTime) +
-        " ms\n30s avg: " + std::to_string(averageMatGen) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("Matrix Generation");
-      ImGui::SameLine();
-      ImGui::PlotLines("##MatrixGenTimes", mMatrixGenerationValues.data(), mMatrixGenerationValues.size(), mMatrixGenOffset,
-        matrixGenOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Matrix Upload Time:      %10.4f ms", renderData.rdUploadToUBOTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageMatrixUpload = 0.0f;
-      for (const auto value : mMatrixUploadValues) {
-        averageMatrixUpload += value;
-      }
-      averageMatrixUpload /= static_cast<float>(mNumMatrixUploadValues);
-      std::string matrixUploadOverlay = "now:     " + std::to_string(renderData.rdUploadToUBOTime) +
-        " ms\n30s avg: " + std::to_string(averageMatrixUpload) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("UBO Upload");
-      ImGui::SameLine();
-      ImGui::PlotLines("##MatrixUploadTimes", mMatrixUploadValues.data(), mMatrixUploadValues.size(), mMatrixUploadOffset,
-        matrixUploadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Matrix Download Time:    %10.4f ms", renderData.rdDownloadFromUBOTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageMatrixDownload = 0.0f;
-      for (const auto value : mMatrixDownloadValues) {
-        averageMatrixDownload += value;
-      }
-      averageMatrixDownload /= static_cast<float>(mNumMatrixDownloadValues);
-      std::string matrixDownloadOverlay = "now:     " + std::to_string(renderData.rdDownloadFromUBOTime) +
-        " ms\n30s avg: " + std::to_string(averageMatrixDownload) + " ms";
-      ImGui::Text("UBO Download");
-      ImGui::SameLine();
-      ImGui::PlotLines("##MatrixDownloadTimes", mMatrixDownloadValues.data(), mMatrixDownloadValues.size(), mMatrixDownloadOffset,
-        matrixDownloadOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("UI Generation Time:      %10.4f ms", renderData.rdUIGenerateTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageUiGen = 0.0f;
-      for (const auto value : mUiGenValues) {
-        averageUiGen += value;
-      }
-      averageUiGen /= static_cast<float>(mNumUiGenValues);
-      std::string uiGenOverlay = "now:     " + std::to_string(renderData.rdUIGenerateTime) +
-        " ms\n30s avg: " + std::to_string(averageUiGen) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("UI Generation");
-      ImGui::SameLine();
-      ImGui::PlotLines("##UIGenTimes", mUiGenValues.data(), mUiGenValues.size(), mUiGenOffset,
-        uiGenOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("UI Draw Time:            %10.4f ms", renderData.rdUIDrawTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageUiDraw = 0.0f;
-      for (const auto value : mUiDrawValues) {
-        averageUiDraw += value;
-      }
-      averageUiDraw /= static_cast<float>(mNumUiDrawValues);
-      std::string uiDrawOverlay = "now:     " + std::to_string(renderData.rdUIDrawTime) +
-        " ms\n30s avg: " + std::to_string(averageUiDraw) + " ms";
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("UI Draw");
-      ImGui::SameLine();
-      ImGui::PlotLines("##UIDrawTimes", mUiDrawValues.data(), mUiDrawValues.size(), mUiDrawOffset,
-        uiDrawOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Collision Debug Draw:    %10.4f ms", renderData.rdCollisionDebugDrawTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageCollisionDebugDraw = 0.0f;
-      for (const auto value : mCollisionDebugDrawValues) {
-        averageCollisionDebugDraw += value;
-      }
-      averageCollisionDebugDraw /= static_cast<float>(mNumCollisionDebugDrawValues);
-      std::string collisionDebugOverlay = "now:     " + std::to_string(renderData.rdCollisionDebugDrawTime) +
-        " ms\n30s avg: " + std::to_string(averageCollisionDebugDraw) + " ms";
-      ImGui::Text("Collision Debug Draw");
-      ImGui::SameLine();
-      ImGui::PlotLines("##CollisionDebugDrawTimes", mCollisionDebugDrawValues.data(),
-        mCollisionDebugDrawValues.size(), mCollisionDebugDrawOffset,
-        collisionDebugOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Collision Check Time:    %10.4f ms", renderData.rdCollisionCheckTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageCollisionCheck = 0.0f;
-      for (const auto value : mCollisionCheckValues) {
-        averageCollisionCheck += value;
-      }
-      averageCollisionCheck /= static_cast<float>(mNumCollisionCheckValues);
-      std::string collisionCheckOverlay = "now:     " + std::to_string(renderData.rdCollisionCheckTime) +
-        " ms\n30s avg: " + std::to_string(averageCollisionCheck) + " ms";
-      ImGui::Text("Collision Check");
-      ImGui::SameLine();
-      ImGui::PlotLines("##CollisionCheckTimes", mCollisionCheckValues.data(),
-        mCollisionCheckValues.size(), mCollisionCheckOffset,
-        collisionCheckOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Behavior Update Time:    %10.4f ms", renderData.rdBehaviorTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageBehavior = 0.0f;
-      for (const auto value : mBehaviorManagerValues) {
-        averageBehavior += value;
-      }
-      averageBehavior /= static_cast<float>(mNumBehaviorManagerValues);
-      std::string behaviorOverlay = "now:     " + std::to_string(renderData.rdBehaviorTime) +
-        " ms\n30s avg: " + std::to_string(averageBehavior) + " ms";
-      ImGui::Text("Behavior Update");
-      ImGui::SameLine();
-      ImGui::PlotLines("##BehaviorUpdateTimes", mBehaviorManagerValues.data(), mBehaviorManagerValues.size(), mBehaviorManagerOffset,
-        behaviorOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Interaction Update Time: %10.4f ms", renderData.rdInteractionTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageInteraction = 0.0f;
-      for (const auto value : mInteractionValues) {
-        averageInteraction += value;
-      }
-      averageInteraction /= static_cast<float>(mNumInteractionValues);
-      std::string interactionOverlay = "now:     " + std::to_string(renderData.rdInteractionTime) +
-        " ms\n30s avg: " + std::to_string(averageInteraction) + " ms";
-      ImGui::Text("Interaction Update");
-      ImGui::SameLine();
-      ImGui::PlotLines("##InteractionUpdateTimes", mInteractionValues.data(), mInteractionValues.size(), mInteractionOffset,
-        interactionOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Face Animation Time:     %10.4f ms", renderData.rdFaceAnimTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageFaceAnim = 0.0f;
-      for (const auto value : mFaceAnimValues) {
-        averageFaceAnim += value;
-      }
-      averageFaceAnim /= static_cast<float>(mNumFaceAnimValues);
-      std::string faceAnimOverlay = "now:     " + std::to_string(renderData.rdFaceAnimTime) +
-        " ms\n30s avg: " + std::to_string(averageFaceAnim) + " ms";
-      ImGui::Text("Face Anim Time");
-      ImGui::SameLine();
-      ImGui::PlotLines("##FaceAnimTimes", mFaceAnimValues.data(), mFaceAnimValues.size(), mFaceAnimOffset,
-        faceAnimOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Level Collision Check:   %10.4f ms", renderData.rdLevelCollisionTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageLevelCollisionCheck = 0.0f;
-      for (const auto value : mLevelCollisionCheckValues) {
-        averageLevelCollisionCheck += value;
-      }
-      averageLevelCollisionCheck /= static_cast<float>(mNumLevelCollisionCheckValues);
-      std::string levelCollisionCheckOverlay = "now:     " + std::to_string(renderData.rdLevelCollisionTime) +
-        " ms\n30s avg: " + std::to_string(averageLevelCollisionCheck) + " ms";
-      ImGui::Text("Level Collision Check");
-      ImGui::SameLine();
-      ImGui::PlotLines("##LevelCollisionCheck", mLevelCollisionCheckValues.data(),
-        mLevelCollisionCheckValues.size(), mLevelCollisionOffset,
-        levelCollisionCheckOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Inverse Kinematics:      %10.4f ms", renderData.rdIKTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageIk = 0.0f;
-      for (const auto value : mIKValues) {
-        averageIk += value;
-      }
-      averageIk /= static_cast<float>(mNumIKValues);
-      std::string ikOverlay = "now:     " + std::to_string(renderData.rdIKTime) +
-        " ms\n30s avg: " + std::to_string(averageIk) + " ms";
-      ImGui::Text("Inverse Kinematics");
-      ImGui::SameLine();
-      ImGui::PlotLines("##InverseKinematice", mIKValues.data(), mIKValues.size(), mIkOffset,
-        ikOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-
-    }
-
-    ImGui::Text("Ground Neighbor Update:  %10.4f ms", renderData.rdLevelGroundNeighborUpdateTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averageNeighborUpdate = 0.0f;
-      for (const auto value : mLevelGroundNeighborUpdateValues) {
-        averageNeighborUpdate += value;
-      }
-      averageNeighborUpdate /= static_cast<float>(mNumLevelCollisionCheckValues);
-      std::string neighborUpdateOverlay = "now:     " + std::to_string(renderData.rdLevelGroundNeighborUpdateTime) +
-        " ms\n30s avg: " + std::to_string(averageNeighborUpdate) + " ms";
-      ImGui::Text("Ground Neighbor Update");
-      ImGui::SameLine();
-      ImGui::PlotLines("##GroundNeighborUpdate", mLevelGroundNeighborUpdateValues.data(),
-        mLevelGroundNeighborUpdateValues.size(), mLevelGroundNeighborOffset,
-        neighborUpdateOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
-    }
-
-    ImGui::Text("Path Finding:            %10.4f ms", renderData.rdPathFindingTime);
-
-    if (ImGui::IsItemHovered()) {
-      ImGui::BeginTooltip();
-      float averagePathFinding = 0.0f;
-      for (const auto value : mPathFindingValues) {
-        averagePathFinding += value;
-      }
-      averagePathFinding /= static_cast<float>(mNumPathFindingValues);
-      std::string pathFindingOverlay = "now:     " + std::to_string(renderData.rdPathFindingTime) +
-        " ms\n30s avg: " + std::to_string(averagePathFinding) + " ms";
-      ImGui::Text("Path Finding");
-      ImGui::SameLine();
-      ImGui::PlotLines("##PathFinding", mPathFindingValues.data(), mPathFindingValues.size(), mPathFindingOffset,
-        pathFindingOverlay.c_str(), 0.0f, std::numeric_limits<float>::max(), ImVec2(0, 80));
-      ImGui::EndTooltip();
     }
   }
 

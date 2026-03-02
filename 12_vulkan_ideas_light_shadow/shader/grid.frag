@@ -11,7 +11,7 @@ layout (std140, set = 0, binding = 0) uniform Matrices {
   mat4 viewMat;
   mat4 projectionMat;
   mat4 invViewMat;
-  mat4 invPprojectionMat;
+  mat4 invProjectionMat;
   vec4 cameraPos;
   vec4 lightPos;
   vec4 lightColor;

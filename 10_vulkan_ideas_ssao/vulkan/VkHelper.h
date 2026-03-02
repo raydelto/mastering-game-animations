@@ -36,7 +36,7 @@ class VkHelper {
 
     static bool createImage(VkRenderData& renderData, VkImageData& image);
     static void cleanupImage(VkRenderData& renderData, VkImageData& image);
-    static float getPixelValueFromPos(VkRenderData &renderData, VkImage srcImage, unsigned int xPos, unsigned int yPos);
+    static float getPixelValueFromPos(VkRenderData &renderData, VkImage srcImage, int xPos, int yPos);
 
     static bool createDepthBuffer(VkRenderData& renderData);
     static void cleanupDepthBuffer(VkRenderData& renderDat);

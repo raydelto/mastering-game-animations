@@ -358,7 +358,7 @@ class VkRenderer {
     bool recreateSwapchain();
 
     bool createSelectionImage();
-    float getPixelValueFromPos(VkRenderData &renderData, VkImage srcImage, unsigned int xPos, unsigned int yPos);
+    float getPixelValueFromPos(VkRenderData &renderData, VkImage srcImage, int xPos, int yPos);
     void cleanupSelectionImage();
 
     bool createDepthBuffer();

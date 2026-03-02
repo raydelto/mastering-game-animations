@@ -18,7 +18,7 @@ layout (std140, set = 1, binding = 0) uniform Matrices {
   mat4 viewMat;
   mat4 projectionMat;
   mat4 invViewMat;
-  mat4 invPprojectionMat;
+  mat4 invProjectionMat;
 };
 
 layout (std430, set = 1, binding = 1) readonly restrict buffer WorldTransformMatrix {
