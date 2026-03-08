@@ -2,7 +2,7 @@
 
 Some code examples, based on my book [Mastering C++ Game Animation Programming](https://www.packtpub.com/en-us/product/mastering-c-game-animation-programming-9781835881934), published by Packt.
 
-Note: The examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMAGE\_LAYOUT\_RENDERING\_LOCAL\_READ\_KHR" for dynamic rendering.
+Note: Some of the examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMAGE\_LAYOUT\_RENDERING\_LOCAL\_READ\_KHR" for dynamic rendering and reading back data in shaders.
 
 ## Example Images
 
@@ -23,3 +23,6 @@ Note: The examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMAGE\_LAYO
 
 ### Dynamic Shadow Maps
 ![Example Image with Dynamic Shadow Maps](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_shadow_maps.png)
+
+## Vulkan Multi-View
+![Example Image with Different Views per Eye](https://github.com/mich-dy/mastering-game-animations/blob/main/14_vulkan_ideas_multiview/image_multiview.png)
