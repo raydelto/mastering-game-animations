@@ -1,10 +1,10 @@
-#include <FramebufferAttachment.h>
+#include <Image.h>
 
 #include <VkBootstrap.h>
 #include <CommandBuffer.h>
 #include <Logger.h>
 
-bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferData, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers) {
+bool Image::create(VkRenderData& renderData, VkImageData& bufferData, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers) {
   bufferData.format = format;
   bufferData.numLayers = numLayers;
 
@@ -29,12 +29,12 @@ bool FramebufferAttachment::init(VkRenderData& renderData, VkImageData& bufferDa
   return true;
 }
 
-bool FramebufferAttachment::createImage(VkRenderData& renderData, VkImage& image, VmaAllocation& allocation, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers) {
+bool Image::createImage(VkRenderData& renderData, VkImage& image, VmaAllocation& allocation, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers) {
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
   imageInfo.format = format;
-  imageInfo.extent.width = size.width / 2;
+  imageInfo.extent.width = size.width;
   imageInfo.extent.height = size.height;
   imageInfo.extent.depth = 1;
   imageInfo.mipLevels = 1;
@@ -46,6 +46,7 @@ bool FramebufferAttachment::createImage(VkRenderData& renderData, VkImage& image
 
   VmaAllocationCreateInfo imageAllocInfo{};
   imageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  imageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   if (vmaCreateImage(renderData.rdAllocator, &imageInfo, &imageAllocInfo,
       &image, &allocation, nullptr) != VK_SUCCESS) {
@@ -56,7 +57,7 @@ bool FramebufferAttachment::createImage(VkRenderData& renderData, VkImage& image
   return true;
 }
 
-bool FramebufferAttachment::createImageView(VkRenderData& renderData, VkImage& image, VkImageView& imageView, VkImageView& uiImageView, VkFormat format, VkImageUsageFlags flags, uint32_t numLayers) {
+bool Image::createImageView(VkRenderData& renderData, VkImage& image, VkImageView& imageView, VkImageView& uiImageView, VkFormat format, VkImageUsageFlags flags, uint32_t numLayers) {
   VkImageAspectFlags aspectMask = 0;
   VkImageLayout destFormat = VK_IMAGE_LAYOUT_UNDEFINED;
   if (flags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
@@ -150,7 +151,7 @@ bool FramebufferAttachment::createImageView(VkRenderData& renderData, VkImage& i
   return true;
 }
 
-bool FramebufferAttachment::createSampler(VkRenderData& renderData, VkSampler& sampler) {
+bool Image::createSampler(VkRenderData& renderData, VkSampler& sampler) {
   // Sampler for ImGui and Debug
   VkSamplerCreateInfo samplerInfo{};
   samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -178,7 +179,7 @@ bool FramebufferAttachment::createSampler(VkRenderData& renderData, VkSampler& s
   return true;
 }
 
-void FramebufferAttachment::cleanup(VkRenderData& renderData, VkImageData& bufferData) {
+void Image::cleanup(VkRenderData& renderData, VkImageData& bufferData) {
   vkDestroySampler(renderData.rdVkbDevice.device, bufferData.sampler, nullptr);
   vkDestroyImageView(renderData.rdVkbDevice.device, bufferData.imageView, nullptr);
   vkDestroyImageView(renderData.rdVkbDevice.device, bufferData.uiImageView, nullptr);

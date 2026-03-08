@@ -1165,16 +1165,8 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
     renderDataUboBind.pImmutableSamplers = nullptr;
     renderDataUboBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutBinding lightDataSsboBind{};
-    lightDataSsboBind.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    lightDataSsboBind.binding = 1;
-    lightDataSsboBind.descriptorCount = 1;
-    lightDataSsboBind.pImmutableSamplers = nullptr;
-    lightDataSsboBind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
     std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
       renderDataUboBind,
-      lightDataSsboBind,
     };
 
     VkDescriptorSetLayoutCreateInfo skyboxCreateInfo{};
@@ -2443,11 +2435,6 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
-    VkDescriptorBufferInfo lightDataInfo{};
-    lightDataInfo.buffer = renderData.rdDynamicLightBuffers.at(i).buffer;
-    lightDataInfo.offset = 0;
-    lightDataInfo.range = VK_WHOLE_SIZE;
-
     VkWriteDescriptorSet matrixWriteDescriptorSet{};
     matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -2456,17 +2443,8 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
     matrixWriteDescriptorSet.descriptorCount = 1;
     matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
 
-    VkWriteDescriptorSet lightDataWriteDescriptorSet{};
-    lightDataWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    lightDataWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    lightDataWriteDescriptorSet.dstSet = renderData.rdSkyboxDescriptorSets.at(i);
-    lightDataWriteDescriptorSet.dstBinding = 1;
-    lightDataWriteDescriptorSet.descriptorCount = 1;
-    lightDataWriteDescriptorSet.pBufferInfo = &lightDataInfo;
-
     std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
       matrixWriteDescriptorSet,
-      lightDataWriteDescriptorSet,
     };
 
     vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),

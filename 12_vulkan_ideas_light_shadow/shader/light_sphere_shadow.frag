@@ -64,12 +64,8 @@ float vectorToDepth(vec3 vec) {
   vec3 absVec = abs(vec);
   float localZcomp = max(absVec.x, max(absVec.y, absVec.z));
 
-  // OpenGL version
-  //float normZComp = (farPlane + nearPlane) / (farPlane - nearPlane) - (2.0 * farPlane * nearPlane) / ((farPlane - nearPlane) * localZcomp);
-  //return (normZComp + 1.0) * 0.5;
-
   // Vulkan version
-  float normZComp = farPlane / (farPlane - nearPlane) - (farPlane * nearPlane) / (localZcomp * (farPlane - nearPlane));
+  float normZComp = (farPlane + nearPlane) / (farPlane - nearPlane) - (farPlane * nearPlane) / (localZcomp * (farPlane - nearPlane));
 
   return normZComp;
 }
@@ -117,13 +113,14 @@ void main() {
 
   // add normal here to avoid strange circular shadow acne
   vec3 lightVec = (worldPos + normal * (5.0 / dist)) - lightPos;
+  //vec3 lightVec = worldPos - lightPos;
 
   for(int i = 0; i < samples; ++i) {
     // dynamic shadow map skips null instance
     float shadowCubeMapDepth = texture(shadowCubeMap, vec4(lightVec + sampleOffsetDirections[i] * diskRadius, inInstance - 1)).r;
     float lightDepth = vectorToDepth(lightVec);
 
-    if (shadowCubeMapDepth + 0.0001 > lightDepth) {
+    if (shadowCubeMapDepth + 0.0005 > lightDepth) {
       shadowFactor += 1.0;
     }
   }

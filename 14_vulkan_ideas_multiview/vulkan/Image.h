@@ -4,9 +4,9 @@
 
 #include <VkRenderData.h>
 
-class FramebufferAttachment {
+class Image {
   public:
-    static bool init(VkRenderData& renderData, VkImageData& bufferData, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers = 1);
+    static bool create(VkRenderData& renderData, VkImageData& bufferData, VkFormat format, VkImageUsageFlags flags, VkExtent2D size, uint32_t numLayers = 1);
     static void cleanup(VkRenderData& renderData, VkImageData& bufferData);
 
   private:

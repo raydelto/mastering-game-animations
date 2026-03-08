@@ -18,7 +18,7 @@
 #include <CommandPool.h>
 #include <CommandBuffer.h>
 #include <SyncObjects.h>
-#include <FramebufferAttachment.h>
+#include <Image.h>
 
 #include <PipelineLayout.h>
 #include <ModelLevelPipeline.h>
@@ -59,18 +59,13 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   // save orig window title, add current mode
   mRenderData.rdWidth = width;
+  mRenderData.rdHalfWidth = width / 2;
   mRenderData.rdHeight = height;
 
   // image formata needs to be set before Vulkan init
-  mRenderData.rdFinalImageData.format = VK_FORMAT_B8G8R8A8_UNORM;
   mRenderData.rdDepthBufferData.format = VK_FORMAT_D16_UNORM;
-  mRenderData.rdSelectionImageData.format = VK_FORMAT_R32_SFLOAT;
-  mRenderData.rdSSAOColorBufferData.format = VK_FORMAT_R32_SFLOAT;
-  // we are missing half float support, so use 32 bit here
   mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-  mRenderData.rdSSAOBlurBufferData.format = VK_FORMAT_R32_SFLOAT;
   mRenderData.rdShadowMapCombinedDepthBufferData.format = VK_FORMAT_D16_UNORM;
-  mRenderData.rdLightSpheresBufferData.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
   if (!mRenderData.rdWindow) {
     Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
@@ -2001,6 +1996,7 @@ void VkRenderer::setSize(unsigned int width, unsigned int height) {
   }
 
   mRenderData.rdWidth = width;
+  mRenderData.rdHalfWidth = width / 2;
   mRenderData.rdHeight = height;
 
   // Vulkan detects changes and recreates swapchain
@@ -5053,7 +5049,7 @@ bool VkRenderer::draw(float deltaTime) {
     // http://paulbourke.net/stereographics/stereorender/
 
     // adjust aspect by using 1/2 of width only
-    float aspectRatio = static_cast<float>(mRenderData.rdWidth * 0.5f) / static_cast<float>(mRenderData.rdHeight);
+    float aspectRatio = static_cast<float>(mRenderData.rdHalfWidth) / static_cast<float>(mRenderData.rdHeight);
     float widthDivByTwo = mRenderData.rdNearPlane * std::tan(glm::radians(camSettings.csFieldOfView / 2.0f));
     float nearDividedByFocalLength = mRenderData.rdNearPlane / mRenderData.rdFocalLength;
     float top = widthDivByTwo;
@@ -5081,17 +5077,11 @@ bool VkRenderer::draw(float deltaTime) {
     mRenderUploadData.projectionMatrix.at(1) = glm::frustum(left, right, bottom, top, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
     mRenderUploadData.viewMatrix.at(1) = mVulkanViewCorrectionMatrix * camViewMat * camTransMat;
 
-    /*
-    mRenderUploadData.projectionMatrix.at(0) = glm::perspective(
-      glm::radians(static_cast<float>(camSettings.csFieldOfView)),
-        static_cast<float>(mRenderData.rdWidth / 2) / static_cast<float>(mRenderData.rdHeight),
-        mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-  */
     mRenderUploadData.nearPlane = mRenderData.rdNearPlane;
     mRenderUploadData.farPlane = mRenderData.rdFarPlane;
   } else {
     float orthoScaling = camSettings.csOrthoScale;
-    float aspect = static_cast<float>(mRenderData.rdWidth / 2) / static_cast<float>(mRenderData.rdHeight) * orthoScaling;
+    float aspect = static_cast<float>(mRenderData.rdHalfWidth) / static_cast<float>(mRenderData.rdHeight) * orthoScaling;
     float leftRight = 1.0f * orthoScaling;
     float nearFar = mRenderData.rdOrthoNearFar * orthoScaling;
     mRenderUploadData.projectionMatrix.at(0) = glm::ortho(-aspect, aspect, -leftRight, leftRight, -nearFar, nearFar);
@@ -5867,7 +5857,7 @@ bool VkRenderer::draw(float deltaTime) {
     );
   }
 
-  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdVkbSwapchain.extent.width / 2, mRenderData.rdVkbSwapchain.extent.height}};
+  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdHalfWidth, mRenderData.rdHeight}};
 
   VkRenderingAttachmentInfo colorAttachmentInfo {};
   colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -5928,8 +5918,8 @@ bool VkRenderer::draw(float deltaTime) {
   VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.y = 0.0f;
-  viewport.width = static_cast<float>(mRenderData.rdVkbSwapchain.extent.width / 2);
-  viewport.height = static_cast<float>(mRenderData.rdVkbSwapchain.extent.height);
+  viewport.width = static_cast<float>(mRenderData.rdHalfWidth);
+  viewport.height = static_cast<float>(mRenderData.rdHeight);
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
 

@@ -4091,7 +4091,7 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
     return;
   }
   int32_t imageHeight = 200;
-  int32_t imageWidth = renderData.rdHeight > 0 ? imageHeight * static_cast<float>(renderData.rdWidth) / renderData.rdHeight : 0;
+  int32_t imageWidth = renderData.rdHeight > 0 ? imageHeight * static_cast<float>(renderData.rdHalfWidth) / renderData.rdHeight : 0;
 
   ImGui::Text("Albedo");
   ImGui::Image(static_cast<ImTextureID>(renderData.rdGBuffer.color.descriptorSet), ImVec2(imageWidth, imageHeight));

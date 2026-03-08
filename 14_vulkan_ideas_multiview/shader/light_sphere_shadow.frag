@@ -116,8 +116,8 @@ void main() {
   float diskRadius = (1.0 + (viewDistance / farPlane)) / 50.0;
 
   // add normal here to avoid strange circular shadow acne
-  //vec3 lightVec = (worldPos + normal * (5.0 / dist)) - lightPos;
-  vec3 lightVec = worldPos - lightPos;
+  vec3 lightVec = (worldPos + normal * (5.0 / dist)) - lightPos;
+  //vec3 lightVec = worldPos - lightPos;
 
   for(int i = 0; i < samples; ++i) {
     // dynamic shadow map skips null instance

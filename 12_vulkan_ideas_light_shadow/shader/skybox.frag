@@ -18,15 +18,6 @@ layout (std140, set = 1, binding = 0) uniform Matrices {
   float fogDensity;
 };
 
-struct dynamicLight {
-  vec4 position;
-  vec4 color;
-};
-
-layout (std430, set = 0, binding = 1) readonly restrict buffer DynamicLights {
-  dynamicLight lights[];
-};
-
 float toSRGB(float x) {
   if (x <= 0.0031308)
     return 12.92 * x;

@@ -34,8 +34,6 @@ class VkHelper {
 
     static bool recreateSwapchain(VkRenderData& renderData);
 
-    static bool createImage(VkRenderData& renderData, VkImageData& image);
-    static void cleanupImage(VkRenderData& renderData, VkImageData& image);
     static float getPixelValueFromPos(VkRenderData &renderData, VkImage srcImage, int xPos, int yPos);
 
     static bool createShadowMapBuffer(VkRenderData& renderData);

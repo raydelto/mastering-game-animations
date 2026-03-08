@@ -11,7 +11,7 @@
 #include <CommandPool.h>
 #include <CommandBuffer.h>
 #include <SyncObjects.h>
-#include <FramebufferAttachment.h>
+#include <Image.h>
 #include <PipelineLayout.h>
 #include <ModelLevelPipeline.h>
 #include <ComputePipeline.h>
@@ -269,16 +269,23 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
 
   Logger::log(1, "%s: Swapchain requested %i images, got %i\n", __FUNCTION__, renderData.MAX_FRAMES_IN_FLIGHT, renderData.rdNumFramesInFlight);
 
+  renderData.rdWidth = renderData.rdVkbSwapchain.extent.width;
+  renderData.rdHalfWidth = renderData.rdWidth / 2;
+  renderData.rdHeight = renderData.rdVkbSwapchain.extent.height;
+
   return true;
 }
 
 bool VkHelper::recreateSwapchain(VkRenderData& renderData) {
   Logger::log(1, "%s: recreate swapchain\n", __FUNCTION__);
 
+  int screenWidth = 0;
+  int screenHeight = 0;
+
   // handle minimize
-  glfwGetFramebufferSize(renderData.rdWindow, &renderData.rdWidth, &renderData.rdHeight);
+  glfwGetFramebufferSize(renderData.rdWindow, &screenWidth, &screenHeight);
   while (renderData.rdWidth == 0 || renderData.rdHeight == 0) {
-    glfwGetFramebufferSize(renderData.rdWindow, &renderData.rdWidth, &renderData.rdHeight);
+    glfwGetFramebufferSize(renderData.rdWindow, &screenWidth, &screenHeight);
     glfwWaitEvents();
   }
 
@@ -3910,8 +3917,8 @@ bool VkHelper::createVertexBuffers(VkRenderData& renderData) {
 
 bool VkHelper::createDepthBuffer(VkRenderData& renderData) {
   VkExtent3D depthImageExtent = {
-    renderData.rdVkbSwapchain.extent.width,
-    renderData.rdVkbSwapchain.extent.height,
+    renderData.rdHalfWidth,
+    renderData.rdHeight,
     1
   };
 
@@ -4126,23 +4133,36 @@ void VkHelper::cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& 
 }
 
 bool VkHelper::createImages(VkRenderData& renderData) {
-  if (!createImage(renderData, renderData.rdFinalImageData)) {
+  VkExtent2D halfWidthExtent = { renderData.rdHalfWidth, renderData.rdHeight };
+
+  if (!Image::create(renderData, renderData.rdFinalImageData, VK_FORMAT_B8G8R8A8_UNORM,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+      halfWidthExtent, 2)) {
     return false;
   }
 
-  if (!createImage(renderData, renderData.rdSelectionImageData)) {
+  if (!Image::create(renderData, renderData.rdSelectionImageData, VK_FORMAT_R32_SFLOAT,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      halfWidthExtent, 2)) {
     return false;
   }
 
-  if (!createImage(renderData, renderData.rdSSAOColorBufferData)) {
+  // we are missing half float support, so use 32 bit here
+  if (!Image::create(renderData, renderData.rdSSAOColorBufferData, VK_FORMAT_R32_SFLOAT,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+      halfWidthExtent, 2)) {
     return false;
   }
 
-  if (!createImage(renderData, renderData.rdSSAOBlurBufferData)) {
+  if (!Image::create(renderData, renderData.rdSSAOBlurBufferData, VK_FORMAT_R32_SFLOAT,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+      halfWidthExtent, 2)) {
     return false;
   }
 
-  if (!createImage(renderData, renderData.rdLightSpheresBufferData)) {
+  if (!Image::create(renderData, renderData.rdLightSpheresBufferData, VK_FORMAT_R16G16B16A16_SFLOAT,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+      halfWidthExtent, 2)) {
     return false;
   }
 
@@ -4150,103 +4170,25 @@ bool VkHelper::createImages(VkRenderData& renderData) {
 }
 
 void VkHelper::cleanupImages(VkRenderData& renderData) {
-  cleanupImage(renderData, renderData.rdFinalImageData);
-  cleanupImage(renderData, renderData.rdSelectionImageData);
-  cleanupImage(renderData, renderData.rdSSAOColorBufferData);
-  cleanupImage(renderData, renderData.rdSSAOBlurBufferData);
-  cleanupImage(renderData, renderData.rdLightSpheresBufferData);
-}
-
-bool VkHelper::createImage(VkRenderData& renderData, VkImageData& image) {
-  VkExtent3D imageExtent = {
-        renderData.rdVkbSwapchain.extent.width / 2,
-        renderData.rdVkbSwapchain.extent.height,
-        1
-  };
-
-  VkImageCreateInfo imageInfo{};
-  imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-  imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.format = image.format;
-  imageInfo.extent = imageExtent;
-  imageInfo.mipLevels = 1;
-  imageInfo.arrayLayers = 2;
-  imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-  imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-  imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-
-  VmaAllocationCreateInfo selectionAllocInfo{};
-  selectionAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-  selectionAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  VkResult result = vmaCreateImage(renderData.rdAllocator, &imageInfo, &selectionAllocInfo,
-    &image.image, &image.alloc, nullptr);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not allocate image memory (error: %i)\n", __FUNCTION__, result);
-    return false;
+  if (renderData.rdFinalImageData.image != VK_NULL_HANDLE) {
+    Image::cleanup(renderData, renderData.rdFinalImageData);
   }
 
-  VkImageViewCreateInfo imageViewinfo{};
-  imageViewinfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  imageViewinfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-  imageViewinfo.image = image.image;
-  imageViewinfo.format = image.format;
-  imageViewinfo.subresourceRange.baseMipLevel = 0;
-  imageViewinfo.subresourceRange.levelCount = 1;
-  imageViewinfo.subresourceRange.baseArrayLayer = 0;
-  imageViewinfo.subresourceRange.layerCount = 2;
-  imageViewinfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-  result = vkCreateImageView(renderData.rdVkbDevice.device, &imageViewinfo, nullptr, &image.imageView);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not create image view (error: %i)\n", __FUNCTION__, result);
-    return false;
+  if (renderData.rdSelectionImageData.image != VK_NULL_HANDLE) {
+    Image::cleanup(renderData, renderData.rdSelectionImageData);
   }
 
-  VkImageViewCreateInfo uiImageViewinfo{};
-  uiImageViewinfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  uiImageViewinfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  uiImageViewinfo.image = image.image;
-  uiImageViewinfo.format = image.format;
-  uiImageViewinfo.subresourceRange.baseMipLevel = 0;
-  uiImageViewinfo.subresourceRange.levelCount = 1;
-  uiImageViewinfo.subresourceRange.baseArrayLayer = 1;
-  uiImageViewinfo.subresourceRange.layerCount = 1;
-  uiImageViewinfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-  result = vkCreateImageView(renderData.rdVkbDevice.device, &uiImageViewinfo, nullptr, &image.uiImageView);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not create UI image view (error: %i)\n", __FUNCTION__, result);
-    return false;
+  if (renderData.rdSelectionImageData.image != VK_NULL_HANDLE) {
+    Image::cleanup(renderData, renderData.rdSSAOColorBufferData);
   }
 
-  // Sampler for ImGui and Debug
-  VkSamplerCreateInfo samplerInfo{};
-  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-  samplerInfo.magFilter = VK_FILTER_NEAREST;
-  samplerInfo.minFilter = VK_FILTER_NEAREST;
-  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-  samplerInfo.unnormalizedCoordinates = VK_FALSE;
-  samplerInfo.compareEnable = VK_FALSE;
-  samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  samplerInfo.mipLodBias = 0.0f;
-  samplerInfo.minLod = 0.0f;
-  samplerInfo.maxLod = 0.0f;
-  samplerInfo.anisotropyEnable = VK_FALSE;
-  samplerInfo.maxAnisotropy = 1.0f;
-
-  if (vkCreateSampler(renderData.rdVkbDevice.device, &samplerInfo, nullptr, &image.sampler) != VK_SUCCESS) {
-    Logger::log(1, "%s error: could not create sampler\n", __FUNCTION__);
-    return false;
+  if (renderData.rdSelectionImageData.image != VK_NULL_HANDLE) {
+    Image::cleanup(renderData, renderData.rdSSAOBlurBufferData);
   }
 
-  Logger::log(1, "%s: Image %p created\n", __FUNCTION__, image.image);
-
-  return true;
+  if (renderData.rdSelectionImageData.image != VK_NULL_HANDLE) {
+    Image::cleanup(renderData, renderData.rdLightSpheresBufferData);
+  }
 }
 
 float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage, int xPos, int yPos) {
@@ -4264,8 +4206,8 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.extent.width = renderData.rdVkbSwapchain.extent.width / 2;
-  imageInfo.extent.height = renderData.rdVkbSwapchain.extent.height;
+  imageInfo.extent.width = renderData.rdHalfWidth;
+  imageInfo.extent.height = renderData.rdHeight;
   imageInfo.extent.depth = 1;
   imageInfo.mipLevels = 1;
   imageInfo.arrayLayers = 1;
@@ -4320,8 +4262,8 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
   imageCopyRegion.srcSubresource.layerCount = 1;
   imageCopyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   imageCopyRegion.dstSubresource.layerCount = 1;
-  imageCopyRegion.extent.width = renderData.rdVkbSwapchain.extent.width / 2;
-  imageCopyRegion.extent.height = renderData.rdVkbSwapchain.extent.height;
+  imageCopyRegion.extent.width = renderData.rdHalfWidth;
+  imageCopyRegion.extent.height = renderData.rdHeight;
   imageCopyRegion.extent.depth = 1;
 
   // transition destination (local) image to general layout to allow mapping
@@ -4345,18 +4287,18 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
   srcBackLayoutTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &layoutTransferBarrier);
+    0, 0, nullptr, 0, nullptr, 1, &layoutTransferBarrier);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &srcLayoutTransferBarrier);
+    0, 0, nullptr, 0, nullptr, 1, &srcLayoutTransferBarrier);
   vkCmdCopyImage(readbackCommandBuffer, srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                 readbackImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
+    readbackImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &destLayoutTransferBarrier);
+    0, 0, nullptr, 0, nullptr, 1, &destLayoutTransferBarrier);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       0, 0, nullptr, 0, nullptr, 1, &srcBackLayoutTransferBarrier);
+    0, 0, nullptr, 0, nullptr, 1, &srcBackLayoutTransferBarrier);
 
   bool commandResult = CommandBuffer::submitSingleShotBuffer(renderData, renderData.rdCommandPool,
-                                                             readbackCommandBuffer, renderData.rdGraphicsQueue);
+    readbackCommandBuffer, renderData.rdGraphicsQueue);
 
   if (!commandResult) {
     Logger::log(1, "%s error: could not submit readback transfer commands\n", __FUNCTION__);
@@ -4389,34 +4331,29 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
   return pixelColor;
 }
 
-void VkHelper::cleanupImage(VkRenderData& renderData, VkImageData& image) {
-  vkDestroySampler(renderData.rdVkbDevice.device, image.sampler, nullptr);
-  vkDestroyImageView(renderData.rdVkbDevice.device, image.imageView, nullptr);
-  vkDestroyImageView(renderData.rdVkbDevice.device, image.uiImageView, nullptr);
-  vmaDestroyImage(renderData.rdAllocator, image.image, image.alloc);
-}
-
 bool VkHelper::createGBuffer(VkRenderData& renderData) {
+  VkExtent2D halfWidthExtent = { renderData.rdHalfWidth, renderData.rdHeight };
+
   // init framebuffer attachments
   Logger::log(1, "%s: create GBuffer color attachment (RGBA, 4x 8 bit int)\n", __FUNCTION__);
-  if (!FramebufferAttachment::init(renderData, renderData.rdGBuffer.color,
+  if (!Image::create(renderData, renderData.rdGBuffer.color,
     VK_FORMAT_B8G8R8A8_UNORM,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    renderData.rdVkbSwapchain.extent, 2)) {
+    halfWidthExtent, 2)) {
     return false;
   }
   Logger::log(1, "%s: create GBuffer depth attachment (1x 16 bit float)\n", __FUNCTION__);
-  if (!FramebufferAttachment::init(renderData, renderData.rdGBuffer.depth,
+  if (!Image::create(renderData, renderData.rdGBuffer.depth,
     VK_FORMAT_R32_SFLOAT,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    renderData.rdVkbSwapchain.extent, 2)) {
+    halfWidthExtent, 2)) {
     return false;
   }
   Logger::log(1, "%s: create GBuffer normal attachment (4x 8 bit int)\n", __FUNCTION__);
-  if (!FramebufferAttachment::init(renderData, renderData.rdGBuffer.normal,
+  if (!Image::create(renderData, renderData.rdGBuffer.normal,
     VK_FORMAT_R8G8B8A8_UNORM,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    renderData.rdVkbSwapchain.extent, 2)) {
+    halfWidthExtent, 2)) {
     return false;
   }
 
@@ -4425,19 +4362,19 @@ bool VkHelper::createGBuffer(VkRenderData& renderData) {
 
 void VkHelper::cleanupGBuffer(VkRenderData& renderData) {
   if (renderData.rdGBuffer.color.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdGBuffer.color);
+    Image::cleanup(renderData, renderData.rdGBuffer.color);
     Logger::log(1, "%s: deleted GBuffer color attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: GBuffer color attachment is null\n",  __FUNCTION__);
   }
   if (renderData.rdGBuffer.depth.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdGBuffer.depth);
+    Image::cleanup(renderData, renderData.rdGBuffer.depth);
     Logger::log(1, "%s: deleted GBuffer depth attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: GBuffer depth attachment is null\n",  __FUNCTION__);
   }
   if (renderData.rdGBuffer.normal.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdGBuffer.normal);
+    Image::cleanup(renderData, renderData.rdGBuffer.normal);
     Logger::log(1, "%s: deleted GBuffer normal attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: GBuffer normal attachment is null\n",  __FUNCTION__);
@@ -4446,29 +4383,26 @@ void VkHelper::cleanupGBuffer(VkRenderData& renderData) {
 
 bool VkHelper::createShadowMapBuffer(VkRenderData& renderData) {
   Logger::log(1, "%s: create shadow map depth attachment (16 bit depth)\n", __FUNCTION__);
-  // XXX: HACK for half width!
-  if (!FramebufferAttachment::init(renderData, renderData.rdShadowMapDepthBufferData,
+  if (!Image::create(renderData, renderData.rdShadowMapDepthBufferData,
     VK_FORMAT_D16_UNORM,
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-    VkExtent2D{renderData.rdShadowMapSize.width * 2, renderData.rdShadowMapSize.height}, renderData.SHADOW_MAP_LAYERS)) {
+    renderData.rdShadowMapSize, renderData.SHADOW_MAP_LAYERS)) {
     return false;
   }
 
   Logger::log(1, "%s: create combined shadow map depth attachment (16 bit depth)\n", __FUNCTION__);
-  // XXX: HACK for half width!
-  if (!FramebufferAttachment::init(renderData, renderData.rdShadowMapCombinedDepthBufferData,
+  if (!Image::create(renderData, renderData.rdShadowMapCombinedDepthBufferData,
     VK_FORMAT_D16_UNORM,
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-    VkExtent2D{renderData.rdShadowMapSize.width * 2, renderData.rdShadowMapSize.height})) {
+    renderData.rdShadowMapSize)) {
     return false;
   }
 
   Logger::log(1, "%s: create combined shadow map depth attachment for dynamic lights (16 bit depth)\n", __FUNCTION__);
-  // XXX: HACK for half width!
-  if (!FramebufferAttachment::init(renderData, renderData.rdDynamicLightCombinedShadowData,
+  if (!Image::create(renderData, renderData.rdDynamicLightCombinedShadowData,
     VK_FORMAT_D16_UNORM,
     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-    VkExtent2D{renderData.rdDynLightShadowMapSize.width * 2, renderData.rdDynLightShadowMapSize.height})) {
+    renderData.rdDynLightShadowMapSize)) {
     return false;
   }
   return true;
@@ -4476,19 +4410,19 @@ bool VkHelper::createShadowMapBuffer(VkRenderData& renderData) {
 
 void VkHelper::cleanupShadowMapBuffer(VkRenderData& renderData) {
   if (renderData.rdShadowMapDepthBufferData.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdShadowMapDepthBufferData);
+    Image::cleanup(renderData, renderData.rdShadowMapDepthBufferData);
     Logger::log(1, "%s: deleted shadow map depth attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: shadow map depth attachment is null\n",  __FUNCTION__);
   }
   if (renderData.rdShadowMapCombinedDepthBufferData.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdShadowMapCombinedDepthBufferData);
+    Image::cleanup(renderData, renderData.rdShadowMapCombinedDepthBufferData);
     Logger::log(1, "%s: deleted combined shadow map depth attachment\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: combined shadow map depth attachment is null\n",  __FUNCTION__);
   }
   if (renderData.rdDynamicLightCombinedShadowData.image != VK_NULL_HANDLE) {
-    FramebufferAttachment::cleanup(renderData, renderData.rdDynamicLightCombinedShadowData);
+    Image::cleanup(renderData, renderData.rdDynamicLightCombinedShadowData);
     Logger::log(1, "%s: deleted combined shadow map depth attachment for dynamic lights\n", __FUNCTION__);
   } else {
     Logger::log(1,"%s error: combined shadow map depth attachment for dynamic lights is null\n",  __FUNCTION__);
