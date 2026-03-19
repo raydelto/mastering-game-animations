@@ -24,5 +24,5 @@ Note: Some of the examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMA
 ### Dynamic Shadow Maps
 ![Example Image with Dynamic Shadow Maps](https://github.com/mich-dy/mastering-game-animations/blob/main/12_vulkan_ideas_light_shadow/image_dynamic_shadow_maps.png)
 
-## Vulkan Multi-View
+### Vulkan Multi-View
 ![Example Image with Different Views per Eye](https://github.com/mich-dy/mastering-game-animations/blob/main/14_vulkan_ideas_multiview/image_multiview.png)
