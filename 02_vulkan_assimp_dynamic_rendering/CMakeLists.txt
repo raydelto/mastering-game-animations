@@ -29,7 +29,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui
-  GIT_TAG        v1.91.4
+  GIT_TAG        v1.92.7
   GIT_SHALLOW 1
 )
 

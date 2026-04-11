@@ -110,6 +110,7 @@ std::vector<glm::vec4> ShaderStorageBuffer::getSsboDataVec4(VkRenderData& render
     Logger::log(1, "%s error: could not map SSBO memory (error: %i)\n", __FUNCTION__, result);
     return resultVec;
   }
+
   resultVec.resize(numberOfElements);
   std::memcpy(resultVec.data(), data, numberOfElements * sizeof(glm::vec4));
   vmaUnmapMemory(renderData.rdAllocator, SSBOData.bufferAlloc);
@@ -126,6 +127,7 @@ std::vector<TRSMatrixData> ShaderStorageBuffer::getSsboDataTRSMatrixData(VkRende
     Logger::log(1, "%s error: could not map SSBO memory (error: %i)\n", __FUNCTION__, result);
     return resultVec;
   }
+
   resultVec.resize(SSBOData.bufferSize / sizeof(TRSMatrixData));
   std::memcpy(resultVec.data(), data, SSBOData.bufferSize);
   vmaUnmapMemory(renderData.rdAllocator, SSBOData.bufferAlloc);

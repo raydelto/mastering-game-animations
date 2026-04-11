@@ -18,7 +18,7 @@ endif()
 
 # optimize for speed on Clang or GCC
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(CMAKE_CXX_FLAGS "-O3")
+  set(CMAKE_CXX_FLAGS "-O3 -fsanitize=address,undefined")
 endif()
 
 find_program(CCACHE_FOUND ccache)
@@ -34,7 +34,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui
-  GIT_TAG        v1.91.3
+  GIT_TAG        v1.92.7
   GIT_SHALLOW 1
 )
 
@@ -84,14 +84,19 @@ if(NOT stbi_POPULATED)
 endif()
 
 # imnodes
+set(IMNODES_IMGUI_TARGET_NAME imgui)
 FetchContent_Declare(
   imnodes
   GIT_REPOSITORY https://github.com/Nelarius/imnodes
-  GIT_TAG v0.5
+  GIT_TAG        b2ec254
   GIT_SHALLOW 1
 )
 
+get_property(current_compile_options DIRECTORY PROPERTY COMPILE_OPTIONS)
+set_property(DIRECTORY PROPERTY COMPILE_OPTIONS -I ${imgui_SOURCE_DIR})
 FetchContent_MakeAvailable(imnodes)
+set_property(DIRECTORY PROPERTY COMPILE_OPTIONS ${current_compile_options})
+unset(current_compile_options)
 
 FetchContent_GetProperties(imnodes)
 if(NOT imnodes_POPULATED)

@@ -16,6 +16,10 @@ class VertexBuffer {
 
     template <typename T>
     static bool uploadData(VkRenderData &renderData, VkVertexBufferData &vertexBufferData, std::vector<T> vertexData) {
+      if (vertexData.empty()) {
+        return false;
+      }
+
       unsigned int vertexDataSize = vertexData.size() * sizeof(T);
 
       // buffer too small, resize

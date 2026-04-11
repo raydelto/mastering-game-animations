@@ -248,12 +248,19 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
   surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   surfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
 
+  int frameBufferWidth = 0;
+  int frameBufferHeight = 0;
+  // get framebuffer size instead of window size in case some scaling has been applied (Wayland)
+  glfwGetFramebufferSize(renderData.rdWindow, &frameBufferWidth, &frameBufferHeight);
+
   // VK_PRESENT_MODE_FIFO_KHR enables vsync
   auto  swapChainBuildRet = swapChainBuild
     .set_old_swapchain(renderData.rdVkbSwapchain)
     .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
     .set_desired_format(surfaceFormat)
     .set_desired_min_image_count(renderData.rdNumFramesInFlight)
+    // Wayland needs the extent here or we will get something like 256x256 pixel sized swapchain images
+    .set_desired_extent(frameBufferWidth, frameBufferHeight)
     .build();
 
   if (!swapChainBuildRet) {
@@ -265,13 +272,22 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
   renderData.rdVkbSwapchain = swapChainBuildRet.value();
   renderData.rdSwapchainImages = swapChainBuildRet.value().get_images().value();
   renderData.rdSwapchainImageViews = swapChainBuildRet.value().get_image_views().value();
-  renderData.rdNumFramesInFlight = renderData.rdSwapchainImages.size();
 
-  Logger::log(1, "%s: Swapchain requested %i images, got %i\n", __FUNCTION__, renderData.MAX_FRAMES_IN_FLIGHT, renderData.rdNumFramesInFlight);
-
+  // set width and height from swapchain
   renderData.rdWidth = renderData.rdVkbSwapchain.extent.width;
   renderData.rdHalfWidth = renderData.rdWidth / 2;
   renderData.rdHeight = renderData.rdVkbSwapchain.extent.height;
+
+  int windowWidth = 0;
+  int windowHeight = 0;
+  // get window size for UI
+  glfwGetWindowSize(renderData.rdWindow, &windowWidth, &windowHeight);
+  renderData.rdWindowWidth = windowWidth;
+  renderData.rdWindowHeight = windowHeight;
+
+  renderData.rdNumFramesInFlight = renderData.rdSwapchainImages.size();
+
+  Logger::log(1, "%s: Swapchain requested %i images, got %i\n", __FUNCTION__, renderData.MAX_FRAMES_IN_FLIGHT, renderData.rdNumFramesInFlight);
 
   return true;
 }
@@ -283,9 +299,10 @@ bool VkHelper::recreateSwapchain(VkRenderData& renderData) {
   int screenHeight = 0;
 
   // handle minimize
-  glfwGetFramebufferSize(renderData.rdWindow, &screenWidth, &screenHeight);
   while (renderData.rdWidth == 0 || renderData.rdHeight == 0) {
     glfwGetFramebufferSize(renderData.rdWindow, &screenWidth, &screenHeight);
+    renderData.rdWidth = screenWidth;
+    renderData.rdHeight = screenHeight;
     glfwWaitEvents();
   }
 
@@ -321,6 +338,7 @@ bool VkHelper::recreateSwapchain(VkRenderData& renderData) {
 
   updateImageDescriptorSets(renderData);
 
+  Logger::log(1, "%s: swapchain recreated\n", __FUNCTION__);
   return true;
 }
 

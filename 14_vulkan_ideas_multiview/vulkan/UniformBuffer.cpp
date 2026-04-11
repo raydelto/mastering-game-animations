@@ -21,6 +21,10 @@ bool UniformBuffer::init(VkRenderData& renderData, VkUniformBufferData &uboData,
 }
 
 void UniformBuffer::uploadData(VkRenderData &renderData, VkUniformBufferData &uboData, std::vector<glm::vec4> data) {
+  if (data.size() == 0) {
+    return;
+  }
+
   void* pData;
   VkResult result = vmaMapMemory(renderData.rdAllocator, uboData.bufferAlloc, &pData);
   if (result != VK_SUCCESS) {

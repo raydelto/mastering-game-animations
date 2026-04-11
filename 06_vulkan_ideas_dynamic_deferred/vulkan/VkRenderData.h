@@ -181,11 +181,16 @@ struct VkComputePushConstants {
   uint32_t pkModelOffset;
   uint32_t pkInstanceOffset;
 };
+
 struct VkRenderData {
   GLFWwindow *rdWindow = nullptr;
+  bool rdWaylandFound = false;
 
   int rdWidth = 0;
   int rdHeight = 0;
+  // window size may differ from framebuffer width/height
+  int rdWindowWidth = 0;
+  int rdWindowHeight = 0;
   bool rdFullscreen = false;
 
   unsigned int rdTriangleCount = 0;

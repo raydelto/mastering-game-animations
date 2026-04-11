@@ -42,6 +42,12 @@
 
 VkRenderer::VkRenderer(GLFWwindow *window) {
   mRenderData.rdWindow = window;
+
+  if (const char* envVar = std::getenv("XDG_SESSION_TYPE")) {
+    if (std::string(envVar) == "wayland") {
+      mRenderData.rdWaylandFound = true;
+    }
+  }
 }
 
 bool VkRenderer::init(unsigned int width, unsigned int height) {
@@ -59,6 +65,8 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   // save orig window title, add current mode
   mRenderData.rdWidth = width;
   mRenderData.rdHeight = height;
+  mRenderData.rdWindowWidth = width;
+  mRenderData.rdWindowHeight = height;
 
   // image formata needs to be set before Vulkan init
   mRenderData.rdDepthBufferData.format = VK_FORMAT_D16_UNORM;
@@ -1994,11 +2002,15 @@ void VkRenderer::setSize(unsigned int width, unsigned int height) {
     return;
   }
 
-  mRenderData.rdWidth = width;
-  mRenderData.rdHeight = height;
-
-  // Vulkan detects changes and recreates swapchain
+  // Vulkan detects changes and recreates swapchain on Windows and X11, but NOT on Wayland
+  if (mRenderData.rdWaylandFound) {
+    recreateSwapchain();
+  }
   Logger::log(1, "%s: resized window to %ix%i\n", __FUNCTION__, width, height);
+
+  float xScale, yScale;
+  glfwGetWindowContentScale(mRenderData.rdWindow, &xScale, &yScale);
+  Logger::log(1, "%s: window scale is %.2f (x) / %.2f (y) \n", __FUNCTION__, xScale, yScale);
 }
 
 void VkRenderer::setConfigDirtyFlag(bool flag) {
@@ -6422,7 +6434,9 @@ bool VkRenderer::draw(float deltaTime) {
       // wait for queue to be idle
       vkQueueWaitIdle(mRenderData.rdGraphicsQueue);
 
-      float selectedInstanceId = VkHelper::getPixelValueFromPos(mRenderData, mRenderData.rdSelectionImageData.image, mMouseXPos, mMouseYPos);
+      float xScale, yScale;
+      glfwGetWindowContentScale(mRenderData.rdWindow, &xScale, &yScale);
+      float selectedInstanceId = VkHelper::getPixelValueFromPos(mRenderData, mRenderData.rdSelectionImageData.image, mMouseXPos * xScale, mMouseYPos * yScale);
 
       mModelInstCamData.micSelectedInstance = 0;
       mModelInstCamData.micSelectedDynLight = 0;

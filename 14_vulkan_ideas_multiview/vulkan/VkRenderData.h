@@ -233,10 +233,14 @@ struct VkComputePushConstants {
 
 struct VkRenderData {
   GLFWwindow *rdWindow = nullptr;
+  bool rdWaylandFound = false;
 
   uint32_t rdWidth = 0;
   uint32_t rdHalfWidth = 0;
   uint32_t rdHeight = 0;
+  // window size may differ from framebuffer width/height
+  int rdWindowWidth = 0;
+  int rdWindowHeight = 0;
   bool rdFullscreen = false;
 
   unsigned int rdTriangleCount = 0;

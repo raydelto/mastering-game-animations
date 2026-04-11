@@ -61,6 +61,10 @@ bool VertexBuffer::init(VkRenderData &renderData, VkVertexBufferData &vertexBuff
 }
 
 bool VertexBuffer::uploadToGPU(VkRenderData &renderData, VkVertexBufferData &vertexBufferData) {
+  if (vertexBufferData.bufferSize == 0) {
+    return false;
+  }
+
   VkBufferMemoryBarrier vertexBufferBarrier{};
   vertexBufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   vertexBufferBarrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;

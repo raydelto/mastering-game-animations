@@ -72,13 +72,13 @@ bool UserInterface::init(VkRenderData& renderData) {
   imguiIinitInfo.DescriptorPool = renderData.rdImguiDescriptorPool;
   imguiIinitInfo.MinImageCount = 2;
   imguiIinitInfo.ImageCount = static_cast<uint32_t>(renderData.rdSwapchainImages.size());
-  imguiIinitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+  imguiIinitInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
   imguiIinitInfo.UseDynamicRendering = true;
 
-  imguiIinitInfo.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-  imguiIinitInfo.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-  imguiIinitInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &renderData.rdVkbSwapchain.image_format;
-  imguiIinitInfo.PipelineRenderingCreateInfo.depthAttachmentFormat = renderData.rdDepthBufferData.format;
+  imguiIinitInfo.PipelineInfoMain.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+  imguiIinitInfo.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+  imguiIinitInfo.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &renderData.rdVkbSwapchain.image_format;
+  imguiIinitInfo.PipelineInfoMain.PipelineRenderingCreateInfo.depthAttachmentFormat = renderData.rdDepthBufferData.format;
 
   if (!ImGui_ImplVulkan_Init(&imguiIinitInfo)) {
     Logger::log(1, "%s error: could not init ImGui for Vulkan \n", __FUNCTION__);
@@ -259,7 +259,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     /* cheating a bit to get buttons more to the center */
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       if (modInstCamData.micGetConfigDirtyCallbackFunction()) {
         openUnsavedChangesExitDialog = true;
         renderData.rdRequestApplicationExit = false;
@@ -270,7 +270,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       renderData.rdRequestApplicationExit = false;
       ImGui::CloseCurrentPopup();
     }
@@ -289,13 +289,13 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     /* cheating a bit to get buttons more to the center */
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       renderData.rdAppExitCallbackFunction();
       ImGui::CloseCurrentPopup();
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       renderData.rdRequestApplicationExit = false;
       ImGui::CloseCurrentPopup();
     }
@@ -323,13 +323,13 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     /* cheating a bit to get buttons more to the center */
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       modInstCamData.micNewConfigCallbackFunction();
       ImGui::CloseCurrentPopup();
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -374,14 +374,14 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     /* cheating a bit to get buttons more to the center */
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
       loadSuccessful = modInstCamData.micLoadConfigCallbackFunction(filePathName);
       ImGui::CloseCurrentPopup();
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -401,7 +401,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Indent();
     ImGui::Indent();
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -446,7 +446,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Indent();
     ImGui::Indent();
     ImGui::Indent();
-    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+    if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -1290,13 +1290,13 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         modInstCamData.micCameraDeleteCallbackFunction();
         numCameras = modInstCamData.micCameras.size() - 1;
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
-      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -1344,7 +1344,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -1774,13 +1774,13 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       /* cheating a bit to get buttons more to the center */
       ImGui::Indent();
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         modInstCamData.micModelDeleteCallbackFunction(modInstCamData.micModelList.at(modInstCamData.micSelectedModel)->getModelFileName(), true);
 
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
-      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -1930,13 +1930,13 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       /* cheating a bit to get buttons more to the center */
       ImGui::Indent();
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         modInstCamData.micLevelDeleteCallbackFunction(selectedLevelName);
         settings = modInstCamData.micLevels.at(modInstCamData.micSelectedLevel)->getLevelSettings();
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
-      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -3492,7 +3492,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -3546,14 +3546,14 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
       /* cheating a bit to get buttons more to the center */
       ImGui::Indent();
-      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter))) {
+      if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         modInstCamData.micBehaviorData.erase(mTreeToDelete);
         modInstCamData.micPostNodeTreeDelBehaviorCallbackFunction(mTreeToDelete);
         ImGui::CloseCurrentPopup();
       }
 
       ImGui::SameLine();
-      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+      if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -3738,25 +3738,25 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     int32_t imageWidth = renderData.rdHeight > 0 ? imageHeight * static_cast<float>(renderData.rdWidth) / renderData.rdHeight : 0;
 
     ImGui::Text("Albedo");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdGBuffer.color.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdGBuffer.color.descriptorSet, ImVec2(imageWidth, imageHeight));
 
     ImGui::Text("Depth");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdGBuffer.depth.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdGBuffer.depth.descriptorSet, ImVec2(imageWidth, imageHeight));
 
     ImGui::Text("Normal");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdGBuffer.normal.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdGBuffer.normal.descriptorSet, ImVec2(imageWidth, imageHeight));
 
     ImGui::Text("Selection");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdSelectionImageData.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdSelectionImageData.descriptorSet, ImVec2(imageWidth, imageHeight));
 
     ImGui::Text("SSAO Noise");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAONoiseBufferData.descriptorSet), ImVec2(64, 64));
+    ImGui::Image(renderData.rdSSAONoiseBufferData.descriptorSet, ImVec2(64, 64));
 
     ImGui::Text("SSAO Color");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAOColorBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdSSAOColorBufferData.descriptorSet, ImVec2(imageWidth, imageHeight));
 
     ImGui::Text("SSAO Blur");
-    ImGui::Image(static_cast<ImTextureID>(renderData.rdSSAOBlurBufferData.descriptorSet), ImVec2(imageWidth, imageHeight));
+    ImGui::Image(renderData.rdSSAOBlurBufferData.descriptorSet, ImVec2(imageWidth, imageHeight));
   }
 
   ImGui::End();
@@ -3917,8 +3917,8 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
     return;
   }
 
-  ImGui::SetNextWindowPos(ImVec2(0.0f,  renderData.rdHeight - 35.0f), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(renderData.rdWidth, 35.0f));
+  ImGui::SetNextWindowPos(ImVec2(0.0f,  renderData.rdWindowHeight - 35.0f), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(renderData.rdWindowWidth, 35.0f));
   ImGui::SetNextWindowBgAlpha(0.5f);
 
   if (mCurrentInstance != modInstCamData.micAssimpInstances.at(modInstCamData.micSelectedInstance)) {
