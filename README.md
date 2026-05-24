@@ -26,3 +26,7 @@ Note: Some of the examples **require** Vulkan 1.4 to compile. I'm using "VK\_IMA
 
 ### Vulkan Multi-View
 ![Example Image with Different Views per Eye](https://github.com/mich-dy/mastering-game-animations/blob/main/14_vulkan_ideas_multiview/image_multiview.png)
+
+### Vulkan + OpenXR
+![Example Image from OpenXR via SteamVR](https://github.com/mich-dy/mastering-game-animations/blob/main/16_vulkan_ideas_openxr/image_openxr.png.png)
+
