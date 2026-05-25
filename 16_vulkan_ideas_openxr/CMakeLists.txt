@@ -18,11 +18,12 @@ endif()
 # VMA finder script
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_vma")
 
-# Sanitizer finder script
+# Sanitizer finder scripts
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_san")
 
 # optimize for speed on Clang or GCC
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  #set(CMAKE_CXX_FLAGS "-O3 -fsanitize=address,undefined -static-libasan -g")
   set(CMAKE_CXX_FLAGS "-O3 -g")
 endif()
 

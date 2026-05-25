@@ -2,14 +2,14 @@
 version: 12.0
 
 settings:
-  near-clip-plane: 0.400000006
+  near-clip-plane: 0.4
   far-clip-plane: 800
   orth-nearfar-clip-plane: 40
   selected-model: 1
   selected-instance: 0
   selected-camera: 0
   selected-level: 1
-  selected-dynamic-light: 1
+  selected-dynamic-light: 0
   highlight-selection: false
   collision-enabled: 2
   interaction-enabled: true
@@ -23,26 +23,26 @@ settings:
   inverse-kinematics-iterations: 10
   navigation-enabled: true
   skybox-enabled: true
-  fog-density: 0.00300000003
+  fog-density: 0.003
   light-source-angle-east-west: 40.5
   light-source-angle-north-south: 43.5
-  light-source-intensity: 0
+  light-source-intensity: 0.97
   light-source-color: [1, 1, 1]
   time-of-day-enabled: false
   time-of-day-scaling: 30
   time-of-day-preset: 7
   ssao-enabled: false
   ssao-radius: 5
-  ssao-bias: 0.00999999978
+  ssao-bias: 0.01
   ssao-exponent: 4
   ssao-blur-enabled: true
   ssao-blur-radius: 3
   shadowmap-enabled: true
-  shadowmap-split-lambda: 0.512000024
+  shadowmap-split-lambda: 0.512
   shadowmap-constant-bias: 0
   shadowmap-slope-bias: 0
   shadowmap-pcf-enabled: true
-  shadowmap-pcf-scale: 0.420139015
+  shadowmap-pcf-scale: 0.420139
   shadowmap-pcf-range: 2
   dynlight-shadowmap-constant-bias: 1.25
   dynlight-shadowmap-slope-bias: 1.75
@@ -57,22 +57,22 @@ levels:
 
 cameras:
   - camera-name: FreeCam
-    position: [-0.550306678, 40.718029, 38.275177]
-    view-azimuth: 9.80115318
-    view-elevation: -23.3002758
+    position: [12.915046, 5, 39.15192]
+    view-azimuth: 0
+    view-elevation: 0
     camera-type: 0
     camera-projection: 0
     field-of-view: 97
   - camera-name: OrthoCam
-    position: [-0.0973121524, 8.39158821, 2.11331558]
-    view-azimuth: 4.69999981
-    view-elevation: -18.2000122
+    position: [-0.09731215, 8.391588, 2.1133156]
+    view-azimuth: 4.7
+    view-elevation: -18.200012
     camera-type: 0
     camera-projection: 1
     ortho-scale: 20
   - camera-name: ThirdPersonCam
-    position: [12.0741463, 5, 60.182869]
-    view-azimuth: 349.474854
+    position: [12.074146, 5, 60.18287]
+    view-azimuth: 349.47485
     view-elevation: -22.5
     camera-type: 2
     camera-projection: 0
@@ -80,23 +80,23 @@ cameras:
     3rd-person-view-distance: 5
     3rd-person-height-offset: 0
   - camera-name: FollowCam
-    position: [3.76401448, 5.73458576, -5.39343214]
-    view-azimuth: 340.833191
-    view-elevation: -6.36617279
+    position: [3.7640145, 5.734586, -5.393432]
+    view-azimuth: 340.8332
+    view-elevation: -6.366173
     camera-type: 4
     camera-projection: 0
     field-of-view: 90
     follow-cam-height-offset: 2
   - camera-name: FirstPersonCam
-    position: [149.782974, -0.0801852494, 3.78474951]
-    view-azimuth: 225.700012
-    view-elevation: -6.60000229
+    position: [149.78297, -0.08018525, 3.7847495]
+    view-azimuth: 225.70001
+    view-elevation: -6.6000023
     camera-type: 1
     camera-projection: 0
     field-of-view: 88
     1st-person-view-lock: true
     1st-person-bone-to-follow: 5
-    1st-person-view-offsets: [0, 0.100000001, 0.449999988]
+    1st-person-view-offsets: [0, 0.1, 0.45]
 
 models:
   - model-name: Woman.gltf
@@ -130,16 +130,16 @@ models:
       - 1: 4
       - 2: 4
     bounding-sphere-adjustments:
-      - [0, -0.31400001, 0, 0.600000024]
-      - [0, 0, 0, 1.70000005]
+      - [0, -0.314, 0, 0.6]
+      - [0, 0, 0, 1.7]
       - [0, 0, 0, 3]
       - [0, 0, 0, 3]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0.300000012, 0, 1.75]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [-0.0500000007, -0.00999999978, 0, 1.5]
-      - [-0.100000001, 0.200000003, 0, 1.5]
+      - [0, 0, 0, 0.01]
+      - [0, 0.3, 0, 1.75]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [-0.05, -0.01, 0, 1.5]
+      - [-0.1, 0.2, 0, 1.5]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
@@ -149,9 +149,9 @@ models:
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
-      - [0, 0, 0, 0.00999999978]
-      - [0.0500000007, -0.00999999978, 0, 1.5]
-      - [0.100000001, 0.200000003, 0, 1.5]
+      - [0, 0, 0, 0.01]
+      - [0.05, -0.01, 0, 1.5]
+      - [0.1, 0.2, 0, 1.5]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
@@ -161,16 +161,16 @@ models:
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
-      - [0, -0.200000003, 0, 4]
+      - [0, -0.2, 0, 4]
       - [0, 0, 0, 1.5]
       - [0, 0, 0, 1]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, -0.200000003, -0, 4]
-      - [0, 0, 0, 1.29999995]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, -0.2, -0, 4]
+      - [0, 0, 0, 1.3]
       - [0, 0, 0, 1]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
       - [0, 0, 0, 1]
@@ -232,16 +232,16 @@ models:
           clip-speed: 1.5
       - 7:
           clip: 15
-          clip-speed: 1.20000005
+          clip-speed: 1.2
       - 8:
           clip: 12
-          clip-speed: 1.20000005
+          clip-speed: 1.2
       - 9:
           clip: 10
-          clip-speed: 1.20000005
+          clip-speed: 1.2
       - 10:
           clip: 23
-          clip-speed: 1.20000005
+          clip-speed: 1.2
     action-sequences:
       - 0: 5
       - 0: 8
@@ -250,66 +250,66 @@ models:
       - 1: 7
       - 2: 7
     bounding-sphere-adjustments:
-      - [0, 0, 0, 0.00999999978]
+      - [0, 0, 0, 0.01]
       - [0, 0, 0, 10]
       - [0, 0, 0, 3]
       - [0, 0, 0, 2]
       - [0, 0, 0, 2]
-      - [0, 0.207000002, 0, 0.00999999978]
-      - [0, 0.409000009, -0.0329999998, 2]
-      - [0, 0, 0, 0.00999999978]
-      - [-0.200000003, 0, -0.100000001, 1.70000005]
-      - [0, 0, 0, 0.00999999978]
-      - [0, -0.100000001, 0, 1.39999998]
-      - [0, 0, 0, 0.778500021]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 1.52209997]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0.200000003, 0, 0.100000001, 1.70000005]
-      - [0, 0, 0, 0.00999999978]
-      - [0, -0.100000001, 0, 1.39999998]
-      - [0, 0, 0, 0.752099991]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 1.57009995]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
-      - [0, 0, 0, 0.00999999978]
+      - [0, 0.207, 0, 0.01]
+      - [0, 0.409, -0.033, 2]
+      - [0, 0, 0, 0.01]
+      - [-0.2, 0, -0.1, 1.7]
+      - [0, 0, 0, 0.01]
+      - [0, -0.1, 0, 1.4]
+      - [0, 0, 0, 0.7785]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 1.5221]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0.2, 0, 0.1, 1.7]
+      - [0, 0, 0, 0.01]
+      - [0, -0.1, 0, 1.4]
+      - [0, 0, 0, 0.7521]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 1.5701]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
+      - [0, 0, 0, 0.01]
       - [0, 0, 0, 1]
-      - [-0.100000001, -0.200000003, 0, 1]
+      - [-0.1, -0.2, 0, 1]
       - [0, 0, 0, 1]
-      - [-0.100000001, -0.200000003, 0, 1]
-      - [0, 0.25, 0, 0.699999988]
-      - [0, 0.25, 0, 0.699999988]
+      - [-0.1, -0.2, 0, 1]
+      - [0, 0.25, 0, 0.7]
+      - [0, 0.25, 0, 0.7]
     forward-speed-factor: 4
     head-movement-mappings:
       - 0: 25
@@ -561,30 +561,27 @@ node-trees:
           - instance-random-rotation: 0
           - instance-relative-rotation: 1
     links:
+      - 10033: [34200, 35000]
+      - 10020: [15200, 28000]
+      - 10019: [29200, 31000]
       - 10008: [14200, 2000]
       - 10037: [41200, 44000]
       - 10022: [26200, 18000]
-      - 10006: [7200, 8000]
       - 10035: [36201, 40000]
+      - 10006: [7200, 8000]
       - 10025: [19200, 29000]
       - 10034: [31200, 36000]
       - 10005: [6200, 7000]
       - 10028: [35200, 30000]
       - 10015: [25200, 13000]
-      - 10031: [33200, 19000]
-      - 10002: [16200, 23000]
-      - 10016: [10200, 14000]
-      - 10019: [29200, 31000]
-      - 10020: [15200, 28000]
-      - 10033: [34200, 35000]
-      - 10004: [4200, 5000]
       - 10021: [18200, 20000]
-      - 10029: [32200, 15000]
       - 10000: [21200, 22000]
+      - 10029: [32200, 15000]
       - 10026: [0, 1000]
       - 10013: [2202, 26000]
       - 10001: [22200, 16000]
       - 10030: [11200, 32000]
+      - 10004: [4200, 5000]
       - 10017: [28200, 31000]
       - 10018: [13200, 17000]
       - 10032: [20200, 34000]
@@ -603,6 +600,9 @@ node-trees:
       - 10007: [7201, 9000]
       - 10036: [40200, 42000]
       - 10023: [30200, 31000]
+      - 10016: [10200, 14000]
+      - 10002: [16200, 23000]
+      - 10031: [33200, 19000]
   - node-tree-name: AllRunCollisionWoman
     editor-settings: "[editor]\npanning=-962,-106\n\n[node.0]\norigin=-237,-29\n\n[node.9]\norigin=1014,520\n\n[node.8]\norigin=798,405\n\n[node.7]\norigin=614,977\n\n[node.6]\norigin=341,962\n\n[node.5]\norigin=557,461\n\n[node.4]\norigin=241,662\n\n[node.3]\norigin=988,-270\n\n[node.2]\norigin=530,-123\n\n[node.1]\norigin=-113,-28\n\n[node.10]\norigin=157,-125\n\n[node.11]\norigin=1205,-267\n\n[node.14]\norigin=332,-131\n\n[node.17]\norigin=1218,11\n\n[node.13]\norigin=994,13\n\n[node.16]\norigin=1207,-126\n\n[node.12]\norigin=994,-128\n\n[node.30]\norigin=2075,-208\n\n[node.29]\norigin=1794,34\n\n[node.28]\norigin=1790,-183\n\n[node.27]\norigin=1785,-390\n\n[node.25]\norigin=1615,11\n\n[node.24]\norigin=1611,-131\n\n[node.19]\norigin=1603,-315\n\n[node.23]\norigin=1390,30\n\n[node.22]\norigin=1404,-124\n\n[node.21]\norigin=727,74\n\n[node.15]\norigin=1374,-284\n\n[node.20]\norigin=723,-133\n\n[node.18]\norigin=709,-345\n\n[node.26]\norigin=1009,267\n\n[node.31]\norigin=1643,243\n\n[node.32]\norigin=1265,355\n\n[node.33]\norigin=1433,393\n\n[node.34]\norigin=741,261\n"
     nodes:
@@ -783,31 +783,19 @@ node-trees:
       - node-type: 13
         node-id: 34
     links:
-      - 10009: [1200, 10000]
-      - 10022: [24200, 28000]
-      - 10025: [22200, 24000]
-      - 10012: [21200, 13000]
-      - 10024: [23200, 25000]
-      - 10011: [3200, 11000]
-      - 10030: [32200, 31000]
-      - 10001: [2200, 18000]
-      - 10014: [2202, 21000]
-      - 10027: [28200, 30000]
-      - 10021: [19200, 27000]
-      - 10008: [14200, 2000]
-      - 10016: [10200, 14000]
-      - 10003: [0, 1000]
-      - 10032: [2203, 34000]
-      - 10006: [7200, 8000]
-      - 10019: [17200, 23000]
-      - 10023: [15200, 19000]
-      - 10010: [2201, 20000]
-      - 10007: [7201, 9000]
-      - 10020: [25200, 29000]
-      - 10029: [26200, 32000]
-      - 10000: [18200, 3000]
-      - 10028: [29200, 30000]
       - 10015: [13200, 17000]
+      - 10028: [29200, 30000]
+      - 10000: [18200, 3000]
+      - 10029: [26200, 32000]
+      - 10016: [10200, 14000]
+      - 10008: [14200, 2000]
+      - 10021: [19200, 27000]
+      - 10027: [28200, 30000]
+      - 10014: [2202, 21000]
+      - 10001: [2200, 18000]
+      - 10030: [32200, 31000]
+      - 10011: [3200, 11000]
+      - 10024: [23200, 25000]
       - 10013: [12200, 16000]
       - 10026: [27200, 30000]
       - 10004: [4200, 5000]
@@ -816,25 +804,35 @@ node-trees:
       - 10005: [6200, 7000]
       - 10031: [32201, 33000]
       - 10002: [20200, 12000]
+      - 10012: [21200, 13000]
+      - 10025: [22200, 24000]
+      - 10022: [24200, 28000]
+      - 10009: [1200, 10000]
+      - 10003: [0, 1000]
+      - 10032: [2203, 34000]
+      - 10006: [7200, 8000]
+      - 10019: [17200, 23000]
+      - 10023: [15200, 19000]
+      - 10010: [2201, 20000]
+      - 10007: [7201, 9000]
+      - 10020: [25200, 29000]
 
 instances:
   - model-file: Man.gltf
-    position: [164.200912, 0, -59.9202194]
-    rotation: [0, -42.7798767, 0]
+    position: [154.35472, 7.450581e-09, -49.279972]
+    rotation: [0, 137.22012, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
     2nd-anim-clip-number: 22
-    anim-clip-speed: 1.5
-    anim-blend-factor: 0
+    anim-clip-speed: 2
+    anim-blend-factor: 1
     node-tree: AllRunCollisionMan
-    face-anim-index: 1
-    face-anim-weight: 0.187439978
     enable-navigation: false
     path-target-instance: -1
   - model-file: Man.gltf
-    position: [11.0840645, 2.71735573, -103.673553]
-    rotation: [0, 35.9801025, 0]
+    position: [14.079756, 2.7173557, -99.54766]
+    rotation: [0, 35.980103, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
@@ -847,89 +845,87 @@ instances:
     target-of-cameras:
       - ThirdPersonCam
   - model-file: Man.gltf
-    position: [61.5494385, 0.89574337, 18.0765114]
-    rotation: [0, -41.1747437, 0]
+    position: [5.347279, 7.450581e-09, 9.92842]
+    rotation: [0, 81.51863, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
     2nd-anim-clip-number: 22
-    anim-clip-speed: 1.95396805
-    anim-blend-factor: 0.907935977
-    node-tree: AllRunCollisionMan
-    enable-navigation: false
-    path-target-instance: -1
-  - model-file: Man.gltf
-    position: [-85.2812958, -16.3041344, -82.3127899]
-    rotation: [0, -174.849884, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 14
-    2nd-anim-clip-number: 14
     anim-clip-speed: 1.5
     anim-blend-factor: 0
     node-tree: AllRunCollisionMan
-    face-anim-index: 1
-    face-anim-weight: 1
-    enable-navigation: false
-    path-target-instance: -1
-  - model-file: traffic_cone_prop.glb
-    position: [-0.385828376, 0, -54.7902985]
-    rotation: [0, 0, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 0
-    anim-clip-speed: 1
-    anim-blend-factor: 0
-    enable-navigation: false
-    path-target-instance: -1
-  - model-file: traffic_cone_prop.glb
-    position: [5.17383623, 0, 54.5197105]
-    rotation: [0, 0, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 0
-    anim-clip-speed: 1
-    anim-blend-factor: 0
-    enable-navigation: false
-    path-target-instance: -1
-  - model-file: traffic_cone_prop.glb
-    position: [40.8668022, 1.80571365, 36.0439949]
-    rotation: [0, 0, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 0
-    anim-clip-speed: 1
-    anim-blend-factor: 0
-    enable-navigation: false
-    path-target-instance: -1
-  - model-file: traffic_cone_prop.glb
-    position: [16.4035416, 5.43471146, 109.642372]
-    rotation: [0, 0, 0]
-    scale: 1
-    swap-axes: false
-    1st-anim-clip-number: 0
-    2nd-anim-clip-number: 0
-    anim-clip-speed: 1
-    anim-blend-factor: 0
     enable-navigation: false
     path-target-instance: -1
   - model-file: Man.gltf
-    position: [20.3695202, 0, 49.0024681]
-    rotation: [0, -120.279388, 0]
+    position: [-90.83459, -16.304134, -143.92676]
+    rotation: [0, -174.84988, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
     2nd-anim-clip-number: 22
-    anim-clip-speed: 2
-    anim-blend-factor: 1
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
+    node-tree: AllRunCollisionMan
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: traffic_cone_prop.glb
+    position: [-0.38582838, -1.4901161e-08, -54.7903]
+    rotation: [0, 0, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 0
+    2nd-anim-clip-number: 0
+    anim-clip-speed: 1
+    anim-blend-factor: 0
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: traffic_cone_prop.glb
+    position: [5.173836, 0, 54.51971]
+    rotation: [0, 0, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 0
+    2nd-anim-clip-number: 0
+    anim-clip-speed: 1
+    anim-blend-factor: 0
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: traffic_cone_prop.glb
+    position: [40.866802, 1.8057137, 36.043995]
+    rotation: [0, 0, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 0
+    2nd-anim-clip-number: 0
+    anim-clip-speed: 1
+    anim-blend-factor: 0
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: traffic_cone_prop.glb
+    position: [16.403542, 5.4347115, 109.64237]
+    rotation: [0, 0, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 0
+    2nd-anim-clip-number: 0
+    anim-clip-speed: 1
+    anim-blend-factor: 0
+    enable-navigation: false
+    path-target-instance: -1
+  - model-file: Man.gltf
+    position: [18.762094, 0, 62.84086]
+    rotation: [0, -68.55472, 0]
+    scale: 1
+    swap-axes: false
+    1st-anim-clip-number: 4
+    2nd-anim-clip-number: 22
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
     node-tree: AllRunCollisionMan
     enable-navigation: false
     path-target-instance: -1
   - model-file: Man.gltf
-    position: [33.1192589, 0.113603592, 19.1840496]
+    position: [-33.401302, 0, 15.444162]
     rotation: [0, 86.782135, 0]
     scale: 1
     swap-axes: false
@@ -941,20 +937,20 @@ instances:
     enable-navigation: false
     path-target-instance: -1
   - model-file: Man.gltf
-    position: [-1.03071725, 0, -62.2243538]
-    rotation: [0, -178.727264, 0]
+    position: [6.497501, 7.450581e-09, 9.893359]
+    rotation: [0, -129.36945, 0]
     scale: 1
     swap-axes: false
     1st-anim-clip-number: 4
     2nd-anim-clip-number: 22
-    anim-clip-speed: 2
-    anim-blend-factor: 1
+    anim-clip-speed: 1.5
+    anim-blend-factor: 0
     node-tree: AllRunCollisionMan
     enable-navigation: false
     path-target-instance: -1
 
 dynamic-lights:
-  - position: [21.8565502, 8.61935043, 12.8228531]
+  - position: [21.85655, 8.61935, 12.822853]
     rotation: [0, 0, 0]
     enabled: true
     shadow-enabled: true
@@ -962,4 +958,4 @@ dynamic-lights:
     diffuse-color: [1, 1, 1]
     distance: 500
     max-distance: 100
-    shadowmap-offset: 0.000500000024
+    shadowmap-offset: 0.0005

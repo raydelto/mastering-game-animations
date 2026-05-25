@@ -2,11 +2,11 @@
 
 #include <VkBootstrap.h>
 
-#include <CopyPipeline.h>
+#include <XRCopyPipeline.h>
 #include <Logger.h>
 #include <Shader.h>
 
-bool CopyPipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAttachmentFormats,
+bool XRCopyPipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAttachmentFormats,
     VkPipelineLayout& pipelineLayout, VkPipeline& pipeline, std::string vertexShaderFilename, std::string fragmentShaderFilename) {
   // shader
   VkShaderModule vertexModule = Shader::loadShader(renderData.rdVkbDevice.device, vertexShaderFilename);
@@ -109,8 +109,10 @@ bool CopyPipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAtt
   // dynamic rendering
   VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
   pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+  pipelineRenderingCreateInfo.viewMask = 0b11;
   pipelineRenderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachmentFormats.size());
   pipelineRenderingCreateInfo.pColorAttachmentFormats = colorAttachmentFormats.data();
+  pipelineRenderingCreateInfo.depthAttachmentFormat = renderData.rdDepthBufferData.format;
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
   pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -146,6 +148,6 @@ bool CopyPipeline::init(VkRenderData& renderData, std::vector<VkFormat> colorAtt
   return true;
 }
 
-void CopyPipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
+void XRCopyPipeline::cleanup(VkRenderData &renderData, VkPipeline &pipeline) {
   vkDestroyPipeline(renderData.rdVkbDevice.device, pipeline, nullptr);
 }

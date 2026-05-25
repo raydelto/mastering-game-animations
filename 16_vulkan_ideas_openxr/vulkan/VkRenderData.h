@@ -472,6 +472,10 @@ struct VkRenderData {
   std::vector<VkShaderStorageBufferData> rdDynamicLightBuffers{};
   std::vector<VkShaderStorageBufferData> rdDynamicLightDebugBuffers{};
 
+  // OpenXR specific stuff
+  glm::quat rdXRPoseOrientation = glm::quat();
+  glm::vec3 rdXRPosePosition = glm::vec3(0.0f);
+
   // Vulkan specific stuff
   const int MAX_FRAMES_IN_FLIGHT = 3;
   int rdNumFramesInFlight = 1;
@@ -487,6 +491,9 @@ struct VkRenderData {
   vkb::PhysicalDevice rdVkbPhysicalDevice{};
   vkb::Device rdVkbDevice{};
   vkb::Swapchain rdVkbSwapchain{};
+
+  std::vector<const char*> rdXRDeviceExtensions{};
+  std::vector<const char*> rdXRInstanceExtensions{};
 
   std::vector<VkImage> rdSwapchainImages{};
   std::vector<VkImageView> rdSwapchainImageViews{};

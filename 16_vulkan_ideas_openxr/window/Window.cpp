@@ -76,15 +76,6 @@ bool Window::init(unsigned int width, unsigned int height, std::string title) {
     return false;
   }
 
-  if (!mVRHeadSet.init(mRenderer->getXRGraphicsBinding())) {
-    mRenderer->cleanup();
-    glfwTerminate();
-    Logger::log(1, "%s error: Could not init VR Headset\n", __FUNCTION__);
-    return false;
-  }
-
-  mVRHeadSet.setVRApplicationRunning(true);
-
   // use SDL for audio
   if (!mAudioManager.init()) {
     Logger::log(1, "%s error: unable to init audio, skipping\n", __FUNCTION__);
@@ -138,8 +129,8 @@ void Window::mainLoop() {
   std::chrono::time_point<std::chrono::steady_clock> loopEndTime = std::chrono::steady_clock::now();
   float deltaTime = 0.0f;
 
-  while (mVRHeadSet.isVRApplicationRunning()) {
-    mVRHeadSet.pollEvents();
+  while (true) {
+    mRenderer->pollXREvents();
 
     if (!mRenderer->draw(deltaTime)) {
       break;
@@ -158,7 +149,6 @@ void Window::mainLoop() {
 
 void Window::cleanup() {
   mRenderer->cleanup();
-  mVRHeadSet.cleanup();
 
   mAudioManager.cleanup();
 

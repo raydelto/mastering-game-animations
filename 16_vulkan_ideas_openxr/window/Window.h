@@ -6,7 +6,6 @@
 
 #include <VkRenderer.h>
 #include <AudioManager.h>
-#include <VRHeadset.h>
 #include <Callbacks.h>
 
 class Window {
@@ -27,6 +26,4 @@ class Window {
     std::unique_ptr<VkRenderer> mRenderer = nullptr;
 
     AudioManager mAudioManager{};
-
-    VRHeadset mVRHeadSet{};
 };

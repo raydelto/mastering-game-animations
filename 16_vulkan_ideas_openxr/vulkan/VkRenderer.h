@@ -61,6 +61,8 @@ class VkRenderer {
     bool init(unsigned int width, unsigned int height);
     void setSize(unsigned int width, unsigned int height);
 
+    void pollXREvents();
+
     bool draw(float deltaTime);
 
     void handleKeyEvents(int key, int scancode, int action, int mods);
@@ -112,8 +114,6 @@ class VkRenderer {
     ModelInstanceCamData& getModInstCamData();
 
     std::shared_ptr<BoundingBox3D> getWorldBoundaries();
-
-    void* getXRGraphicsBinding();
 
     void cleanup();
 
@@ -310,5 +310,5 @@ class VkRenderer {
 
     DynamicLightDebugModel mDynLightModel{};
 
-    XrGraphicsBindingVulkanKHR mXRGraphicsBinding{};
+    VRHeadset mVRHeadSet{};
 };

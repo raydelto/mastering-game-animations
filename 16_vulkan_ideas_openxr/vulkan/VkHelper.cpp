@@ -142,6 +142,7 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   .request_validation_layers()
   .enable_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) // required to use VK_EXT_swapchain_maintenance1
   .enable_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) // required to use VK_EXT_surface_maintenance1
+  .enable_extensions(renderData.rdXRInstanceExtensions)
   .require_api_version(1, 3, 0)
   .build();
 
@@ -172,15 +173,23 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   VkPhysicalDeviceVulkan11Features vk11features{};
   vk11features.multiview = VK_TRUE;
 
+  VkPhysicalDeviceVulkan12Features vk12features{};
+  vk12features.timelineSemaphore = VK_TRUE;
+  // required from Vulkan to enable when VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME is enabled
+  vk12features.shaderOutputViewportIndex = VK_TRUE;
+  vk12features.shaderOutputLayer = VK_TRUE;
+
   // just get the first available device
   vkb::PhysicalDeviceSelector physicalDevSel{renderData.rdVkbInstance};
   auto physicalDevSelRet = physicalDevSel
   .set_surface(renderData.rdSurface)
   .set_required_features(vk10features)
   .set_required_features_11(vk11features)
+  .set_required_features_12(vk12features)
   .add_required_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
   .add_required_extension_features(dynamicRenderingFeature)
   .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME) // required for GL_ARB_shader_viewport_layer_array
+  .add_required_extensions(renderData.rdXRDeviceExtensions)
   .select();
 
   if (!physicalDevSelRet) {
@@ -268,7 +277,8 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
   // VK_PRESENT_MODE_FIFO_KHR enables vsync
   auto  swapChainBuildRet = swapChainBuild
     .set_old_swapchain(renderData.rdVkbSwapchain)
-    .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+    //.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+    .set_desired_present_mode(VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
     .set_desired_format(surfaceFormat)
     .set_desired_min_image_count(renderData.rdNumFramesInFlight)
     // Wayland needs the extent here or we will get something like 256x256 pixel sized swapchain images

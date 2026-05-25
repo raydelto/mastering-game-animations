@@ -80,9 +80,38 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
     return false;
   }
 
+  if (!mVRHeadSet.initXR()) {
+    Logger::log(1, "%s error: Could not init VR Headset\n", __FUNCTION__);
+    return false;
+  }
+
+  std::vector<std::string> deviceExtensions = mVRHeadSet.getVKDeviceExtensionsForXR();
+  std::vector<std::string> instanceExtensions = mVRHeadSet.getVKInstanceExtensionsForXR();
+
+  std::vector<const char*> devExts;
+  for (const auto& val : deviceExtensions) {
+    devExts.push_back(val.c_str());
+    Logger::log(1, "%s : Activate device extension %s\n", __FUNCTION__, val.c_str());
+  }
+  mRenderData.rdXRDeviceExtensions = devExts;
+
+  std::vector<const char*> instExts;
+  for (const auto& val : instanceExtensions) {
+    instExts.push_back(val.c_str());
+    Logger::log(1, "%s : Activate instance extension %s\n", __FUNCTION__, val.c_str());
+  }
+  mRenderData.rdXRInstanceExtensions = instExts;
+
   if (!VkHelper::initVulkan(mRenderData)) {
     return false;
   }
+
+  if (!mVRHeadSet.initXRSecondHalf(mRenderData)) {
+    Logger::log(1, "%s error: Could not init VR Headset session\n", __FUNCTION__);
+    return false;
+  }
+
+  mVRHeadSet.setVRApplicationRunning(true);
 
   if (!initUserInterface()) {
     return false;
@@ -337,35 +366,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mApplicationRunning = true;
   return true;
 }
-
-void* VkRenderer::getXRGraphicsBinding() {
-  mXRGraphicsBinding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR;
-  mXRGraphicsBinding.instance = mRenderData.rdVkbInstance.instance;
-  mXRGraphicsBinding.physicalDevice = mRenderData.rdVkbPhysicalDevice.physical_device;
-  mXRGraphicsBinding.device = mRenderData.rdVkbDevice.device;
-
-  std::vector<VkQueueFamilyProperties> queueFamilies = mRenderData.rdVkbPhysicalDevice.get_queue_families();
-
-  int i = 0;
-  for (const auto& queueFamily : queueFamilies) {
-    if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-      mXRGraphicsBinding.queueFamilyIndex = i;
-      break;
-    }
-
-    ++i;
-  }
-
-  auto queueIndexRet = mRenderData.rdVkbDevice.get_queue_index(vkb::QueueType::graphics);
-  if (queueIndexRet.has_value()) {
-    mXRGraphicsBinding.queueIndex = queueIndexRet.value();
-  }
-
-  Logger::log(1, "%s: Found graphics queue familiy at index %i, graphics queue at index %i\n", __FUNCTION__, mXRGraphicsBinding.queueFamilyIndex, mXRGraphicsBinding.queueIndex);
-
-  return &mXRGraphicsBinding;
-}
-
 
 ModelInstanceCamData& VkRenderer::getModInstCamData() {
   return mModelInstCamData;
@@ -690,6 +690,12 @@ void VkRenderer::requestExitApplication() {
 
 void VkRenderer::doExitApplication() {
   mApplicationRunning = false;
+}
+
+void VkRenderer::pollXREvents() {
+  if (mVRHeadSet.isVRApplicationRunning()) {
+    mVRHeadSet.pollEvents();
+  }
 }
 
 void VkRenderer::undoLastOperation() {
@@ -4256,7 +4262,7 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
 }
 
 bool VkRenderer::draw(float deltaTime) {
-  if (!mApplicationRunning) {
+  if (!mApplicationRunning || !mVRHeadSet.isVRApplicationRunning()) {
     return false;
   }
 
@@ -5082,6 +5088,11 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
+  // start frame to get correct camera data
+  if (mVRHeadSet.isXRSessionRunning()) {
+    mVRHeadSet.beginXRFrame(mRenderData);
+  }
+
   mRenderData.rdMatrixGenerateTimer.start();
   cam->updateCamera(mRenderData, deltaTime);
 
@@ -5095,7 +5106,6 @@ bool VkRenderer::draw(float deltaTime) {
     float top = widthDivByTwo;
     float bottom = -widthDivByTwo;
 
-    glm::vec3 camPos = cam->getWorldPosition();
     glm::mat4 camViewMat = cam->getViewMatrix();
     glm::vec3 camRight = cam->getViewRightDirection();
 
@@ -5103,19 +5113,19 @@ bool VkRenderer::draw(float deltaTime) {
     float left = -aspectRatio * widthDivByTwo - 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
     float right = aspectRatio * widthDivByTwo - 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
 
-    glm::mat4 camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f));
+    glm::mat4 camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f) - 4.0f * mRenderData.rdXRPosePosition);
 
     mRenderUploadData.projectionMatrix.at(0) = glm::frustum(left, right, bottom, top, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-    mRenderUploadData.viewMatrix.at(0) = mVulkanViewCorrectionMatrix * camViewMat * camTransMat;
+    mRenderUploadData.viewMatrix.at(0) = mVulkanViewCorrectionMatrix * glm::inverse(glm::mat4_cast(mRenderData.rdXRPoseOrientation)) * camViewMat * camTransMat;
 
     // right eye
     left = -aspectRatio * widthDivByTwo + 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
     right = aspectRatio * widthDivByTwo + 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
 
-    camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f));
+    camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f) - 4.0f * mRenderData.rdXRPosePosition);
 
     mRenderUploadData.projectionMatrix.at(1) = glm::frustum(left, right, bottom, top, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-    mRenderUploadData.viewMatrix.at(1) = mVulkanViewCorrectionMatrix * camViewMat * camTransMat;
+    mRenderUploadData.viewMatrix.at(1) = mVulkanViewCorrectionMatrix * glm::inverse(glm::mat4_cast(mRenderData.rdXRPoseOrientation)) * camViewMat * camTransMat;
 
     mRenderUploadData.nearPlane = mRenderData.rdNearPlane;
     mRenderUploadData.farPlane = mRenderData.rdFarPlane;
@@ -6462,6 +6472,11 @@ bool VkRenderer::draw(float deltaTime) {
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
+  // VR rendering finish
+  if (mVRHeadSet.isXRSessionRunning()) {
+    mVRHeadSet.renderXRFrame(mRenderData);
+  }
+
   VkRect2D uiRenderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdVkbSwapchain.extent.width, mRenderData.rdVkbSwapchain.extent.height}};
 
   // imGui overlay needs a separate rendering pass due to a different internal pipeline
@@ -6636,7 +6651,11 @@ void VkRenderer::cleanup() {
 
   VkHelper::cleanupSSAONoiseTexture(mRenderData);
 
+  mVRHeadSet.cleanupXRSecondHalf(mRenderData);
+
   VkHelper::cleanup(mRenderData);
+
+  mVRHeadSet.cleanupXR();
 }
 
 
