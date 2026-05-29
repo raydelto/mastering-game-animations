@@ -473,8 +473,19 @@ struct VkRenderData {
   std::vector<VkShaderStorageBufferData> rdDynamicLightDebugBuffers{};
 
   // OpenXR specific stuff
-  glm::quat rdXRPoseOrientation = glm::quat();
-  glm::vec3 rdXRPosePosition = glm::vec3(0.0f);
+  uint32_t rdXRWidth = 0;
+  uint32_t rdXRHeight = 0;
+
+  struct XRFoVs {
+    float left{};
+    float right{};
+    float up{};
+    float down{};
+  };
+
+  std::array<XRFoVs, 2> rdXRFoVs{};
+  std::array<glm::quat, 2> rdXRPoseOrientations{};
+  std::array<glm::vec3, 2> rdXRPosePositions{};
 
   // Vulkan specific stuff
   const int MAX_FRAMES_IN_FLIGHT = 3;

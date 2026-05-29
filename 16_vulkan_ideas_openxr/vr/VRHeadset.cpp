@@ -93,6 +93,9 @@ bool VRHeadset::isXRApplicationRunning() {
   return mApplicationRunning;
 }
 
+std::pair<unsigned int, unsigned int> VRHeadset::getXRResolution() {
+  return std::make_pair(mWidth, mHeight);
+}
 
 void VRHeadset::pollEvents() {
   XrEventDataBuffer eventData{};
@@ -414,6 +417,9 @@ bool VRHeadset::getViewConfigViews() {
     Logger::log(1, "%s error: Failed to enumerate view configuration views (error code: %i)\n", __FUNCTION__, result);
     return false;
   }
+
+  mWidth = mViewConfigurationViews.at(0).recommendedImageRectWidth;
+  mHeight = mViewConfigurationViews.at(0).recommendedImageRectWidth;
 
   return true;
 }
@@ -746,9 +752,7 @@ bool VRHeadset::createXRSwapchain(VkRenderData &renderData) {
     }
   }
 
-  Logger::log(1, "%s: OpenXR Swapchains created (%ix%i)\n", __FUNCTION__,
-    mViewConfigurationViews.at(0).recommendedImageRectWidth,
-    mViewConfigurationViews.at(0).recommendedImageRectHeight);
+  Logger::log(1, "%s: OpenXR Swapchains created (%ix%i)\n", __FUNCTION__, mWidth, mHeight);
   return true;
 }
 
@@ -768,6 +772,24 @@ bool VRHeadset::createXRPipeline(VkRenderData& renderData) {
 
   return true;
 }
+
+glm::mat4 VRHeadset::createXRProjectionMatrix(float left, float right, float bottom, float top, float nearZ, float farZ) {
+  glm::mat4 projMatrix = glm::mat4(0.0f);
+
+  // ignore near value in first two elements
+  projMatrix[0][0] = 2.0f / (right - left);
+  projMatrix[1][1] = 2.0f / (top - bottom);
+
+  projMatrix[2][0] = (right + left) / (right - left);
+  projMatrix[2][1] = (top + bottom) / (top - bottom);
+  projMatrix[2][2] = farZ / (nearZ - farZ);
+  projMatrix[2][3] = -1.0f;
+  projMatrix[3][2] = -(farZ * nearZ) / (farZ - nearZ);
+
+  return projMatrix;
+}
+
+
 
 bool VRHeadset::beginXRFrame(VkRenderData &renderData) {
   mFrameState = { .type = XR_TYPE_FRAME_STATE };
@@ -810,15 +832,23 @@ bool VRHeadset::beginXRFrame(VkRenderData &renderData) {
     }
 
     // Camera update
-    renderData.rdXRPoseOrientation.x = mViews.at(0).pose.orientation.x;
-    renderData.rdXRPoseOrientation.y = mViews.at(0).pose.orientation.y;
-    renderData.rdXRPoseOrientation.z = mViews.at(0).pose.orientation.z;
-    renderData.rdXRPoseOrientation.w = mViews.at(0).pose.orientation.w;
+    for (uint32_t i = 0; i < mViewCount; ++i) {
+      // orientation as quaternion
+      renderData.rdXRPoseOrientations.at(i).x = mViews.at(i).pose.orientation.x;
+      renderData.rdXRPoseOrientations.at(i).y = mViews.at(i).pose.orientation.y;
+      renderData.rdXRPoseOrientations.at(i).z = mViews.at(i).pose.orientation.z;
+      renderData.rdXRPoseOrientations.at(i).w = mViews.at(i).pose.orientation.w;
 
-    renderData.rdXRPosePosition.x = mViews.at(0).pose.position.x;
-    renderData.rdXRPosePosition.y = mViews.at(0).pose.position.y;
-    renderData.rdXRPosePosition.z = mViews.at(0).pose.position.z;
+      renderData.rdXRPosePositions.at(i).x = mViews.at(i).pose.position.x;
+      renderData.rdXRPosePositions.at(i).y = mViews.at(i).pose.position.y;
+      renderData.rdXRPosePositions.at(i).z = mViews.at(i).pose.position.z;
 
+      // field of view angles are in radians
+      renderData.rdXRFoVs.at(i).left = mViews.at(i).fov.angleLeft;
+      renderData.rdXRFoVs.at(i).right = mViews.at(i).fov.angleRight;
+      renderData.rdXRFoVs.at(i).up = mViews.at(i).fov.angleUp;
+      renderData.rdXRFoVs.at(i).down = mViews.at(i).fov.angleDown;
+    }
   }
 
   return true;
@@ -855,7 +885,7 @@ bool VRHeadset::renderXRFrame(VkRenderData &renderData) {
 
 bool VRHeadset::renderXRLayer(VkRenderData &renderData, XRRenderLayerInfo& renderLayerInfo) {
   renderLayerInfo.layerProjectionViews.resize(mViewCount, { .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW });
-  for (uint32_t i = 0; i < mViewCount; i++) {
+  for (uint32_t i = 0; i < mViewCount; ++i) {
     uint32_t colorImageIndex = 0;
     XrSwapchainImageAcquireInfo acquireInfo{};
     acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;

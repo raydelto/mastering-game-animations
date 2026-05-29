@@ -277,8 +277,7 @@ bool VkHelper::createSwapchain(VkRenderData& renderData) {
   // VK_PRESENT_MODE_FIFO_KHR enables vsync
   auto  swapChainBuildRet = swapChainBuild
     .set_old_swapchain(renderData.rdVkbSwapchain)
-    //.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
-    .set_desired_present_mode(VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)
+    .set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
     .set_desired_format(surfaceFormat)
     .set_desired_min_image_count(renderData.rdNumFramesInFlight)
     // Wayland needs the extent here or we will get something like 256x256 pixel sized swapchain images
@@ -3957,8 +3956,8 @@ bool VkHelper::createVertexBuffers(VkRenderData& renderData) {
 
 bool VkHelper::createDepthBuffer(VkRenderData& renderData) {
   VkExtent3D depthImageExtent = {
-    renderData.rdHalfWidth,
-    renderData.rdHeight,
+    renderData.rdXRWidth,
+    renderData.rdXRHeight,
     1
   };
 
@@ -4173,36 +4172,36 @@ void VkHelper::cleanupDepthBufferCubeMap(VkRenderData& renderData, VkImageData& 
 }
 
 bool VkHelper::createImages(VkRenderData& renderData) {
-  VkExtent2D halfWidthExtent = { renderData.rdHalfWidth, renderData.rdHeight };
+  VkExtent2D xrExtent = { renderData.rdXRWidth, renderData.rdXRHeight };
 
   if (!Image::create(renderData, renderData.rdFinalImageData, VK_FORMAT_B8G8R8A8_UNORM,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-      halfWidthExtent, 2)) {
+      xrExtent, 2)) {
     return false;
   }
 
   if (!Image::create(renderData, renderData.rdSelectionImageData, VK_FORMAT_R32_SFLOAT,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-      halfWidthExtent, 2)) {
+      xrExtent, 2)) {
     return false;
   }
 
   // we are missing half float support, so use 32 bit here
   if (!Image::create(renderData, renderData.rdSSAOColorBufferData, VK_FORMAT_R32_SFLOAT,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-      halfWidthExtent, 2)) {
+      xrExtent, 2)) {
     return false;
   }
 
   if (!Image::create(renderData, renderData.rdSSAOBlurBufferData, VK_FORMAT_R32_SFLOAT,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-      halfWidthExtent, 2)) {
+      xrExtent, 2)) {
     return false;
   }
 
   if (!Image::create(renderData, renderData.rdLightSpheresBufferData, VK_FORMAT_R16G16B16A16_SFLOAT,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-      halfWidthExtent, 2)) {
+      xrExtent, 2)) {
     return false;
   }
 
@@ -4372,28 +4371,28 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
 }
 
 bool VkHelper::createGBuffer(VkRenderData& renderData) {
-  VkExtent2D halfWidthExtent = { renderData.rdHalfWidth, renderData.rdHeight };
+  VkExtent2D xrExtent = { renderData.rdXRWidth, renderData.rdXRHeight };
 
   // init framebuffer attachments
   Logger::log(1, "%s: create GBuffer color attachment (RGBA, 4x 8 bit int)\n", __FUNCTION__);
   if (!Image::create(renderData, renderData.rdGBuffer.color,
     VK_FORMAT_B8G8R8A8_UNORM,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    halfWidthExtent, 2)) {
+    xrExtent, 2)) {
     return false;
   }
   Logger::log(1, "%s: create GBuffer depth attachment (1x 16 bit float)\n", __FUNCTION__);
   if (!Image::create(renderData, renderData.rdGBuffer.depth,
     VK_FORMAT_R32_SFLOAT,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    halfWidthExtent, 2)) {
+    xrExtent, 2)) {
     return false;
   }
   Logger::log(1, "%s: create GBuffer normal attachment (4x 8 bit int)\n", __FUNCTION__);
   if (!Image::create(renderData, renderData.rdGBuffer.normal,
     VK_FORMAT_R8G8B8A8_UNORM,
     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-    halfWidthExtent, 2)) {
+    xrExtent, 2)) {
     return false;
   }
 

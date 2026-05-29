@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <tuple>
 
 #if defined(WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -23,6 +24,8 @@ class VRHeadset {
     bool initXR();
     bool initXRSecondHalf(VkRenderData &renderData);
 
+    std::pair<unsigned int, unsigned int> getXRResolution();
+
     bool beginXRFrame(VkRenderData &renderData);
     bool renderXRFrame(VkRenderData &renderData);
 
@@ -35,6 +38,8 @@ class VRHeadset {
 
     bool isVRApplicationRunning() { return mApplicationRunning; }
     void setVRApplicationRunning(bool state) { mApplicationRunning = state; }
+
+    glm::mat4 createXRProjectionMatrix(float left, float right, float bottom, float top, float nearZ, float farZ);
 
     std::vector<std::string> getVKDeviceExtensionsForXR();
     std::vector<std::string> getVKInstanceExtensionsForXR();
@@ -64,6 +69,9 @@ class VRHeadset {
 
     bool mSessionRunning = false;
     bool mApplicationRunning = false;
+
+    unsigned int mWidth = 1920;
+    unsigned int mHeight = 1080;
 
     XrApplicationInfo mXRAppInfo{};
     std::vector<const char *> mActiveAPILayers{};
@@ -101,6 +109,7 @@ class VRHeadset {
     XrFrameState mFrameState{ .type = XR_TYPE_FRAME_STATE };
     std::vector<XrView> mViews{};
     uint32_t mViewCount = 0;
+
 
     struct XRRenderLayerInfo {
       XrTime predictedDisplayTime = 0;

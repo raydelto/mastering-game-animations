@@ -87,6 +87,7 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   std::vector<std::string> deviceExtensions = mVRHeadSet.getVKDeviceExtensionsForXR();
   std::vector<std::string> instanceExtensions = mVRHeadSet.getVKInstanceExtensionsForXR();
+  std::tie(mRenderData.rdXRWidth, mRenderData.rdXRHeight) = mVRHeadSet.getXRResolution();
 
   std::vector<const char*> devExts;
   for (const auto& val : deviceExtensions) {
@@ -844,8 +845,8 @@ void VkRenderer::loadDefaultFreeCam() {
   CameraSettings freeCamSettings{};
   freeCamSettings.csCamName = "FreeCam";
   freeCamSettings.csWorldPosition = glm::vec3(5.0f);
-  freeCamSettings.csViewAzimuth = 310.0f;
-  freeCamSettings.csViewElevation = -15.0f;
+  freeCamSettings.csViewAzimuth = 0.0f;
+  freeCamSettings.csViewElevation = 0.0f;
 
   freeCam->setCameraSettings(freeCamSettings);
   mModelInstCamData.micCameras.emplace_back(freeCam);
@@ -5097,49 +5098,60 @@ bool VkRenderer::draw(float deltaTime) {
   cam->updateCamera(mRenderData, deltaTime);
 
   if (camSettings.csCamProjection == cameraProjection::perspective) {
-    // http://paulbourke.net/stereographics/stereorender/
+    for (int i = 0; i < 2; ++i) {
+      // Up and down swapped for Vulkan
+      mRenderUploadData.projectionMatrix.at(i) = mVRHeadSet.createXRProjectionMatrix(
+          std::tan(mRenderData.rdXRFoVs.at(i).left),
+          std::tan(mRenderData.rdXRFoVs.at(i).right),
+          std::tan(mRenderData.rdXRFoVs.at(i).up),
+          std::tan(mRenderData.rdXRFoVs.at(i).down),
+          mRenderData.rdNearPlane, mRenderData.rdFarPlane);
 
-    // adjust aspect by using 1/2 of width only
-    float aspectRatio = static_cast<float>(mRenderData.rdHalfWidth) / static_cast<float>(mRenderData.rdHeight);
-    float widthDivByTwo = mRenderData.rdNearPlane * std::tan(glm::radians(camSettings.csFieldOfView / 2.0f));
-    float nearDividedByFocalLength = mRenderData.rdNearPlane / mRenderData.rdFocalLength;
-    float top = widthDivByTwo;
-    float bottom = -widthDivByTwo;
+      // transpose view position
+      glm::mat4 viewTranspose = glm::translate(glm::mat4(1.0f), mRenderData.rdXRPosePositions.at(i) * 5.0f);
 
-    glm::mat4 camViewMat = cam->getViewMatrix();
-    glm::vec3 camRight = cam->getViewRightDirection();
+      // rotate view position
+      glm::mat4 viewOrientation = glm::mat4_cast(mRenderData.rdXRPoseOrientations.at(i));
 
-    // left eye
-    float left = -aspectRatio * widthDivByTwo - 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
-    float right = aspectRatio * widthDivByTwo - 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
+      // camera position transpose
+      glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
 
-    glm::mat4 camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f) - 4.0f * mRenderData.rdXRPosePosition);
+      // XXX: How to do this?
+      glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
 
-    mRenderUploadData.projectionMatrix.at(0) = glm::frustum(left, right, bottom, top, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-    mRenderUploadData.viewMatrix.at(0) = mVulkanViewCorrectionMatrix * glm::inverse(glm::mat4_cast(mRenderData.rdXRPoseOrientation)) * camViewMat * camTransMat;
-
-    // right eye
-    left = -aspectRatio * widthDivByTwo + 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
-    right = aspectRatio * widthDivByTwo + 0.5f * mRenderData.rdEyeSeparation * nearDividedByFocalLength;
-
-    camTransMat = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, 0.0f) * camRight * (mRenderData.rdEyeSeparation / 2.0f) - 4.0f * mRenderData.rdXRPosePosition);
-
-    mRenderUploadData.projectionMatrix.at(1) = glm::frustum(left, right, bottom, top, mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-    mRenderUploadData.viewMatrix.at(1) = mVulkanViewCorrectionMatrix * glm::inverse(glm::mat4_cast(mRenderData.rdXRPoseOrientation)) * camViewMat * camTransMat;
+      mRenderUploadData.viewMatrix.at(i) = glm::inverse(camTranspose * viewTranspose * camOrientation * viewOrientation);
+    }
 
     mRenderUploadData.nearPlane = mRenderData.rdNearPlane;
     mRenderUploadData.farPlane = mRenderData.rdFarPlane;
   } else {
-    float orthoScaling = camSettings.csOrthoScale;
-    float aspect = static_cast<float>(mRenderData.rdHalfWidth) / static_cast<float>(mRenderData.rdHeight) * orthoScaling;
-    float leftRight = 1.0f * orthoScaling;
-    float nearFar = mRenderData.rdOrthoNearFar * orthoScaling;
-    mRenderUploadData.projectionMatrix.at(0) = glm::ortho(-aspect, aspect, -leftRight, leftRight, -nearFar, nearFar);
-    mRenderUploadData.viewMatrix.at(0) = mVulkanViewCorrectionMatrix * cam->getViewMatrix();
+    for (int i = 0; i < 2; ++i) {
+      float orthoScaling = camSettings.csOrthoScale;
 
-    // copy values here
-    mRenderUploadData.projectionMatrix.at(1) = mRenderUploadData.projectionMatrix.at(0);
-    mRenderUploadData.viewMatrix.at(1) = mRenderUploadData.viewMatrix.at(0);
+      // Up and down swapped for Vulkan
+      float left = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).left);
+      float right = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).right);
+      float top = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).down);
+      float bottom = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).up);
+
+      float nearFar = mRenderData.rdOrthoNearFar * orthoScaling;
+
+      mRenderUploadData.projectionMatrix.at(i) = glm::ortho(left, right, bottom, top, -nearFar, nearFar);
+
+      // transpose view position
+      glm::mat4 viewTranspose = glm::translate(glm::mat4(1.0f), mRenderData.rdXRPosePositions.at(i));
+
+      // rotate view position
+      glm::mat4 viewOrientation = glm::mat4_cast(mRenderData.rdXRPoseOrientations.at(i));
+
+      // camera position transpose
+      glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
+
+      // XXX: How to do this?
+      glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
+
+      mRenderUploadData.viewMatrix.at(i) = glm::inverse(camTranspose * viewTranspose * camOrientation * viewOrientation);
+    }
 
     mRenderUploadData.nearPlane = 0.0f;
     mRenderUploadData.farPlane = 0.0f;
@@ -5907,7 +5919,7 @@ bool VkRenderer::draw(float deltaTime) {
     );
   }
 
-  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdHalfWidth, mRenderData.rdHeight}};
+  VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight}};
 
   VkRenderingAttachmentInfo colorAttachmentInfo {};
   colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -5968,14 +5980,14 @@ bool VkRenderer::draw(float deltaTime) {
   VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.y = 0.0f;
-  viewport.width = static_cast<float>(mRenderData.rdHalfWidth);
-  viewport.height = static_cast<float>(mRenderData.rdHeight);
+  viewport.width = static_cast<float>(mRenderData.rdXRWidth);
+  viewport.height = static_cast<float>(mRenderData.rdXRHeight);
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
 
   VkRect2D scissor{};
   scissor.offset = { 0, 0 };
-  scissor.extent = mRenderData.rdVkbSwapchain.extent;
+  scissor.extent = VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight};
 
   vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
   vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
