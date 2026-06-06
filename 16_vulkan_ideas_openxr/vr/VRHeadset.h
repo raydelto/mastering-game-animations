@@ -11,46 +11,48 @@
 #endif
 
 #define XR_USE_GRAPHICS_API_VULKAN
+// include Vulkan before GLFW
 #include <vulkan/vulkan.h>
 
-#include <VkRenderData.h>
+#include <GLFW/glfw3.h>
 
 // Define any XR_USE_PLATFORM_... / XR_USE_GRAPHICS_API_... before this header file.
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+#include <VkRenderData.h>
+#include <VkRenderer.h>
+#include <ModelInstanceCamCallbacks.h>
+
 class VRHeadset {
   public:
-    bool initXR();
-    bool initXRSecondHalf(VkRenderData &renderData);
+    bool init(GLFWwindow *window, ModelInstanceCamCallbacks callbacks);
 
-    std::pair<unsigned int, unsigned int> getXRResolution();
+    std::shared_ptr<VkRenderer> getVulkanRenderer();
 
-    bool beginXRFrame(VkRenderData &renderData);
-    bool renderXRFrame(VkRenderData &renderData);
-
-    void pollEvents();
     bool isXRApplicationRunning();
     bool isXRSessionRunning();
 
-    void cleanupXR();
-    void cleanupXRSecondHalf(VkRenderData &renderData);
+    void pollEvents();
+    bool draw(float deltaTime);
 
-    bool isVRApplicationRunning() { return mApplicationRunning; }
-    void setVRApplicationRunning(bool state) { mApplicationRunning = state; }
-
-    glm::mat4 createXRProjectionMatrix(float left, float right, float bottom, float top, float nearZ, float farZ);
-
-    std::vector<std::string> getVKDeviceExtensionsForXR();
-    std::vector<std::string> getVKInstanceExtensionsForXR();
+    void cleanup();
 
   private:
+    std::shared_ptr<VkRenderer> mRenderer = nullptr;
+    VkDevice mVulkanDevice = VK_NULL_HANDLE;
+
+    bool renderXRFrame(float deltaTime);
+    bool endXRFrame();
+
+    void createXRCameraMatrices();
+    XRProjectionViewMatrices mProjViewMatrices{};
+
     bool createXRInstance();
     bool createXRDebugMessenger();
-    bool createXRSession(VkRenderData &renderData);
+    bool createXRSession();
     bool createXRReferenceSpace();
-    bool createXRSwapchain(VkRenderData &renderData);
-    bool createXRPipeline(VkRenderData &renderData);
+    bool createXRSwapchain();
 
     bool getInstanceID();
     bool getSystemID();
@@ -64,14 +66,16 @@ class VRHeadset {
     void destroyXRDebugMessenger();
     void destroyXRReferenceSpace();
     void destroyXRSession();
-    void destroyXRSwapchain(VkRenderData &renderData);
-    void destroyXRPipeline(VkRenderData &renderData);
+    void destroyXRSwapchain();
 
     bool mSessionRunning = false;
-    bool mApplicationRunning = false;
+    bool mApplicationRunning = true;
 
     unsigned int mWidth = 1920;
     unsigned int mHeight = 1080;
+
+    float mNearPlane = 0.4f;
+    float mFarPlane = 500.0f;
 
     XrApplicationInfo mXRAppInfo{};
     std::vector<const char *> mActiveAPILayers{};
@@ -86,37 +90,37 @@ class VRHeadset {
     XrInstance mXRInstance = XR_NULL_HANDLE;
     VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> mSwapchainCopyDescriptorSets{};
-    VkPipeline mXRSwapchainCopyPipeline = VK_NULL_HANDLE;
 
     XrFormFactor mFormFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-    XrSystemId mSystemID = {};
+    XrSystemId mSystemID{};
     XrSystemProperties mSystemProperties = { XR_TYPE_SYSTEM_PROPERTIES };
 
     XrSession mSession{};
     XrSessionState mSessionState = XR_SESSION_STATE_UNKNOWN;
 
     XrSpace mLocalSpace = XR_NULL_HANDLE;
+    XrFrameState mFrameState{XR_TYPE_FRAME_STATE};
 
     struct XRSwapchainInfo {
       XrSwapchain swapchain = XR_NULL_HANDLE;
-      VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
       std::vector<XrSwapchainImageVulkanKHR> swapchainImages{};
       std::vector<VkImageView> swapchainImageViews{};
     };
 
-    std::vector<XRSwapchainInfo> mSwapchains{};
-
-    XrFrameState mFrameState{ .type = XR_TYPE_FRAME_STATE };
-    std::vector<XrView> mViews{};
-    uint32_t mViewCount = 0;
-
+    VkFormat mSwapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    XRSwapchainInfo mSwapchain{};
 
     struct XRRenderLayerInfo {
-      XrTime predictedDisplayTime = 0;
       std::vector<XrCompositionLayerBaseHeader *> layers;
       XrCompositionLayerProjection layerProjection = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
       std::vector<XrCompositionLayerProjectionView> layerProjectionViews;
     };
+
+    XRRenderLayerInfo mRenderLayerInfos;
+    uint32_t mColorImageIndex = 0;
+
+    std::vector<XrView> mViews{};
+    uint32_t mViewCount = 0;
 
     bool renderXRLayer(VkRenderData &renderData, XRRenderLayerInfo &renderLayerInfo);
 

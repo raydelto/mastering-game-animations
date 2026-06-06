@@ -30,7 +30,6 @@ struct CameraSettings{
   float csFollowCamHeightOffset = 2.0f;
 
   cameraType csCamType = cameraType::free;
-  cameraProjection csCamProjection = cameraProjection::perspective;
 
   // pointer is required here for undo/redo to work
   std::weak_ptr<AssimpInstance> csInstanceToFollow;

@@ -25,6 +25,7 @@
 #include <DynamicShadowMapPipeline.h>
 #include <LightSpherePipeline.h>
 #include <CopyPipeline.h>
+#include <XRCopyPipeline.h>
 #include <UniformBuffer.h>
 #include <ShaderStorageBuffer.h>
 #include <VertexBuffer.h>
@@ -169,6 +170,7 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   vk10features.wideLines = VK_TRUE;
   vk10features.imageCubeArray = VK_TRUE;
   vk10features.multiViewport = VK_TRUE; // required for GL_ARB_shader_viewport_layer_array
+  vk10features.geometryShader = VK_TRUE; // seem to be required by latest STEAM update
 
   VkPhysicalDeviceVulkan11Features vk11features{};
   vk11features.multiview = VK_TRUE;
@@ -400,7 +402,7 @@ bool VkHelper::createCommandBuffers(VkRenderData& renderData) {
 }
 
 bool VkHelper::createUBOs(VkRenderData& renderData) {
-  if (!UniformBuffer::init(renderData, renderData.rdRenderUploadDataUBO, sizeof(VkRenderUploadData))) {
+  if (!UniformBuffer::init(renderData, renderData.rdRenderUploadDataUBOs, sizeof(VkRenderUploadData))) {
     Logger::log(1, "%s error: could not create matrix uniform buffers\n", __FUNCTION__);
     return false;
   }
@@ -2060,7 +2062,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // non-animated shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2125,7 +2127,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // animated shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2204,7 +2206,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // selection shader, non-animated 
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2252,7 +2254,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // selection shader, animated 
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2314,7 +2316,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // animated plus morph shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2407,7 +2409,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // selection shader, animated plus morph
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2482,7 +2484,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // line-drawing shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2504,7 +2506,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // ground-mesh-drawing shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2526,7 +2528,7 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // skybox shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2627,7 +2629,7 @@ void VkHelper::updateLevelDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // level shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2800,7 +2802,7 @@ void VkHelper::updateSphereComputeDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // sphere-drawing shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -2876,7 +2878,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // composite
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3052,7 +3054,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // SSAO
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3129,7 +3131,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // SSAO blur
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3193,7 +3195,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // sphere-drawing shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3231,7 +3233,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // light sphere drawing shader
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3296,7 +3298,7 @@ void VkHelper::updateImageDescriptorSets(VkRenderData& renderData) {
   for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
     // light sphere drawing shader with shadows
     VkDescriptorBufferInfo matrixInfo{};
-    matrixInfo.buffer = renderData.rdRenderUploadDataUBO.buffer;
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
     matrixInfo.offset = 0;
     matrixInfo.range = VK_WHOLE_SIZE;
 
@@ -3873,6 +3875,27 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
   }
 
   return true;
+}
+
+bool VkHelper::createXRPipeline(VkRenderData& renderData, VkFormat format) {
+  std::vector<VkFormat> xrSwapchainCopyAttachmentFormats {
+    format
+  };
+
+  std::string vertexShaderFile = "shader/xr_swapchain_copy.vert.spv";
+  std::string fragmentShaderFile = "shader/xr_swapchain_copy.frag.spv";
+  if (!XRCopyPipeline::init(renderData, xrSwapchainCopyAttachmentFormats, renderData.rdSwapchainCopyPipelineLayout,
+      renderData.rdXRSwapchainCopyPipeline,
+      vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init XR Swapchain Copy shader pipeline\n", __FUNCTION__);
+    return false;
+  }
+
+  return true;
+}
+
+void VkHelper::destroyXRPipeline(VkRenderData& renderData) {
+  XRCopyPipeline::cleanup(renderData, renderData.rdXRSwapchainCopyPipeline);
 }
 
 bool VkHelper::createSyncObjects(VkRenderData& renderData) {
@@ -5028,7 +5051,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   PipelineLayout::cleanup(renderData, renderData.rdLightSphereShadowPipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdSwapchainCopyPipelineLayout);
 
-  UniformBuffer::cleanup(renderData, renderData.rdRenderUploadDataUBO);
+  UniformBuffer::cleanup(renderData, renderData.rdRenderUploadDataUBOs);
   UniformBuffer::cleanup(renderData, renderData.rdSSAOKernelSamplesUBO);
 
   VertexBuffer::cleanup(renderData, renderData.rdLineVertexBuffers);

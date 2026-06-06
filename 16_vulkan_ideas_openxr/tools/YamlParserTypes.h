@@ -413,14 +413,8 @@ namespace YAML {
       node["position"] = rhs.csWorldPosition;
       node["view-azimuth"] = rhs.csViewAzimuth;
       node["view-elevation"] = rhs.csViewElevation;
-      if (rhs.csCamProjection == cameraProjection::perspective) {
-        node["field-of-view"] = rhs.csFieldOfView;
-      }
-      if (rhs.csCamProjection == cameraProjection::orthogonal) {
-        node["ortho-scale"] = rhs.csOrthoScale;
-      }
+      node["field-of-view"] = rhs.csFieldOfView;
       node["camera-type"] = static_cast<int>(rhs.csCamType);
-      node["camera-projection"] = static_cast<int>(rhs.csCamProjection);
       if (rhs.csCamType == cameraType::firstPerson) {
         node["1st-person-view-lock"] = rhs.csFirstPersonLockView;
         node["1st-person-bone-to-follow"] = rhs.csFirstPersonBoneToFollow;
@@ -480,14 +474,6 @@ namespace YAML {
         rhs.csCamType = defaultSettings.csCamType;
       }
 
-      if (rhs.csCamType == cameraType::free || rhs.csCamType == cameraType::stationary || rhs.csCamType == cameraType::stationaryFollowing) {
-        try {
-          rhs.csCamProjection = static_cast<cameraProjection>(node["camera-projection"].as<int>());
-        } catch (...) {
-          Logger::log(1, "%s warning: could not parse projection mode of camera '%s', init with a default value\n", __FUNCTION__, rhs.csCamName.c_str());
-          rhs.csCamProjection = defaultSettings.csCamProjection;
-        }
-      }
       if (rhs.csCamType == cameraType::firstPerson) {
         if (node["1st-person-view-lock"]) {
           try {

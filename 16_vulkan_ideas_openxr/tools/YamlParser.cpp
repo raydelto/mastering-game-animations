@@ -128,15 +128,6 @@ YAML::Emitter& operator<<(YAML::Emitter& out, const CameraSettings& settings) {
   out << YAML::Key << "camera-type";
   out << YAML::Value << static_cast<int>(settings.csCamType);
   out << YAML::Key << "camera-projection";
-  out << YAML::Value << static_cast<int>(settings.csCamProjection);
-  if (settings.csCamProjection == cameraProjection::perspective) {
-    out << YAML::Key << "field-of-view";
-    out << YAML::Value << settings.csFieldOfView;
-  }
-  if (settings.csCamProjection == cameraProjection::orthogonal) {
-    out << YAML::Key << "ortho-scale";
-    out << YAML::Value << settings.csOrthoScale;
-  }
   if (settings.csCamType == cameraType::firstPerson) {
     out << YAML::Key << "1st-person-view-lock";
     out << YAML::Value << settings.csFirstPersonLockView;
@@ -1625,8 +1616,6 @@ bool YamlParser::createConfigFile(VkRenderData renderData, ModelInstanceCamData 
   mYamlEmit << YAML::Value << renderData.rdNearPlane;
   mYamlEmit << YAML::Key << "far-clip-plane";
   mYamlEmit << YAML::Value << renderData.rdFarPlane;
-  mYamlEmit << YAML::Key << "orth-nearfar-clip-plane";
-  mYamlEmit << YAML::Value << renderData.rdOrthoNearFar;
   mYamlEmit << YAML::Key << "selected-model";
   mYamlEmit << YAML::Value << modInstCamData.micSelectedModel;
   mYamlEmit << YAML::Key << "selected-instance";

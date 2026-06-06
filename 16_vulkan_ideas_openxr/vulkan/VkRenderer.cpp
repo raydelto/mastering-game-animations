@@ -2,6 +2,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include <ctime>
 #include <cstdlib>
@@ -41,17 +42,23 @@
 
 #include <Logger.h>
 
-VkRenderer::VkRenderer(GLFWwindow *window) {
+bool VkRenderer::init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR) {
   mRenderData.rdWindow = window;
+
+  int width = 1024;
+  int height = 768;
+  glfwGetWindowSize(window, &width, &height);
+  mRenderData.rdWidth = width;
+  mRenderData.rdHalfWidth = width / 2;
+  mRenderData.rdHeight = height;
+  mRenderData.rdWindowWidth = width;
+  mRenderData.rdWindowHeight = height;
 
   if (const char* envVar = std::getenv("XDG_SESSION_TYPE")) {
     if (std::string(envVar) == "wayland") {
       mRenderData.rdWaylandFound = true;
     }
   }
-}
-
-bool VkRenderer::init(unsigned int width, unsigned int height) {
   unsigned int seed = mRandomDevice();
   mRandomEngine = std::default_random_engine(seed);
 
@@ -60,44 +67,24 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   mRenderData.rdAppModeMap[appMode::view] = "View";
 
   // save orig window title, add current mode
-  mOrigWindowTitle = mModelInstCamData.micGetWindowTitleFunction();
+  mOrigWindowTitle = mModelInstCamCallbacks.micGetWindowTitleFunction();
   setModeInWindowTitle();
-
-  // save orig window title, add current mode
-  mRenderData.rdWidth = width;
-  mRenderData.rdHalfWidth = width / 2;
-  mRenderData.rdHeight = height;
-  mRenderData.rdWindowWidth = width;
-  mRenderData.rdWindowHeight = height;
 
   // image formata needs to be set before Vulkan init
   mRenderData.rdDepthBufferData.format = VK_FORMAT_D16_UNORM;
   mRenderData.rdSSAONoiseBufferData.format = VK_FORMAT_R32G32B32A32_SFLOAT;
   mRenderData.rdShadowMapCombinedDepthBufferData.format = VK_FORMAT_D16_UNORM;
 
-  if (!mRenderData.rdWindow) {
-    Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
-    return false;
-  }
-
-  if (!mVRHeadSet.initXR()) {
-    Logger::log(1, "%s error: Could not init VR Headset\n", __FUNCTION__);
-    return false;
-  }
-
-  std::vector<std::string> deviceExtensions = mVRHeadSet.getVKDeviceExtensionsForXR();
-  std::vector<std::string> instanceExtensions = mVRHeadSet.getVKInstanceExtensionsForXR();
-  std::tie(mRenderData.rdXRWidth, mRenderData.rdXRHeight) = mVRHeadSet.getXRResolution();
-
+  // XR extensions
   std::vector<const char*> devExts;
-  for (const auto& val : deviceExtensions) {
+  for (const auto& val : deviceExtForXR) {
     devExts.push_back(val.c_str());
     Logger::log(1, "%s : Activate device extension %s\n", __FUNCTION__, val.c_str());
   }
   mRenderData.rdXRDeviceExtensions = devExts;
 
   std::vector<const char*> instExts;
-  for (const auto& val : instanceExtensions) {
+  for (const auto& val : instExtsForXR) {
     instExts.push_back(val.c_str());
     Logger::log(1, "%s : Activate instance extension %s\n", __FUNCTION__, val.c_str());
   }
@@ -106,13 +93,6 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   if (!VkHelper::initVulkan(mRenderData)) {
     return false;
   }
-
-  if (!mVRHeadSet.initXRSecondHalf(mRenderData)) {
-    Logger::log(1, "%s error: Could not init VR Headset session\n", __FUNCTION__);
-    return false;
-  }
-
-  mVRHeadSet.setVRApplicationRunning(true);
 
   if (!initUserInterface()) {
     return false;
@@ -127,77 +107,74 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
   initTriangleOctree(mRenderData.rdLevelOctreeThreshold, mRenderData.rdLevelOctreeMaxDepth);
   Logger::log(1, "%s: triangle octree initialized\n", __FUNCTION__);
 
-  mModelInstCamData.micOctreeFindAllIntersectionsCallbackFunction = [this]() { return mOctree->findAllIntersections(); };
-  mModelInstCamData.micOctreeGetBoxesCallbackFunction = [this]() { return mOctree->getTreeBoxes(); };
-  mModelInstCamData.micWorldGetBoundariesCallbackFunction = [this]() { return getWorldBoundaries(); };
+  mModelInstCamCallbacks.micOctreeFindAllIntersectionsCallbackFunction = [this]() { return mOctree->findAllIntersections(); };
+  mModelInstCamCallbacks.micOctreeGetBoxesCallbackFunction = [this]() { return mOctree->getTreeBoxes(); };
+  mModelInstCamCallbacks.micWorldGetBoundariesCallbackFunction = [this]() { return getWorldBoundaries(); };
 
   // register instance/model callbacks
-  mModelInstCamData.micModelCheckCallbackFunction = [this](std::string fileName) { return hasModel(fileName); };
-  mModelInstCamData.micModelAddCallbackFunction = [this](std::string fileName, bool initialInstance, bool withUndo) { return addModel(fileName, initialInstance, withUndo); };
-  mModelInstCamData.micModelDeleteCallbackFunction = [this](std::string modelName, bool withUndo) { deleteModel(modelName, withUndo); };
+  mModelInstCamCallbacks.micModelCheckCallbackFunction = [this](std::string fileName) { return hasModel(fileName); };
+  mModelInstCamCallbacks.micModelAddCallbackFunction = [this](std::string fileName, bool initialInstance, bool withUndo) { return addModel(fileName, initialInstance, withUndo); };
+  mModelInstCamCallbacks.micModelDeleteCallbackFunction = [this](std::string modelName, bool withUndo) { deleteModel(modelName, withUndo); };
 
-  mModelInstCamData.micInstanceAddCallbackFunction = [this](std::shared_ptr<AssimpModel> model) { return addInstance(model); };
-  mModelInstCamData.micInstanceAddManyCallbackFunction = [this](std::shared_ptr<AssimpModel> model, int numInstances) { addInstances(model, numInstances); };
-  mModelInstCamData.micInstanceDeleteCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, bool withUndo) { deleteInstance(instance, withUndo) ;};
-  mModelInstCamData.micInstanceCloneCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { cloneInstance(instance); };
-  mModelInstCamData.micInstanceCloneManyCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, int numClones) { cloneInstances(instance, numClones); };
+  mModelInstCamCallbacks.micInstanceAddCallbackFunction = [this](std::shared_ptr<AssimpModel> model) { return addInstance(model); };
+  mModelInstCamCallbacks.micInstanceAddManyCallbackFunction = [this](std::shared_ptr<AssimpModel> model, int numInstances) { addInstances(model, numInstances); };
+  mModelInstCamCallbacks.micInstanceDeleteCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, bool withUndo) { deleteInstance(instance, withUndo) ;};
+  mModelInstCamCallbacks.micInstanceCloneCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { cloneInstance(instance); };
+  mModelInstCamCallbacks.micInstanceCloneManyCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, int numClones) { cloneInstances(instance, numClones); };
 
-  mModelInstCamData.micInstanceCenterCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { centerInstance(instance); };
+  mModelInstCamCallbacks.micInstanceCenterCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { centerInstance(instance); };
 
-  mModelInstCamData.micDynLightAddCallbackFunction = [this]() { return addDynLight(); };
-  mModelInstCamData.micDynLightDeleteCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { deleteDynLight(light); };
-  mModelInstCamData.micDynLightCloneCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { cloneDynLight(light); };
-  mModelInstCamData.micDynLightCenterCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { centerDynLight(light); };
-  mModelInstCamData.dynLightSphereShadowChangedCallbackFunction = [this]() { generateShaderLightData(); };
+  mModelInstCamCallbacks.micDynLightAddCallbackFunction = [this]() { return addDynLight(); };
+  mModelInstCamCallbacks.micDynLightDeleteCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { deleteDynLight(light); };
+  mModelInstCamCallbacks.micDynLightCloneCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { cloneDynLight(light); };
+  mModelInstCamCallbacks.micDynLightCenterCallbackFunction = [this](std::shared_ptr<AssimpDynLight> light) { centerDynLight(light); };
+  mModelInstCamCallbacks.dynLightSphereShadowChangedCallbackFunction = [this]() { generateShaderLightData(); };
 
-  mModelInstCamData.micUndoCallbackFunction = [this]() { undoLastOperation(); };
-  mModelInstCamData.micRedoCallbackFunction = [this]() { redoLastOperation(); };
+  mModelInstCamCallbacks.micUndoCallbackFunction = [this]() { undoLastOperation(); };
+  mModelInstCamCallbacks.micRedoCallbackFunction = [this]() { redoLastOperation(); };
 
-  mModelInstCamData.micLoadConfigCallbackFunction = [this](std::string configFileName) { return loadConfigFile(configFileName); };
-  mModelInstCamData.micSaveConfigCallbackFunction = [this](std::string configFileName) { return saveConfigFile(configFileName); };
-  mModelInstCamData.micNewConfigCallbackFunction = [this]() { createEmptyConfig(); };
+  mModelInstCamCallbacks.micLoadConfigCallbackFunction = [this](std::string configFileName) { return loadConfigFile(configFileName); };
+  mModelInstCamCallbacks.micSaveConfigCallbackFunction = [this](std::string configFileName) { return saveConfigFile(configFileName); };
+  mModelInstCamCallbacks.micNewConfigCallbackFunction = [this]() { createEmptyConfig(); };
 
-  mModelInstCamData.micSetConfigDirtyCallbackFunction = [this](bool flag) { setConfigDirtyFlag(flag); };
-  mModelInstCamData.micGetConfigDirtyCallbackFunction = [this]() { return getConfigDirtyFlag(); };
+  mModelInstCamCallbacks.micSetConfigDirtyCallbackFunction = [this](bool flag) { setConfigDirtyFlag(flag); };
+  mModelInstCamCallbacks.micGetConfigDirtyCallbackFunction = [this]() { return getConfigDirtyFlag(); };
 
-  mModelInstCamData.micCameraCloneCallbackFunction = [this]() { cloneCamera(); };
-  mModelInstCamData.micCameraDeleteCallbackFunction = [this]() { deleteCamera(); };
-  mModelInstCamData.micCameraNameCheckCallbackFunction = [this](std::string cameraName) { return checkCameraNameUsed(cameraName); };
+  mModelInstCamCallbacks.micCameraCloneCallbackFunction = [this]() { cloneCamera(); };
+  mModelInstCamCallbacks.micCameraDeleteCallbackFunction = [this]() { deleteCamera(); };
+  mModelInstCamCallbacks.micCameraNameCheckCallbackFunction = [this](std::string cameraName) { return checkCameraNameUsed(cameraName); };
 
-  mModelInstCamData.micInstanceGetPositionsCallbackFunction = [this]() { return getPositionOfAllInstances(); };
-  mModelInstCamData.micOctreeQueryBBoxCallbackFunction = [this](BoundingBox3D box) { return mOctree->query(box); };
+  mModelInstCamCallbacks.micInstanceGetPositionsCallbackFunction = [this]() { return getPositionOfAllInstances(); };
+  mModelInstCamCallbacks.micOctreeQueryBBoxCallbackFunction = [this](BoundingBox3D box) { return mOctree->query(box); };
 
-  mModelInstCamData.micEditNodeGraphCallbackFunction = [this](std::string graphName) { editGraph(graphName); };
-  mModelInstCamData.micCreateEmptyNodeGraphCallbackFunction= [this]() { return createEmptyGraph(); };
+  mModelInstCamCallbacks.micEditNodeGraphCallbackFunction = [this](std::string graphName) { editGraph(graphName); };
+  mModelInstCamCallbacks.micCreateEmptyNodeGraphCallbackFunction= [this]() { return createEmptyGraph(); };
 
-  mModelInstCamData.micInstanceAddBehaviorCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, std::shared_ptr<SingleInstanceBehavior> behavior) {
+  mModelInstCamCallbacks.micInstanceAddBehaviorCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, std::shared_ptr<SingleInstanceBehavior> behavior) {
     addBehavior(instance, behavior);
   };
-  mModelInstCamData.micInstanceDelBehaviorCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { delBehavior(instance); };
-  mModelInstCamData.micModelAddBehaviorCallbackFunction = [this](std::string modelName, std::shared_ptr<SingleInstanceBehavior> behavior) {
+  mModelInstCamCallbacks.micInstanceDelBehaviorCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance) { delBehavior(instance); };
+  mModelInstCamCallbacks.micModelAddBehaviorCallbackFunction = [this](std::string modelName, std::shared_ptr<SingleInstanceBehavior> behavior) {
     addModelBehavior(modelName, behavior);
   };
-  mModelInstCamData.micModelDelBehaviorCallbackFunction = [this](std::string modelName) { delModelBehavior(modelName); };
-  mModelInstCamData.micNodeEventCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, nodeEvent event) { addBehaviorEvent(instance, event); };
-  mModelInstCamData.micPostNodeTreeDelBehaviorCallbackFunction = [this](std::string nodeTreeName) { postDelNodeTree(nodeTreeName); };
+  mModelInstCamCallbacks.micModelDelBehaviorCallbackFunction = [this](std::string modelName) { delModelBehavior(modelName); };
+  mModelInstCamCallbacks.micNodeEventCallbackFunction = [this](std::shared_ptr<AssimpInstance> instance, nodeEvent event) { addBehaviorEvent(instance, event); };
+  mModelInstCamCallbacks.micPostNodeTreeDelBehaviorCallbackFunction = [this](std::string nodeTreeName) { postDelNodeTree(nodeTreeName); };
 
-  mModelInstCamData.micLevelCheckCallbackFunction = [this](std::string levelFileName) { return hasLevel(levelFileName); };
-  mModelInstCamData.micLevelAddCallbackFunction = [this](std::string levelFileName) { return addLevel(levelFileName); };
-  mModelInstCamData.micLevelDeleteCallbackFunction = [this](std::string levelName) { deleteLevel(levelName); };
-  mModelInstCamData.micLevelGenerateLevelDataCallbackFunction = [this]() { generateLevelVertexData(); };
+  mModelInstCamCallbacks.micLevelCheckCallbackFunction = [this](std::string levelFileName) { return hasLevel(levelFileName); };
+  mModelInstCamCallbacks.micLevelAddCallbackFunction = [this](std::string levelFileName) { return addLevel(levelFileName); };
+  mModelInstCamCallbacks.micLevelDeleteCallbackFunction = [this](std::string levelName) { deleteLevel(levelName); };
+  mModelInstCamCallbacks.micLevelGenerateLevelDataCallbackFunction = [this]() { generateLevelVertexData(); };
 
-  mModelInstCamData.micIkIterationsCallbackFunction = [this](int iterations) { mIKSolver.setNumIterations(iterations); };
+  mModelInstCamCallbacks.micIkIterationsCallbackFunction = [this](int iterations) { mIKSolver.setNumIterations(iterations); };
 
-  mModelInstCamData.micGetNavTargetsCallbackFunction = [this]() { return getNavTargets(); };
+  mModelInstCamCallbacks.micGetNavTargetsCallbackFunction = [this]() { return getNavTargets(); };
 
   mRenderData.rdAppExitCallbackFunction = [this]() { doExitApplication(); };
-  mModelInstCamData.micSsetAppModeCallbackFunction = [this](appMode newMode) { setAppMode(newMode); };
+  mModelInstCamCallbacks.micSsetAppModeCallbackFunction = [this](appMode newMode) { setAppMode(newMode); };
   Logger::log(1, "%s: callbacks initialized\n", __FUNCTION__);
 
   // init camera strings
-  mModelInstCamData.micCameraProjectionMap[cameraProjection::perspective] = "Perspective";
-  mModelInstCamData.micCameraProjectionMap[cameraProjection::orthogonal] = "Orthogonal";
-
   mModelInstCamData.micCameraTypeMap[cameraType::free] = "Free";
   mModelInstCamData.micCameraTypeMap[cameraType::firstPerson] = "First Person";
   mModelInstCamData.micCameraTypeMap[cameraType::thirdPerson] = "Third Person";
@@ -366,6 +343,64 @@ bool VkRenderer::init(unsigned int width, unsigned int height) {
 
   mApplicationRunning = true;
   return true;
+}
+
+VkDevice VkRenderer::getDevice() {
+  return mRenderData.rdVkbDevice.device;
+}
+
+VkPhysicalDevice VkRenderer::getPhysicalDevice() {
+  return mRenderData.rdVkbPhysicalDevice.physical_device;
+}
+
+void VkRenderer::setPhysicalDevice(VkPhysicalDevice physDevice) {
+  mRenderData.rdVkbPhysicalDevice.physical_device = physDevice;
+}
+
+void VkRenderer::setRendererMICCallbacks(ModelInstanceCamCallbacks callbacks) {
+  mModelInstCamCallbacks = callbacks;
+}
+
+VkInstance VkRenderer::getInstance() {
+  return mRenderData.rdVkbInstance.instance;
+}
+
+std::pair<uint32_t, uint32_t> VkRenderer::getQueueFamilyAndIndex() {
+  uint32_t queueFamilyIndex = 0;
+  uint32_t queueIndex = 0;
+
+  std::vector<VkQueueFamilyProperties> queueFamilies = mRenderData.rdVkbPhysicalDevice.get_queue_families();
+
+  int i = 0;
+  for (const auto& queueFamily : queueFamilies) {
+    if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+      queueFamilyIndex = i;
+      break;
+    }
+
+    ++i;
+  }
+
+  auto queueIndexRet = mRenderData.rdVkbDevice.get_queue_index(vkb::QueueType::graphics);
+  if (queueIndexRet.has_value()) {
+    queueIndex = queueIndexRet.value();
+  }
+
+  Logger::log(1, "%s: Found graphics queue familiy at index %i, graphics queue at index %i\n", __FUNCTION__, queueFamilyIndex, queueIndex);
+
+  return std::make_pair(queueFamilyIndex, queueIndex);
+}
+
+bool VkRenderer::createXRPipeline(VkFormat format) {
+  return VkHelper::createXRPipeline(mRenderData, format);
+}
+
+void VkRenderer::destroyXRPipeline() {
+  return VkHelper::destroyXRPipeline(mRenderData);
+}
+
+std::pair<float, float> VkRenderer::getNearAndFarPlane() {
+  return std::make_pair(mRenderData.rdNearPlane, mRenderData.rdFarPlane);
 }
 
 ModelInstanceCamData& VkRenderer::getModInstCamData() {
@@ -656,7 +691,6 @@ bool VkRenderer::loadConfigFile(std::string configFileName) {
   mRenderData.rdDynLightShadowMapSlopeDepthBias = parser.getDynLightShadowMapSlopeDepthBias();
   mRenderData.rdNearPlane = parser.getNearPlane();
   mRenderData.rdFarPlane = parser.getFarPlane();
-  mRenderData.rdOrthoNearFar = parser.getOrthoNearFarPlane();
 
   return true;
 }
@@ -691,12 +725,6 @@ void VkRenderer::requestExitApplication() {
 
 void VkRenderer::doExitApplication() {
   mApplicationRunning = false;
-}
-
-void VkRenderer::pollXREvents() {
-  if (mVRHeadSet.isVRApplicationRunning()) {
-    mVRHeadSet.pollEvents();
-  }
 }
 
 void VkRenderer::undoLastOperation() {
@@ -2050,6 +2078,11 @@ void VkRenderer::setSize(unsigned int width, unsigned int height) {
   Logger::log(1, "%s: window scale is %.2f (x) / %.2f (y) \n", __FUNCTION__, xScale, yScale);
 }
 
+void VkRenderer::setXRSize(unsigned int width, unsigned int height) {
+  mRenderData.rdXRWidth = width;
+  mRenderData.rdXRHeight = height;
+}
+
 void VkRenderer::setConfigDirtyFlag(bool flag) {
   mConfigIsDirty = flag;
   if (mConfigIsDirty) {
@@ -2065,7 +2098,7 @@ bool VkRenderer::getConfigDirtyFlag() {
 }
 
 void VkRenderer::setModeInWindowTitle() {
-  mModelInstCamData.micSetWindowTitleFunction(mOrigWindowTitle + " (" +
+  mModelInstCamCallbacks.micSetWindowTitleFunction(mOrigWindowTitle + " (" +
   mRenderData.rdAppModeMap.at(mRenderData.rdApplicationMode) + " Mode)" +
   mWindowTitleDirtySign);
 }
@@ -2486,15 +2519,10 @@ void VkRenderer::handleMouseWheelEvents(double xOffset, double yOffset) {
     CameraSettings camSettings = cam->getCameraSettings();
     mSavedCameraWheelSettings = camSettings;
 
-    if (camSettings.csCamProjection == cameraProjection::perspective) {
-      int fieldOfView = camSettings.csFieldOfView - yOffset * mMouseWheelScale;
-      fieldOfView = std::clamp(fieldOfView, 40, 100);
-      camSettings.csFieldOfView = fieldOfView;
-    } else {
-      float orthoScale = camSettings.csOrthoScale - yOffset * mMouseWheelScale;
-      orthoScale = std::clamp(orthoScale, 1.0f, 100.0f);
-      camSettings.csOrthoScale = orthoScale;
-    }
+    int fieldOfView = camSettings.csFieldOfView - yOffset * mMouseWheelScale;
+    fieldOfView = std::clamp(fieldOfView, 40, 100);
+    camSettings.csFieldOfView = fieldOfView;
+
     cam->setCameraSettings(camSettings);
   }
 }
@@ -2629,17 +2657,17 @@ void VkRenderer::handleMovementKeys() {
         cam->getInstanceToFollow() && currentInstance == cam->getInstanceToFollow()) {
         switch (state) {
           case moveState::run:
-            mModelInstCamData.micPlayRunFootstepCallbackFunction();
+            mModelInstCamCallbacks.micPlayRunFootstepCallbackFunction();
             break;
           case moveState::walk:
-            mModelInstCamData.micPlayWalkFootstepCallbackFunction();
+            mModelInstCamCallbacks.micPlayWalkFootstepCallbackFunction();
             break;
           default:
-            mModelInstCamData.micStopFootstepCallbackFunction();
+            mModelInstCamCallbacks.micStopFootstepCallbackFunction();
             break;
         }
       } else {
-        mModelInstCamData.micStopFootstepCallbackFunction();
+        mModelInstCamCallbacks.micStopFootstepCallbackFunction();
       }
     }
   }
@@ -3046,7 +3074,7 @@ void VkRenderer::checkForLevelCollisions() {
         vertexColor = glm::vec3(1.0f, 0.0f, 0.0f);
         // fire wall collision event only when instance is on ground
         if (instSettings.isInstanceOnGround) {
-          mModelInstCamData.micNodeEventCallbackFunction(instance, nodeEvent::instanceToLevelCollision);
+          mModelInstCamCallbacks.micNodeEventCallbackFunction(instance, nodeEvent::instanceToLevelCollision);
         }
       }
 
@@ -3097,7 +3125,7 @@ void VkRenderer::checkForBorderCollisions() {
       if (minPos.x < mWorldBoundaries->getFrontTopLeft().x || maxPos.x > mWorldBoundaries->getRight() ||
           minPos.y < mWorldBoundaries->getFrontTopLeft().y || maxPos.y > mWorldBoundaries->getBottom() ||
           minPos.z < mWorldBoundaries->getFrontTopLeft().z || maxPos.z > mWorldBoundaries->getBack()) {
-        mModelInstCamData.micNodeEventCallbackFunction(instances.at(i), nodeEvent::instanceToEdgeCollision);
+        mModelInstCamCallbacks.micNodeEventCallbackFunction(instances.at(i), nodeEvent::instanceToEdgeCollision);
       }
     }
   }
@@ -3175,19 +3203,19 @@ void VkRenderer::reactToInstanceCollisions() {
     std::shared_ptr<AssimpInstance> secondInstance = instances.at(instancePairs.second);
     InstanceSettings secondInstSettings = secondInstance->getInstanceSettings();
 
-    mModelInstCamData.micNodeEventCallbackFunction(firstInstance, nodeEvent::instanceToInstanceCollision);
-    mModelInstCamData.micNodeEventCallbackFunction(secondInstance, nodeEvent::instanceToInstanceCollision);
+    mModelInstCamCallbacks.micNodeEventCallbackFunction(firstInstance, nodeEvent::instanceToInstanceCollision);
+    mModelInstCamCallbacks.micNodeEventCallbackFunction(secondInstance, nodeEvent::instanceToInstanceCollision);
 
     // disable navigation if we collide with target
     if (firstInstSettings.isNavigationEnabled && firstInstSettings.isPathTargetInstance == secondInstSettings.isInstanceIndexPosition) {
       firstInstance->setNavigationEnabled(false);
       firstInstance->setPathTargetInstanceId(-1);
-      mModelInstCamData.micNodeEventCallbackFunction(firstInstance, nodeEvent::navTargetReached);
+      mModelInstCamCallbacks.micNodeEventCallbackFunction(firstInstance, nodeEvent::navTargetReached);
     }
     if (secondInstSettings.isNavigationEnabled && secondInstSettings.isPathTargetInstance == firstInstSettings.isInstanceIndexPosition) {
       secondInstance->setNavigationEnabled(false);
       secondInstance->setPathTargetInstanceId(-1);
-      mModelInstCamData.micNodeEventCallbackFunction(secondInstance, nodeEvent::navTargetReached);
+      mModelInstCamCallbacks.micNodeEventCallbackFunction(secondInstance, nodeEvent::navTargetReached);
     }
   }
 }
@@ -3439,7 +3467,6 @@ void VkRenderer::resetLevelData() {
 
   mRenderData.rdNearPlane = 0.1f;
   mRenderData.rdFarPlane = 500.0f;
-  mRenderData.rdOrthoNearFar = 40.0f;
 
   mWorldBoundaries = std::make_shared<BoundingBox3D>(mRenderData.rdDefaultWorldStartPos, mRenderData.rdDefaultWorldSize);
   mRenderData.rdWorldStartPos = mWorldBoundaries->getFrontTopLeft();
@@ -3518,8 +3545,8 @@ void VkRenderer::resetLevelData() {
   mModelInstCamData.micSelectedLevel = 0;
 
   // stop music too
-  if (mModelInstCamData.micStopMusicCallbackFunction) {
-    mModelInstCamData.micStopMusicCallbackFunction();
+  if (mModelInstCamCallbacks.micStopMusicCallbackFunction) {
+    mModelInstCamCallbacks.micStopMusicCallbackFunction();
   }
 
   mUserInterface.resetPositionWindowOctreeView();
@@ -3957,96 +3984,79 @@ void VkRenderer::updateShadowMapCascades() {
   splits.resize(mRenderData.SHADOW_MAP_LAYERS);
 
   std::shared_ptr<Camera> cam = mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera);
-  CameraSettings camSettings = cam->getCameraSettings();
-  if (camSettings.csCamProjection == cameraProjection::orthogonal) {
-    glm::vec3 cameraPos = cam->getWorldPosition();
-    glm::vec3 frustumCenter = cameraPos;
 
-    for (int i = 0; i < mRenderData.SHADOW_MAP_LAYERS; ++i) {
-      glm::vec3 maxExtents = glm::vec3((i + 1) * mRenderData.rdOrthoNearFar * mRenderData.rdShadowMapSplitLambda * 10.0f);
-      glm::vec3 minExtents = -maxExtents;
+  float minZ = mRenderData.rdNearPlane;
+  float maxZ = mRenderData.rdFarPlane;
+  float clipRange = mRenderData.rdFarPlane - mRenderData.rdNearPlane;
 
-      glm::vec3 lightDir = glm::normalize(-mRenderUploadData.lightPos);
-      glm::mat4 lightViewMat = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-      glm::mat4 lightOrthoMat = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 5.0f * minExtents.z, 5.0f * maxExtents.z);
+  float ratio = maxZ / minZ;
 
-      mRenderData.rdShadowMapCascadeData.cascades.at(i).splitDepth.x = minExtents.z / 5.0f * mRenderData.rdShadowMapSplitLambda;
-      mRenderData.rdShadowMapCascadeData.cascades.at(i).lightViewProjectionMat = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
+  // split points
+  for (int i = 0; i < mRenderData.SHADOW_MAP_LAYERS; ++i) {
+    float splitRangeEnd = (i + 1) / static_cast<float>(mRenderData.SHADOW_MAP_LAYERS);
+    float log = minZ * std::pow(ratio, splitRangeEnd);
+    float uniform = minZ + clipRange * splitRangeEnd;
+    float dist = mRenderData.rdShadowMapSplitLambda * (log - uniform) + uniform;
+    splits[i] = (dist - minZ) / clipRange;
+  }
+
+  // ortho projection matrix for each split
+  float lastSplitDist = 0.0f;
+  for (int i = 0; i < mRenderData.SHADOW_MAP_LAYERS; ++i) {
+    float splitDist = splits[i];
+
+    std::array<glm::vec3, 8> frustumCornerPoints = {
+      glm::vec3(-1.0f,  1.0f, 0.0f),
+      glm::vec3( 1.0f,  1.0f, 0.0f),
+      glm::vec3( 1.0f, -1.0f, 0.0f),
+      glm::vec3(-1.0f, -1.0f, 0.0f),
+      glm::vec3(-1.0f,  1.0f, 1.0f),
+      glm::vec3( 1.0f,  1.0f, 1.0f),
+      glm::vec3( 1.0f, -1.0f, 1.0f),
+      glm::vec3(-1.0f, -1.0f, 1.0f),
+    };
+
+    // project frustum corners into world space
+    glm::mat4 invViewProj = mRenderUploadData.inverseViewMatrix.at(0) * mRenderUploadData.inverseProjectionMatrix.at(0);
+    for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
+      glm::vec4 point = invViewProj * glm::vec4(frustumCornerPoints.at(j), 1.0f);
+      frustumCornerPoints.at(j) = point / point.w;
     }
-  } else {
-    float minZ = mRenderData.rdNearPlane;
-    float maxZ = mRenderData.rdFarPlane;
-    float clipRange = mRenderData.rdFarPlane - mRenderData.rdNearPlane;
 
-    float ratio = maxZ / minZ;
-
-    // split points
-    for (int i = 0; i < mRenderData.SHADOW_MAP_LAYERS; ++i) {
-      float splitRangeEnd = (i + 1) / static_cast<float>(mRenderData.SHADOW_MAP_LAYERS);
-      float log = minZ * std::pow(ratio, splitRangeEnd);
-      float uniform = minZ + clipRange * splitRangeEnd;
-      float dist = mRenderData.rdShadowMapSplitLambda * (log - uniform) + uniform;
-      splits[i] = (dist - minZ) / clipRange;
+    // adjust world points to calculated split size
+    for (size_t j = 0; j < frustumCornerPoints.size() / 2; ++j) {
+      glm::vec3 dist = frustumCornerPoints[j + 4] - frustumCornerPoints[j];
+      frustumCornerPoints[j + 4] = frustumCornerPoints[j] + (dist * splitDist);
+      frustumCornerPoints[j] = frustumCornerPoints[j] + (dist * lastSplitDist);
     }
 
-    // ortho projection matrix for each split
-    float lastSplitDist = 0.0f;
-    for (int i = 0; i < mRenderData.SHADOW_MAP_LAYERS; ++i) {
-      float splitDist = splits[i];
-
-      std::array<glm::vec3, 8> frustumCornerPoints = {
-        glm::vec3(-1.0f,  1.0f, 0.0f),
-        glm::vec3( 1.0f,  1.0f, 0.0f),
-        glm::vec3( 1.0f, -1.0f, 0.0f),
-        glm::vec3(-1.0f, -1.0f, 0.0f),
-        glm::vec3(-1.0f,  1.0f, 1.0f),
-        glm::vec3( 1.0f,  1.0f, 1.0f),
-        glm::vec3( 1.0f, -1.0f, 1.0f),
-        glm::vec3(-1.0f, -1.0f, 1.0f),
-      };
-
-      // project frustum corners into world space
-      glm::mat4 invViewProj = mRenderUploadData.inverseViewMatrix.at(0) * mRenderUploadData.inverseProjectionMatrix.at(0);
-      for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
-        glm::vec4 point = invViewProj * glm::vec4(frustumCornerPoints.at(j), 1.0f);
-        frustumCornerPoints.at(j) = point / point.w;
-      }
-
-      // adjust world points to calculated split size
-      for (size_t j = 0; j < frustumCornerPoints.size() / 2; ++j) {
-        glm::vec3 dist = frustumCornerPoints[j + 4] - frustumCornerPoints[j];
-        frustumCornerPoints[j + 4] = frustumCornerPoints[j] + (dist * splitDist);
-        frustumCornerPoints[j] = frustumCornerPoints[j] + (dist * lastSplitDist);
-      }
-
-      // get frustum center
-      glm::vec3 frustumCenter = glm::vec3(0.0f);
-      for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
-        frustumCenter += frustumCornerPoints[j];
-      }
-      frustumCenter /= static_cast<float>(frustumCornerPoints.size());
-
-      // calculate bounding sphere radius for every frustum split
-      float radius = 0.0f;
-      for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
-        float dist = glm::length(frustumCornerPoints[j] - frustumCenter);
-        radius = glm::max(radius, dist);
-      }
-
-      radius = std::ceil(radius * 16.0f) / 16.0f;
-
-      glm::vec3 maxExtents = glm::vec3(radius);
-      glm::vec3 minExtents = -maxExtents;
-
-      glm::vec3 lightDir = glm::normalize(-mRenderUploadData.lightPos);
-      glm::mat4 lightViewMat = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-      glm::mat4 lightOrthoMat = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, minExtents.z / 4.0f, maxExtents.z - minExtents.z);
-
-      mRenderData.rdShadowMapCascadeData.cascades.at(i).splitDepth.x = -(mRenderData.rdNearPlane + splitDist * clipRange);
-      mRenderData.rdShadowMapCascadeData.cascades.at(i).lightViewProjectionMat = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
-
-      lastSplitDist = splits[i];
+    // get frustum center
+    glm::vec3 frustumCenter = glm::vec3(0.0f);
+    for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
+      frustumCenter += frustumCornerPoints[j];
     }
+    frustumCenter /= static_cast<float>(frustumCornerPoints.size());
+
+    // calculate bounding sphere radius for every frustum split
+    float radius = 0.0f;
+    for (size_t j = 0; j < frustumCornerPoints.size(); ++j) {
+      float dist = glm::length(frustumCornerPoints[j] - frustumCenter);
+      radius = glm::max(radius, dist);
+    }
+
+    radius = std::ceil(radius * 16.0f) / 16.0f;
+
+    glm::vec3 maxExtents = glm::vec3(radius);
+    glm::vec3 minExtents = -maxExtents;
+
+    glm::vec3 lightDir = glm::normalize(-mRenderUploadData.lightPos);
+    glm::mat4 lightViewMat = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 lightOrthoMat = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, minExtents.z / 4.0f, maxExtents.z - minExtents.z);
+
+    mRenderData.rdShadowMapCascadeData.cascades.at(i).splitDepth.x = -(mRenderData.rdNearPlane + splitDist * clipRange);
+    mRenderData.rdShadowMapCascadeData.cascades.at(i).lightViewProjectionMat = lightOrthoMat * mVulkanViewCorrectionMatrix * lightViewMat;
+
+    lastSplitDist = splits[i];
   }
 }
 
@@ -4262,8 +4272,8 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
   }
 }
 
-bool VkRenderer::draw(float deltaTime) {
-  if (!mApplicationRunning || !mVRHeadSet.isVRApplicationRunning()) {
+bool VkRenderer::initDraw(float deltaTime) {
+  if (!mApplicationRunning) {
     return false;
   }
 
@@ -4304,6 +4314,10 @@ bool VkRenderer::draw(float deltaTime) {
   mRenderData.rdPathFindingTime = 0.0f;
   mRenderData.rdLevelGroundNeighborUpdateTime = 0.0f;
 
+  return true;
+}
+
+bool VkRenderer::acquireDesktopImage() {
   // wait for both fences before getting the new framebuffer image
   std::vector<VkFence> waitFences = {
     mRenderData.rdComputeFences.at(mRenderData.currentFrame),
@@ -4317,13 +4331,12 @@ bool VkRenderer::draw(float deltaTime) {
     return false;
   }
 
-  uint32_t imageIndex = 0;
   result = vkAcquireNextImageKHR(mRenderData.rdVkbDevice.device,
       mRenderData.rdVkbSwapchain.swapchain,
       UINT64_MAX,
       mRenderData.rdPresentSemaphores.at(mRenderData.currentFrame),
       VK_NULL_HANDLE,
-      &imageIndex);
+      &mImageIndex);
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     return recreateSwapchain();
@@ -4333,6 +4346,12 @@ bool VkRenderer::draw(float deltaTime) {
       return false;
     }
   }
+
+  return true;
+}
+
+bool VkRenderer::updateLevelAndModels(float deltaTime) {
+  VkResult result = VK_ERROR_UNKNOWN;
 
   // calculate the size of the lookup matrix buffer over all animated instances
   size_t boneMatrixBufferSize = 0;
@@ -5089,152 +5108,6 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
-  // start frame to get correct camera data
-  if (mVRHeadSet.isXRSessionRunning()) {
-    mVRHeadSet.beginXRFrame(mRenderData);
-  }
-
-  mRenderData.rdMatrixGenerateTimer.start();
-  cam->updateCamera(mRenderData, deltaTime);
-
-  if (camSettings.csCamProjection == cameraProjection::perspective) {
-    for (int i = 0; i < 2; ++i) {
-      // Up and down swapped for Vulkan
-      mRenderUploadData.projectionMatrix.at(i) = mVRHeadSet.createXRProjectionMatrix(
-          std::tan(mRenderData.rdXRFoVs.at(i).left),
-          std::tan(mRenderData.rdXRFoVs.at(i).right),
-          std::tan(mRenderData.rdXRFoVs.at(i).up),
-          std::tan(mRenderData.rdXRFoVs.at(i).down),
-          mRenderData.rdNearPlane, mRenderData.rdFarPlane);
-
-      // transpose view position
-      glm::mat4 viewTranspose = glm::translate(glm::mat4(1.0f), mRenderData.rdXRPosePositions.at(i) * 5.0f);
-
-      // rotate view position
-      glm::mat4 viewOrientation = glm::mat4_cast(mRenderData.rdXRPoseOrientations.at(i));
-
-      // camera position transpose
-      glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
-
-      // XXX: How to do this?
-      glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
-
-      mRenderUploadData.viewMatrix.at(i) = glm::inverse(camTranspose * viewTranspose * camOrientation * viewOrientation);
-    }
-
-    mRenderUploadData.nearPlane = mRenderData.rdNearPlane;
-    mRenderUploadData.farPlane = mRenderData.rdFarPlane;
-  } else {
-    for (int i = 0; i < 2; ++i) {
-      float orthoScaling = camSettings.csOrthoScale;
-
-      // Up and down swapped for Vulkan
-      float left = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).left);
-      float right = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).right);
-      float top = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).down);
-      float bottom = 1.0f * orthoScaling * std::tan(mRenderData.rdXRFoVs.at(i).up);
-
-      float nearFar = mRenderData.rdOrthoNearFar * orthoScaling;
-
-      mRenderUploadData.projectionMatrix.at(i) = glm::ortho(left, right, bottom, top, -nearFar, nearFar);
-
-      // transpose view position
-      glm::mat4 viewTranspose = glm::translate(glm::mat4(1.0f), mRenderData.rdXRPosePositions.at(i));
-
-      // rotate view position
-      glm::mat4 viewOrientation = glm::mat4_cast(mRenderData.rdXRPoseOrientations.at(i));
-
-      // camera position transpose
-      glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
-
-      // XXX: How to do this?
-      glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
-
-      mRenderUploadData.viewMatrix.at(i) = glm::inverse(camTranspose * viewTranspose * camOrientation * viewOrientation);
-    }
-
-    mRenderUploadData.nearPlane = 0.0f;
-    mRenderUploadData.farPlane = 0.0f;
-  }
-
-  mRenderUploadData.inverseProjectionMatrix.at(0) = glm::inverse(mRenderUploadData.projectionMatrix.at(0));
-  mRenderUploadData.inverseProjectionMatrix.at(1) = glm::inverse(mRenderUploadData.projectionMatrix.at(1));
-
-  mRenderUploadData.inverseViewMatrix.at(0) = glm::inverse(mRenderUploadData.viewMatrix.at(0));
-  mRenderUploadData.inverseViewMatrix.at(1) = glm::inverse(mRenderUploadData.viewMatrix.at(1));
-
-  if (mRenderData.rdEnableTimeOfDay)  {
-    // search the two values we are inbetween
-    timeOfDay lowestToD = timeOfDay::midnight;
-    for (const auto& tofd : mRenderData.rdTimeOfDayLightSettings) {
-      if (tofd.second.timeStamp <= mRenderData.rdTimeOfDay) {
-        lowestToD = tofd.first;
-      }
-    }
-
-    timeOfDay nextToD = lowestToD + 1;
-    if (nextToD == timeOfDay::NUM) {
-      nextToD = timeOfDay::midnight;
-    }
-
-    TimeOfDayLightParameters first = mRenderData.rdTimeOfDayLightSettings[lowestToD];
-    TimeOfDayLightParameters second = mRenderData.rdTimeOfDayLightSettings[nextToD];
-
-    // scale the mix factor equally on the range between the two timestamps
-    float mixFactor = (mRenderData.rdTimeOfDay - first.timeStamp) / ( second.timeStamp - first.timeStamp);
-
-    // calculate mixed values
-    mRenderData.rdLightSourceAngleEastWest = glm::mix(first.lightAngleEW, second.lightAngleEW, mixFactor);
-    mRenderData.rdLightSourceAngleNorthSouth = glm::mix(first.lightAngleNS, second.lightAngleNS, mixFactor);
-    mRenderData.rdLightSourceIntensity = glm::mix(first.lightIntensity, second.lightIntensity, mixFactor);
-    mRenderData.rdLightSourceColor = glm::mix(first.lightColor, second.lightColor, mixFactor);
-  }
-
-  // light source angle - X axis is east-west
-  glm::vec4 lightPos;
-  lightPos.x = std::sin(glm::radians(mRenderData.rdLightSourceAngleEastWest)) * std::cos(glm::radians(mRenderData.rdLightSourceAngleNorthSouth));
-  lightPos.y = std::sin(glm::radians(mRenderData.rdLightSourceAngleEastWest)) * std::sin(glm::radians(mRenderData.rdLightSourceAngleNorthSouth));
-  lightPos.z = std::cos(glm::radians(mRenderData.rdLightSourceAngleEastWest));
-  lightPos.w = 1.0f;
-
-  glm::vec3 cameraPos = cam->getWorldPosition();
-  glm::vec4 lightColor= glm::vec4(mRenderData.rdLightSourceColor * mRenderData.rdLightSourceIntensity, mRenderData.rdLightSourceIntensity);
-
-  mRenderUploadData.cameraPos = glm::vec4(cameraPos, 1.0f);
-  mRenderUploadData.lightPos = lightPos;
-  mRenderUploadData.lightColor = lightColor;
-  mRenderUploadData.fogDensity = mRenderData.rdFogDensity;
-
-  mRenderUploadData.compositeDebug = static_cast<int32_t>(mRenderData.rdCompositeDebug);
-  mRenderUploadData.ssaoBlurEnabled = mRenderData.rdEnableSSAOBlur;
-
-  mRenderUploadData.shadowMapEnabled = mRenderData.rdEnableShadowMap;
-  mRenderUploadData.shadowMapPCFEnabled = mRenderData.rdEnableShadowMapPCF;
-  mRenderUploadData.shadowMapPCFScale = mRenderData.rdShadowMapPCFScale;
-  mRenderUploadData.shadowMapPCFRange = mRenderData.rdShadowMapPCFRange;
-  mRenderUploadData.colorCascadeDebug = mRenderData.rdEnableShadowMapColorCascadeDebug;
-
-  mRenderUploadData.ssaoRadius = mRenderData.rdSSAORadius;
-  mRenderUploadData.ssaoBias = mRenderData.rdSSAOBias;
-  mRenderUploadData.ssaoExponent = static_cast<float>(mRenderData.rdSSAOExponent);
-  mRenderUploadData.ssaoBlurRadius = static_cast<float>(mRenderData.rdSSAOBlurRadius);
-
-  updateShaderLightData();
-  updateShadowMapCascades();
-
-  mRenderData.rdMatrixGenerateTime += mRenderData.rdMatrixGenerateTimer.stop();
-
-  // we need to update descriptors after the upload if buffer size changed
-  mRenderData.rdUploadToUBOTimer.start();
-  UniformBuffer::uploadData(mRenderData, mRenderData.rdRenderUploadDataUBO, mRenderUploadData);
-  bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffers.at(mRenderData.currentFrame), mWorldPosMatrices);
-
-  // light data uses different descriptors
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffers.at(mRenderData.currentFrame), mRenderData.rdLightData);
-  // reuse the sphere drawing shader for light debug
-  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffers.at(mRenderData.currentFrame), mRenderData.rdLightDebugData);
-
-  mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   // clear and resize world pos matrix for level data
   mLevelWorldPosMatrices.clear();
@@ -5324,7 +5197,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   // bounding spheres
   mCollidingSphereCount = 0;
-  uint32_t sphereVertexCount = 0;
+  mSphereVertexCount = 0;
 
   switch (mRenderData.rdDrawBoundingSpheres) {
     case collisionDebugDraw::none:
@@ -5332,17 +5205,17 @@ bool VkRenderer::draw(float deltaTime) {
     case collisionDebugDraw::colliding:
       if (!mModelInstCamData.micInstanceCollisions.empty()) {
         createCollidingBoundingSpheres();
-        sphereVertexCount = mCollidingSphereMesh.vertices.size();
+        mSphereVertexCount = mCollidingSphereMesh.vertices.size();
       }
       break;
     case collisionDebugDraw::selected:
       // no bounding sphere collision will be done with this setting, so run the computer shaders just for the selected instance
       createSelectedBoundingSpheres();
-      sphereVertexCount = mSphereMesh.vertices.size();
+      mSphereVertexCount = mSphereMesh.vertices.size();
       break;
     case collisionDebugDraw::all:
       createAllBoundingSpheres();
-      sphereVertexCount = mSphereMesh.vertices.size();
+      mSphereVertexCount = mSphereMesh.vertices.size();
       break;
   }
 
@@ -5370,13 +5243,13 @@ bool VkRenderer::draw(float deltaTime) {
 
   if (mRenderData.rdApplicationMode == appMode::edit) {
     mUserInterface.hideMouse(mMouseLock);
-    mUserInterface.createSettingsWindow(mRenderData, mModelInstCamData);
-    mUserInterface.createPositionsWindow(mRenderData, mModelInstCamData);
+    mUserInterface.createSettingsWindow(mRenderData, mModelInstCamData, mModelInstCamCallbacks);
+    mUserInterface.createPositionsWindow(mRenderData, mModelInstCamData, mModelInstCamCallbacks);
     mUserInterface.createDebugWindow(mRenderData);
   }
 
   // always draw the status bar
-  mUserInterface.createStatusBar(mRenderData, mModelInstCamData);
+  mUserInterface.createStatusBar(mRenderData, mModelInstCamData, mModelInstCamCallbacks);
   mRenderData.rdUIGenerateTime += mRenderData.rdUIGenerateTimer.stop();
 
   // only loaded data right now
@@ -5388,8 +5261,12 @@ bool VkRenderer::draw(float deltaTime) {
     mGraphEditor->createNodeEditorWindow(mRenderData, mModelInstCamData);
   }
 
+  return true;
+}
+
+bool VkRenderer::renderGraphics() {
   // start with graphics rendering
-  result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences.at(mRenderData.currentFrame));
+  VkResult result = vkResetFences(mRenderData.rdVkbDevice.device, 1, &mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error:  fence reset failed (error: %i)\n", __FUNCTION__, result);
     return false;
@@ -6274,8 +6151,9 @@ bool VkRenderer::draw(float deltaTime) {
   vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
 
   // draw skybox into swapchain image, depth writes are disabled
-  // XXX: sybox doest not work in ortho projection, disable for now
-  if (mRenderData.rdDrawSkybox && camSettings.csCamProjection == cameraProjection::perspective) {
+  std::shared_ptr<Camera> cam = mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera);
+  CameraSettings camSettings = cam->getCameraSettings();
+  if (mRenderData.rdDrawSkybox) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdSkyboxPipeline);
 
@@ -6323,7 +6201,7 @@ bool VkRenderer::draw(float deltaTime) {
 
     vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &mRenderData.rdSphereVertexBuffers.at(mRenderData.currentFrame).buffer, &offset);
     vkCmdSetLineWidth(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3.0f);
-    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), sphereVertexCount, mCollidingSphereCount, 0, 0);
+    vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mSphereVertexCount, mCollidingSphereCount, 0, 0);
   }
 
   mRenderData.rdCollisionDebugDrawTime += mRenderData.rdCollisionDebugDrawTimer.stop();
@@ -6452,7 +6330,7 @@ bool VkRenderer::draw(float deltaTime) {
 
   VkRenderingAttachmentInfo swapchainAttachmentInfo {};
   swapchainAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  swapchainAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(imageIndex);
+  swapchainAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(mImageIndex);
   swapchainAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   swapchainAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   swapchainAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -6471,7 +6349,7 @@ bool VkRenderer::draw(float deltaTime) {
   swapchainCopyRenderInfo.colorAttachmentCount = static_cast<uint32_t>(swapchainCopyAttachmentInfos.size());
   swapchainCopyRenderInfo.pColorAttachments = swapchainCopyAttachmentInfos.data();
 
-  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSwapchainImages.at(imageIndex), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 1);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSwapchainImages.at(mImageIndex), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 1);
   VkHelper::transitionImageLayout(mRenderData, mRenderData.rdFinalImageData.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 2);
 
   vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &swapchainCopyRenderInfo);
@@ -6484,17 +6362,12 @@ bool VkRenderer::draw(float deltaTime) {
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
-  // VR rendering finish
-  if (mVRHeadSet.isXRSessionRunning()) {
-    mVRHeadSet.renderXRFrame(mRenderData);
-  }
-
   VkRect2D uiRenderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdVkbSwapchain.extent.width, mRenderData.rdVkbSwapchain.extent.height}};
 
   // imGui overlay needs a separate rendering pass due to a different internal pipeline
   VkRenderingAttachmentInfo swapchainUIAttachmentInfo {};
   swapchainUIAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-  swapchainUIAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(imageIndex);
+  swapchainUIAttachmentInfo.imageView = mRenderData.rdSwapchainImageViews.at(mImageIndex);
   swapchainUIAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   swapchainUIAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
   swapchainUIAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -6533,7 +6406,7 @@ bool VkRenderer::draw(float deltaTime) {
   secondImageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
   secondImageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   secondImageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  secondImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(imageIndex);
+  secondImageMemoryBarrier.image = mRenderData.rdSwapchainImages.at(mImageIndex);
   secondImageMemoryBarrier.subresourceRange = imageSSR;
 
   vkCmdPipelineBarrier(
@@ -6545,6 +6418,116 @@ bool VkRenderer::draw(float deltaTime) {
     1, &secondImageMemoryBarrier // pImageMemoryBarriers
   );
 
+  return true;
+}
+
+bool VkRenderer::updateCamera(XRProjectionViewMatrices &matrices, float deltaTime) {
+  mRenderData.rdMatrixGenerateTimer.start();
+  std::shared_ptr<Camera> cam = mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera);
+  cam->updateCamera(mRenderData, deltaTime);
+
+  glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
+  glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
+
+  for (int i = 0; i < 2; ++i) {
+    mRenderUploadData.projectionMatrix.at(i) = matrices.projectionMat.at(i);
+
+    mRenderUploadData.viewMatrix.at(i) = glm::inverse(camTranspose * matrices.viewTransposeMat.at(i) * camOrientation * matrices.viewOrientationMat.at(i));
+  }
+
+  mRenderUploadData.nearPlane = mRenderData.rdNearPlane;
+  mRenderUploadData.farPlane = mRenderData.rdFarPlane;
+
+  mRenderUploadData.inverseProjectionMatrix.at(0) = glm::inverse(mRenderUploadData.projectionMatrix.at(0));
+  mRenderUploadData.inverseProjectionMatrix.at(1) = glm::inverse(mRenderUploadData.projectionMatrix.at(1));
+
+  mRenderUploadData.inverseViewMatrix.at(0) = glm::inverse(mRenderUploadData.viewMatrix.at(0));
+  mRenderUploadData.inverseViewMatrix.at(1) = glm::inverse(mRenderUploadData.viewMatrix.at(1));
+
+  if (mRenderData.rdEnableTimeOfDay)  {
+    // search the two values we are inbetween
+    timeOfDay lowestToD = timeOfDay::midnight;
+    for (const auto& tofd : mRenderData.rdTimeOfDayLightSettings) {
+      if (tofd.second.timeStamp <= mRenderData.rdTimeOfDay) {
+        lowestToD = tofd.first;
+      }
+    }
+
+    timeOfDay nextToD = lowestToD + 1;
+    if (nextToD == timeOfDay::NUM) {
+      nextToD = timeOfDay::midnight;
+    }
+
+    TimeOfDayLightParameters first = mRenderData.rdTimeOfDayLightSettings[lowestToD];
+    TimeOfDayLightParameters second = mRenderData.rdTimeOfDayLightSettings[nextToD];
+
+    // scale the mix factor equally on the range between the two timestamps
+    float mixFactor = (mRenderData.rdTimeOfDay - first.timeStamp) / ( second.timeStamp - first.timeStamp);
+
+    // calculate mixed values
+    mRenderData.rdLightSourceAngleEastWest = glm::mix(first.lightAngleEW, second.lightAngleEW, mixFactor);
+    mRenderData.rdLightSourceAngleNorthSouth = glm::mix(first.lightAngleNS, second.lightAngleNS, mixFactor);
+    mRenderData.rdLightSourceIntensity = glm::mix(first.lightIntensity, second.lightIntensity, mixFactor);
+    mRenderData.rdLightSourceColor = glm::mix(first.lightColor, second.lightColor, mixFactor);
+  }
+
+  // light source angle - X axis is east-west
+  glm::vec4 lightPos;
+  lightPos.x = std::sin(glm::radians(mRenderData.rdLightSourceAngleEastWest)) * std::cos(glm::radians(mRenderData.rdLightSourceAngleNorthSouth));
+  lightPos.y = std::sin(glm::radians(mRenderData.rdLightSourceAngleEastWest)) * std::sin(glm::radians(mRenderData.rdLightSourceAngleNorthSouth));
+  lightPos.z = std::cos(glm::radians(mRenderData.rdLightSourceAngleEastWest));
+  lightPos.w = 1.0f;
+
+  glm::vec3 cameraPos = cam->getWorldPosition();
+  glm::vec4 lightColor= glm::vec4(mRenderData.rdLightSourceColor * mRenderData.rdLightSourceIntensity, mRenderData.rdLightSourceIntensity);
+
+  mRenderUploadData.cameraPos = glm::vec4(cameraPos, 1.0f);
+  mRenderUploadData.lightPos = lightPos;
+  mRenderUploadData.lightColor = lightColor;
+  mRenderUploadData.fogDensity = mRenderData.rdFogDensity;
+
+  mRenderUploadData.compositeDebug = static_cast<int32_t>(mRenderData.rdCompositeDebug);
+  mRenderUploadData.ssaoBlurEnabled = mRenderData.rdEnableSSAOBlur;
+
+  mRenderUploadData.shadowMapEnabled = mRenderData.rdEnableShadowMap;
+  mRenderUploadData.shadowMapPCFEnabled = mRenderData.rdEnableShadowMapPCF;
+  mRenderUploadData.shadowMapPCFScale = mRenderData.rdShadowMapPCFScale;
+  mRenderUploadData.shadowMapPCFRange = mRenderData.rdShadowMapPCFRange;
+  mRenderUploadData.colorCascadeDebug = mRenderData.rdEnableShadowMapColorCascadeDebug;
+
+  mRenderUploadData.ssaoRadius = mRenderData.rdSSAORadius;
+  mRenderUploadData.ssaoBias = mRenderData.rdSSAOBias;
+  mRenderUploadData.ssaoExponent = static_cast<float>(mRenderData.rdSSAOExponent);
+  mRenderUploadData.ssaoBlurRadius = static_cast<float>(mRenderData.rdSSAOBlurRadius);
+
+  updateShaderLightData();
+  updateShadowMapCascades();
+
+  mRenderData.rdMatrixGenerateTime += mRenderData.rdMatrixGenerateTimer.stop();
+
+  // we need to update descriptors after the upload if buffer size changed
+  mRenderData.rdUploadToUBOTimer.start();
+  UniformBuffer::uploadData(mRenderData, mRenderData.rdRenderUploadDataUBOs.at(mRenderData.currentFrame), mRenderUploadData);
+  bool bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdShaderModelRootMatrixBuffers.at(mRenderData.currentFrame), mWorldPosMatrices);
+
+  // light data uses different descriptors
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightBuffers.at(mRenderData.currentFrame), mRenderData.rdLightData);
+  // reuse the sphere drawing shader for light debug
+  bufferResized |= ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdDynamicLightDebugBuffers.at(mRenderData.currentFrame), mRenderData.rdLightDebugData);
+
+  // TODO: Check if the descripto sets are okay
+  if (bufferResized) {
+    VkHelper::updateDescriptorSets(mRenderData);
+    VkHelper::updateImageDescriptorSets(mRenderData);
+    VkHelper::updateLevelDescriptorSets(mRenderData);
+  }
+
+  mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
+
+  return true;
+}
+
+bool VkRenderer::submitGraphics() {
   if (!CommandBuffer::end(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to end ImGui command buffer\n", __FUNCTION__);
     return false;
@@ -6561,7 +6544,7 @@ bool VkRenderer::draw(float deltaTime) {
   submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
   submitInfo.pWaitSemaphores = waitSemaphores.data();
 
-  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[imageIndex] };
+  std::vector<VkSemaphore> signalSemaphores = { mRenderData.rdRenderSemaphores[mImageIndex] };
 
   submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
   submitInfo.pSignalSemaphores = signalSemaphores.data();
@@ -6572,12 +6555,73 @@ bool VkRenderer::draw(float deltaTime) {
   submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
   submitInfo.pCommandBuffers = commandBuffers.data();
 
-  result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences.at(mRenderData.currentFrame));
+  VkResult result = vkQueueSubmit(mRenderData.rdGraphicsQueue, 1, &submitInfo, mRenderData.rdRenderFences.at(mRenderData.currentFrame));
   if (result != VK_SUCCESS) {
     Logger::log(1, "%s error: failed to submit draw command buffer (%i)\n", __FUNCTION__, result);
     return false;
   }
 
+  return true;
+}
+
+bool VkRenderer::copyToXRSwapchain(VkImageView imageView) {
+  // Vulkan rendering here
+  // copy to Swapchain
+  VkClearValue colorClearValue;
+  colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
+
+  VkViewport swapchainCopyViewport{};
+  swapchainCopyViewport.x = 0.0f;
+  swapchainCopyViewport.y = 0.0f;
+  swapchainCopyViewport.width = static_cast<float>(mRenderData.rdXRWidth);
+  swapchainCopyViewport.height = static_cast<float>(mRenderData.rdXRHeight);
+  swapchainCopyViewport.minDepth = 0.0f;
+  swapchainCopyViewport.maxDepth = 1.0f;
+
+  VkRect2D scissor{};
+  scissor.offset = { 0, 0 };
+  scissor.extent = VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight};
+
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &swapchainCopyViewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
+
+  VkRenderingAttachmentInfo swapchainAttachmentInfo {};
+  swapchainAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  swapchainAttachmentInfo.imageView = imageView;
+  swapchainAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  swapchainAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  swapchainAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  swapchainAttachmentInfo.clearValue = colorClearValue;
+
+  std::vector<VkRenderingAttachmentInfo> swapchainCopyAttachmentInfos {
+    swapchainAttachmentInfo,
+  };
+
+  VkRect2D swapchainRenderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight}};
+
+  VkRenderingInfo swapchainCopyRenderInfo{};
+  swapchainCopyRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  swapchainCopyRenderInfo.renderArea = swapchainRenderArea;
+  swapchainCopyRenderInfo.layerCount = 2;
+  swapchainCopyRenderInfo.viewMask = 0b00000011;
+  swapchainCopyRenderInfo.colorAttachmentCount = static_cast<uint32_t>(swapchainCopyAttachmentInfos.size());
+  swapchainCopyRenderInfo.pColorAttachments = swapchainCopyAttachmentInfos.data();
+
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &swapchainCopyRenderInfo);
+
+  vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdXRSwapchainCopyPipeline);
+
+  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdSwapchainCopyPipelineLayout, 0, 1,
+    &mRenderData.rdSwapchainCopyDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+
+  vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 3, 1, 0, 0);
+
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+
+  return true;
+}
+
+bool VkRenderer::checkForSelection() {
   // we must wait for the image to be created before we can pick 
   if (mRenderData.rdApplicationMode == appMode::edit) {
     if (mMousePick) {
@@ -6607,18 +6651,22 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
+  return true;
+}
+
+bool VkRenderer::presentDesktopImage() {
   // trigger swapchain image presentation
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
-  presentInfo.pWaitSemaphores = &mRenderData.rdRenderSemaphores[imageIndex];
+  presentInfo.pWaitSemaphores = &mRenderData.rdRenderSemaphores.at(mImageIndex);
 
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = &mRenderData.rdVkbSwapchain.swapchain;
 
-  presentInfo.pImageIndices = &imageIndex;
+  presentInfo.pImageIndices = &mImageIndex;
 
-  result = vkQueuePresentKHR(mRenderData.rdPresentQueue, &presentInfo);
+  VkResult result = vkQueuePresentKHR(mRenderData.rdPresentQueue, &presentInfo);
   if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
     return recreateSwapchain();
   } else {
@@ -6628,6 +6676,10 @@ bool VkRenderer::draw(float deltaTime) {
     }
   }
 
+  return true;
+}
+
+bool VkRenderer::finishDraw() {
   mRenderData.currentFrame = (mRenderData.currentFrame + 1) % mRenderData.rdNumFramesInFlight;
 
   return true;
@@ -6663,11 +6715,7 @@ void VkRenderer::cleanup() {
 
   VkHelper::cleanupSSAONoiseTexture(mRenderData);
 
-  mVRHeadSet.cleanupXRSecondHalf(mRenderData);
-
   VkHelper::cleanup(mRenderData);
-
-  mVRHeadSet.cleanupXR();
 }
 
 

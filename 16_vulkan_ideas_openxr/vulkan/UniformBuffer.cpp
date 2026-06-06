@@ -2,6 +2,18 @@
 
 #include <VkBootstrap.h>
 
+bool UniformBuffer::init(VkRenderData& renderData, std::vector<VkUniformBufferData> &uboData, size_t bufferSize) {
+  uboData.resize(renderData.rdNumFramesInFlight);
+  bool success = true;
+
+  for (int i = 0; i < uboData.size(); ++i) {
+    if (!init(renderData, uboData.at(i), bufferSize)) {
+      success = false;
+    }
+  }
+  return success;
+}
+
 bool UniformBuffer::init(VkRenderData& renderData, VkUniformBufferData &uboData, size_t size) {
   VkBufferCreateInfo bufferInfo{};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -32,6 +44,16 @@ void UniformBuffer::uploadData(VkRenderData &renderData, VkUniformBufferData &ub
   vmaFlushAllocation(renderData.rdAllocator, uboData.bufferAlloc, 0, uboData.bufferSize);
 }
 
+void UniformBuffer::cleanup(VkRenderData& renderData, std::vector<VkUniformBufferData> &uboData) {
+  for (int i = 0; i < uboData.size(); ++i) {
+    cleanup(renderData, uboData.at(i));
+  }
+}
+
 void UniformBuffer::cleanup(VkRenderData& renderData, VkUniformBufferData &uboData) {
+  VkResult result = vkQueueWaitIdle(renderData.rdGraphicsQueue);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s fatal error: could not wait for device idle (error: %i)\n", __FUNCTION__, result);
+  }
   vmaDestroyBuffer(renderData.rdAllocator, uboData.buffer, uboData.bufferAlloc);
 }

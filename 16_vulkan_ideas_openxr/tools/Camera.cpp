@@ -194,14 +194,6 @@ void Camera::setCameraType(cameraType type) {
   mCamSettings.csCamType = type;
 }
 
-cameraProjection Camera::getCameraProjection() {
-  return mCamSettings.csCamProjection;
-}
-
-void Camera::setCameraProjection(cameraProjection proj) {
-  mCamSettings.csCamProjection = proj;
-}
-
 CameraSettings Camera::getCameraSettings() {
   return mCamSettings;
 }

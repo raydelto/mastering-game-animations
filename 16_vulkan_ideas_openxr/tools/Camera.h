@@ -39,9 +39,6 @@ class Camera {
     cameraType getCameraType();
     void setCameraType(cameraType type);
 
-    cameraProjection getCameraProjection();
-    void setCameraProjection(cameraProjection proj);
-
     std::shared_ptr<AssimpInstance> getInstanceToFollow();
     void setInstanceToFollow(std::shared_ptr<AssimpInstance> instance);
     void clearInstanceToFollow();

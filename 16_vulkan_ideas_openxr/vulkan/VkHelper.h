@@ -29,6 +29,9 @@ class VkHelper {
     static bool createUBOs(VkRenderData& renderData);
     static bool createSSBOs(VkRenderData& renderData);
 
+    static bool createXRPipeline(VkRenderData& renderData, VkFormat format);
+    static void destroyXRPipeline(VkRenderData& renderData);
+
     static bool createImages(VkRenderData& renderData);
     static void cleanupImages(VkRenderData& renderData);
 

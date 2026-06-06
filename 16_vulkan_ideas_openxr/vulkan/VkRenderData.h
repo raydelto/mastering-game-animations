@@ -231,6 +231,13 @@ struct VkComputePushConstants {
   uint32_t pkInstanceOffset;
 };
 
+// OpenXR
+struct XRProjectionViewMatrices{
+  std::array<glm::mat4, 2> projectionMat{};
+  std::array<glm::mat4, 2> viewOrientationMat{};
+  std::array<glm::mat4, 2> viewTransposeMat{};
+};
+
 struct VkRenderData {
   GLFWwindow *rdWindow = nullptr;
   bool rdWaylandFound = false;
@@ -251,7 +258,6 @@ struct VkRenderData {
 
   float rdNearPlane = 0.1f;
   float rdFarPlane = 500.0f;
-  float rdOrthoNearFar = 40.0f;
 
   float rdEyeSeparation = 0.1f;
   float rdFocalLength = 0.5f;
@@ -433,7 +439,7 @@ struct VkRenderData {
 
   VulkanGBuffer rdGBuffer{};
 
-  VkUniformBufferData rdRenderUploadDataUBO{};
+  std::vector<VkUniformBufferData> rdRenderUploadDataUBOs{};
   VkUniformBufferData rdSSAOKernelSamplesUBO{};
 
   VkTextureData rdSkyboxTexture{};
@@ -475,17 +481,6 @@ struct VkRenderData {
   // OpenXR specific stuff
   uint32_t rdXRWidth = 0;
   uint32_t rdXRHeight = 0;
-
-  struct XRFoVs {
-    float left{};
-    float right{};
-    float up{};
-    float down{};
-  };
-
-  std::array<XRFoVs, 2> rdXRFoVs{};
-  std::array<glm::quat, 2> rdXRPoseOrientations{};
-  std::array<glm::vec3, 2> rdXRPosePositions{};
 
   // Vulkan specific stuff
   const int MAX_FRAMES_IN_FLIGHT = 3;
@@ -581,6 +576,7 @@ struct VkRenderData {
   VkPipeline rdLightSpherePipeline = VK_NULL_HANDLE;
   VkPipeline rdLightSphereShadowPipeline = VK_NULL_HANDLE;
   VkPipeline rdSwapchainCopyPipeline = VK_NULL_HANDLE;
+  VkPipeline rdXRSwapchainCopyPipeline = VK_NULL_HANDLE;
 
   VkCommandPool rdCommandPool = VK_NULL_HANDLE;
   VkCommandPool rdComputeCommandPool = VK_NULL_HANDLE;

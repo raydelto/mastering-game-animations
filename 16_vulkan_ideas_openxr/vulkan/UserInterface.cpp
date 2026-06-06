@@ -169,7 +169,7 @@ void UserInterface::hideMouse(bool hide) {
   }
 }
 
-void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstanceCamData& modInstCamData) {
+void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstanceCamData& modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks) {
   ImGuiIO& io = ImGui::GetIO();
   ImGuiWindowFlags imguiWindowFlags = 0;
 
@@ -206,7 +206,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         ImGui::BeginDisabled();
       }
       if (ImGui::MenuItem("Undo", "CTRL+Z")) {
-        modInstCamData.micUndoCallbackFunction();
+        modInstCamCallbacks.micUndoCallbackFunction();
       }
       if (modInstCamData.micSettingsContainer->getUndoSize() == 0) {
         ImGui::EndDisabled();
@@ -216,7 +216,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         ImGui::BeginDisabled();
       }
       if (ImGui::MenuItem("Redo", "CTRL+Y")) {
-        modInstCamData.micRedoCallbackFunction();
+        modInstCamCallbacks.micRedoCallbackFunction();
       }
       if (modInstCamData.micSettingsContainer->getRedoSize() == 0) {
         ImGui::EndDisabled();
@@ -265,7 +265,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     // cheating a bit to get buttons more to the center
     ImGui::Indent();
     if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-      if (modInstCamData.micGetConfigDirtyCallbackFunction()) {
+      if (modInstCamCallbacks.micGetConfigDirtyCallbackFunction()) {
         openUnsavedChangesExitDialog = true;
         renderData.rdRequestApplicationExit = false;
       } else {
@@ -309,10 +309,10 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
   // new config
   if (renderData.rdNewConfigRequest) {
-    if (modInstCamData.micGetConfigDirtyCallbackFunction()) {
+    if (modInstCamCallbacks.micGetConfigDirtyCallbackFunction()) {
       openUnsavedChangesNewDialog = true;
     } else {
-      modInstCamData.micNewConfigCallbackFunction();
+      modInstCamCallbacks.micNewConfigCallbackFunction();
     }
   }
 
@@ -329,7 +329,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     // cheating a bit to get buttons more to the center
     ImGui::Indent();
     if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-      modInstCamData.micNewConfigCallbackFunction();
+      modInstCamCallbacks.micNewConfigCallbackFunction();
       ImGui::CloseCurrentPopup();
     }
 
@@ -357,11 +357,11 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
   bool loadSuccessful = true;
   if (ImGuiFileDialog::Instance()->Display("LoadConfigFile")) {
     if (ImGuiFileDialog::Instance()->IsOk()) {
-      if (modInstCamData.micGetConfigDirtyCallbackFunction()) {
+      if (modInstCamCallbacks.micGetConfigDirtyCallbackFunction()) {
         openUnsavedChangesLoadDialog = true;
       } else {
         std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-        loadSuccessful = modInstCamData.micLoadConfigCallbackFunction(filePathName);
+        loadSuccessful = modInstCamCallbacks.micLoadConfigCallbackFunction(filePathName);
       }
     }
     ImGuiFileDialog::Instance()->Close();
@@ -381,7 +381,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Indent();
     if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
       std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-      loadSuccessful = modInstCamData.micLoadConfigCallbackFunction(filePathName);
+      loadSuccessful = modInstCamCallbacks.micLoadConfigCallbackFunction(filePathName);
       ImGui::CloseCurrentPopup();
     }
 
@@ -428,10 +428,10 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
   if (ImGuiFileDialog::Instance()->Display("SaveConfigFile")) {
     if (ImGuiFileDialog::Instance()->IsOk()) {
       std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-      saveSuccessful = modInstCamData.micSaveConfigCallbackFunction(filePathName);
+      saveSuccessful = modInstCamCallbacks.micSaveConfigCallbackFunction(filePathName);
 
       if (saveSuccessful) {
-        modInstCamData.micSetConfigDirtyCallbackFunction(false);
+        modInstCamCallbacks.micSetConfigDirtyCallbackFunction(false);
       }
     }
     ImGuiFileDialog::Instance()->Close();
@@ -483,7 +483,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       // Windows does understand forward slashes, but std::filesystem preferres backslashes...
       std::replace(filePathName.begin(), filePathName.end(), '\\', '/');
 
-      if (!modInstCamData.micModelAddCallbackFunction(filePathName, true, true)) {
+      if (!modInstCamCallbacks.micModelAddCallbackFunction(filePathName, true, true)) {
         Logger::log(1, "%s error: unable to load model file '%s', unnown error \n", __FUNCTION__, filePathName.c_str());
       }
     }
@@ -516,7 +516,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       // Windows does understand forward slashes, but std::filesystem preferres backslashes...
       std::replace(filePathName.begin(), filePathName.end(), '\\', '/');
 
-      if (!modInstCamData.micLevelAddCallbackFunction(filePathName)) {
+      if (!modInstCamCallbacks.micLevelAddCallbackFunction(filePathName)) {
         Logger::log(1, "%s error: unable to load level file '%s', unnown error \n", __FUNCTION__, filePathName.c_str());
       }
     }
@@ -965,23 +965,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
     CameraSettings settings = cam->getCameraSettings();
 
-    if (settings.csCamProjection == cameraProjection::perspective) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Near/Far Planes: ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##OrthoNearFarPlane", &renderData.rdOrthoNearFar, 0.1f, 100.0f, "%.3f", flags);
-
-    if (settings.csCamProjection == cameraProjection::perspective) {
-      ImGui::EndDisabled();
-    }
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::BeginDisabled();
-    }
-
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Near Plane:      ");
     ImGui::SameLine();
@@ -991,33 +974,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("Far Plane:       ");
     ImGui::SameLine();
     ImGui::SliderFloat("##FarPlane", &renderData.rdFarPlane, 1.0f, 1000.0f, "%.3f", flags);
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::EndDisabled();
-    }
-  }
-
-  if (ImGui::CollapsingHeader("Multiview")) {
-    std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
-    CameraSettings settings = cam->getCameraSettings();
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::BeginDisabled();
-    }
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Eye Separation:  ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##EyeSeparation", &renderData.rdEyeSeparation, 0.00f, 1.0f, "%.3f", flags);
-
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("Focal Length:    ");
-    ImGui::SameLine();
-    ImGui::SliderFloat("##FocalLength", &renderData.rdFocalLength, 0.25f, 10.0f, "%.3f", flags);
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::EndDisabled();
-    }
   }
 
   if (ImGui::CollapsingHeader("Deferred Shading")) {
@@ -1250,7 +1206,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Create New Light")) {
-      modInstCamData.micDynLightAddCallbackFunction();
+      modInstCamCallbacks.micDynLightAddCallbackFunction();
     }
 
     if (numberOfLights < 1 || nullLightSelected) {
@@ -1259,7 +1215,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     ImGui::SameLine();
     if (ImGui::Button("Clone Light")) {
-      modInstCamData.micDynLightCloneCallbackFunction(mCurrentDynLight);
+      modInstCamCallbacks.micDynLightCloneCallbackFunction(mCurrentDynLight);
 
       // read back settings for UI
       lightSettings = mCurrentDynLight->getDynLightSettings();
@@ -1267,7 +1223,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     ImGui::SameLine();
     if (ImGui::Button("Delete Light")) {
-      modInstCamData.micDynLightDeleteCallbackFunction(mCurrentDynLight);
+      modInstCamCallbacks.micDynLightDeleteCallbackFunction(mCurrentDynLight);
 
       // read back settings for UI
       lightSettings = mCurrentDynLight->getDynLightSettings();
@@ -1276,7 +1232,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Center This Light##LightCenter")) {
-      modInstCamData.micDynLightCenterCallbackFunction(mCurrentDynLight);
+      modInstCamCallbacks.micDynLightCenterCallbackFunction(mCurrentDynLight);
     }
 
     if (numberOfLights < 1 || nullLightSelected) {
@@ -1404,23 +1360,23 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     // regenerate shadow data after light/shadow settings were saved
     if (regenerateShaderData) {
-      modInstCamData.dynLightSphereShadowChangedCallbackFunction();
+      modInstCamCallbacks.dynLightSphereShadowChangedCallbackFunction();
     }
   }
 
   if (ImGui::CollapsingHeader("Music & Sound")) {
-    std::vector<std::string> playlist = modInstCamData.micGetMusicPlayListCallbackFunction();
-    bool audioInitialized = modInstCamData.micIsAudioManagerInitializedCallbackFunction();
+    std::vector<std::string> playlist = modInstCamCallbacks.micGetMusicPlayListCallbackFunction();
+    bool audioInitialized = modInstCamCallbacks.micIsAudioManagerInitializedCallbackFunction();
 
     bool playlistHasEntries = !playlist.empty();
     if (!playlistHasEntries || !audioInitialized) {
       ImGui::BeginDisabled();
     }
 
-    bool musicPlaying = modInstCamData.micIsMusicPlayingCallbackFunction();
-    bool musicPaused = modInstCamData.micIsMusicPausedCallbackFunction();
+    bool musicPlaying = modInstCamCallbacks.micIsMusicPlayingCallbackFunction();
+    bool musicPaused = modInstCamCallbacks.micIsMusicPausedCallbackFunction();
 
-    std::string currentTrack = modInstCamData.micGetMusicCurrentTrackCallbackFunction();
+    std::string currentTrack = modInstCamCallbacks.micGetMusicCurrentTrackCallbackFunction();
     const auto& iter = std::find(playlist.begin(), playlist.end(), currentTrack);
     if (iter != playlist.end()) {
       mCurrentPlaylistPos = std::distance(playlist.begin(), iter);
@@ -1436,7 +1392,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           const bool isSelected = (mCurrentPlaylistPos == i);
           if (ImGui::Selectable(playlist.at(i).c_str(), isSelected)) {
             mCurrentPlaylistPos = i;
-            modInstCamData.micPlayMusicTitleCallbackFunction(playlist.at(i));
+            modInstCamCallbacks.micPlayMusicTitleCallbackFunction(playlist.at(i));
           }
 
           if (isSelected) {
@@ -1458,7 +1414,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
     ImGui::SameLine();
     if (ImGui::Button("Prev")) {
-      modInstCamData.micPlayPrevMusicTrackCallbackFunction();
+      modInstCamCallbacks.micPlayPrevMusicTrackCallbackFunction();
     }
     if (!musicPlaying) {
       ImGui::EndDisabled();
@@ -1469,12 +1425,12 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
     ImGui::SameLine();
     if (ImGui::Button("Play")) {
-      modInstCamData.micPlayMusicTitleCallbackFunction(playlist.at(mCurrentPlaylistPos));
+      modInstCamCallbacks.micPlayMusicTitleCallbackFunction(playlist.at(mCurrentPlaylistPos));
     }
 
     ImGui::SameLine();
     if (ImGui::Button("Play Random")) {
-      modInstCamData.micPlayRandomMusicCallbackFunction();
+      modInstCamCallbacks.micPlayRandomMusicCallbackFunction();
     }
     if (musicPlaying) {
       ImGui::EndDisabled();
@@ -1486,11 +1442,11 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SameLine();
     if (!musicPaused) {
       if (ImGui::Button("Pause")) {
-        modInstCamData.micPauseResumeMusicCallbackFunction(true);
+        modInstCamCallbacks.micPauseResumeMusicCallbackFunction(true);
       }
     } else {
       if (ImGui::Button("Resume")) {
-        modInstCamData.micPauseResumeMusicCallbackFunction(false);
+        modInstCamCallbacks.micPauseResumeMusicCallbackFunction(false);
       }
     }
     if (!musicPlaying) {
@@ -1502,7 +1458,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
     ImGui::SameLine();
     if (ImGui::Button("Stop")) {
-      modInstCamData.micStopMusicCallbackFunction();
+      modInstCamCallbacks.micStopMusicCallbackFunction();
     }
     if (!musicPlaying) {
       ImGui::EndDisabled();
@@ -1513,28 +1469,28 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
     ImGui::SameLine();
     if (ImGui::Button("Next")) {
-      modInstCamData.micPlayNextMusicTrackCallbackFunction();
+      modInstCamCallbacks.micPlayNextMusicTrackCallbackFunction();
     }
     if (!musicPlaying) {
       ImGui::EndDisabled();
     }
 
-    int musicVolume = modInstCamData.micGetMusicVolumeCallbackFunction();
+    int musicVolume = modInstCamCallbacks.micGetMusicVolumeCallbackFunction();
     ImGui::Text("Music Volume: ");
     ImGui::SameLine();
 
     ImGui::SliderInt("##MusicVolume", &musicVolume, 0, 128, "%d", flags);
     if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
-      modInstCamData.micSetMusicVolumeCallbackFunction(musicVolume);
+      modInstCamCallbacks.micSetMusicVolumeCallbackFunction(musicVolume);
     }
 
-    int soundVolume = modInstCamData.micGetSoundEffectsVolumeCallbackFunction();
+    int soundVolume = modInstCamCallbacks.micGetSoundEffectsVolumeCallbackFunction();
     ImGui::Text("Sound Volume: ");
     ImGui::SameLine();
 
     ImGui::SliderInt("##SoundVolume", &soundVolume, 0, 128, "%d", flags);
     if (ImGui::IsItemDeactivatedAfterEdit() || ImGui::IsItemActive()) {
-      modInstCamData.micSetSoundEffectsVolumeCallbackFunction(soundVolume);
+      modInstCamCallbacks.micSetSoundEffectsVolumeCallbackFunction(soundVolume);
     }
 
     if (!playlistHasEntries) {
@@ -1602,7 +1558,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                 ");
     ImGui::SameLine();
     if (ImGui::Button("Clone Current Camera")) {
-      modInstCamData.micCameraCloneCallbackFunction();
+      modInstCamCallbacks.micCameraCloneCallbackFunction();
       numCameras = modInstCamData.micCameras.size() - 1;
     }
 
@@ -1624,7 +1580,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-        modInstCamData.micCameraDeleteCallbackFunction();
+        modInstCamCallbacks.micCameraDeleteCallbackFunction();
         numCameras = modInstCamData.micCameras.size() - 1;
         ImGui::CloseCurrentPopup();
       }
@@ -1650,7 +1606,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("Camera Name:     ");
     ImGui::SameLine();
     if (ImGui::InputText("##CamName", &camName, textinputFlags, nameInputFilter)) {
-      if (modInstCamData.micCameraNameCheckCallbackFunction(camName)) {
+      if (modInstCamCallbacks.micCameraNameCheckCallbackFunction(camName)) {
         mShowDuplicateCamNameDialog = true;
       } else {
         settings.csCamName = camName;
@@ -1658,7 +1614,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
           settings, mSavedCameraSettings);
         mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
+        modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
       }
     }
 
@@ -1830,7 +1786,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
           settings, mSavedCameraSettings);
         mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
+        modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
       }
 
       ImGui::AlignTextToFramePadding();
@@ -1842,7 +1798,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
           settings, mSavedCameraSettings);
         mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
+        modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
       }
 
       ImGui::AlignTextToFramePadding();
@@ -1854,46 +1810,10 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
           settings, mSavedCameraSettings);
         mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
+        modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
       }
     } // end of locked cam type third person
 
-    // force projection for first and  third person cam
-    if (settings.csCamType == cameraType::firstPerson || settings.csCamType == cameraType::thirdPerson) {
-      settings.csCamProjection = cameraProjection::perspective;
-    }
-
-    // remove perspective settings in third person mode
-    if (settings.csCamType != cameraType::firstPerson && settings.csCamType != cameraType::thirdPerson) {
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("Projection:      ");
-      ImGui::SameLine();
-      if (ImGui::RadioButton("Perspective",
-        settings.csCamProjection == cameraProjection::perspective)) {
-        settings.csCamProjection = cameraProjection::perspective;
-
-        modInstCamData.micSettingsContainer->applyEditCameraSettings(
-          modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
-          settings, mSavedCameraSettings);
-        mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
-      }
-      ImGui::SameLine();
-      if (ImGui::RadioButton("Orthogonal",
-        settings.csCamProjection == cameraProjection::orthogonal)) {
-        settings.csCamProjection = cameraProjection::orthogonal;
-
-        modInstCamData.micSettingsContainer->applyEditCameraSettings(
-          modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
-          settings, mSavedCameraSettings);
-        mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
-      }
-    }
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::BeginDisabled();
-    }
 
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Field of View:   ");
@@ -1906,34 +1826,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
         settings, mSavedCameraSettings);
       mSavedCameraSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
-    }
-
-    if (settings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::EndDisabled();
-    }
-
-    // disable orthoginal scaling in 1st and 3rd person mode, only perspective is allowed 
-    if (settings.csCamType != cameraType::firstPerson && settings.csCamType != cameraType::thirdPerson) {
-      if (settings.csCamProjection == cameraProjection::perspective) {
-        ImGui::BeginDisabled();
-      }
-
-      ImGui::AlignTextToFramePadding();
-      ImGui::Text("Ortho Scaling:   ");
-      ImGui::SameLine();
-      ImGui::SliderFloat("##CamOrthoScale", &settings.csOrthoScale, 1.0f, 100.0f, "%.3f", flags);
-      if (ImGui::IsItemDeactivatedAfterEdit()) {
-        modInstCamData.micSettingsContainer->applyEditCameraSettings(
-          modInstCamData.micCameras.at(modInstCamData.micSelectedCamera),
-          settings, mSavedCameraSettings);
-        mSavedCameraSettings = settings;
-        modInstCamData.micSetConfigDirtyCallbackFunction(true);
-      }
-
-      if (settings.csCamProjection == cameraProjection::perspective) {
-        ImGui::EndDisabled();
-      }
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     cam->setCameraSettings(settings);
@@ -1943,11 +1836,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     std::shared_ptr<Camera> cam = modInstCamData.micCameras.at(modInstCamData.micSelectedCamera);
     CameraSettings camSettings = cam->getCameraSettings();
 
-    if (camSettings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::BeginDisabled();
-    }
-
-    // Fog and skybox are not working in orthographic projection
     ImGui::Text("Draw Skybox:    ");
     ImGui::SameLine();
     ImGui::Checkbox("##DrawSkybox", &renderData.rdDrawSkybox);
@@ -1955,10 +1843,6 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("Fog Density:    ");
     ImGui::SameLine();
     ImGui::SliderFloat("##LevelFogDensity", &renderData.rdFogDensity, 0.0f, 0.1f, "%.3f", flags);
-
-    if (camSettings.csCamProjection == cameraProjection::orthogonal) {
-      ImGui::EndDisabled();
-    }
 
     ImGui::Text("Light Angle E/W:");
     ImGui::SameLine();
@@ -2090,7 +1974,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SameLine();
     if (ImGui::Button("Create New Instance")) {
       std::shared_ptr<AssimpModel> currentModel = modInstCamData.micModelList[modInstCamData.micSelectedModel];
-      modInstCamData.micInstanceAddCallbackFunction(currentModel);
+      modInstCamCallbacks.micInstanceAddCallbackFunction(currentModel);
     }
 
     ImGui::SameLine();
@@ -2106,7 +1990,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-        modInstCamData.micModelDeleteCallbackFunction(modInstCamData.micModelList.at(modInstCamData.micSelectedModel)->getModelFileName(), true);
+        modInstCamCallbacks.micModelDeleteCallbackFunction(modInstCamData.micModelList.at(modInstCamData.micSelectedModel)->getModelFileName(), true);
 
         ImGui::CloseCurrentPopup();
       }
@@ -2125,7 +2009,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SameLine();
     if (ImGui::Button("Go!##Create")) {
       std::shared_ptr<AssimpModel> currentModel = modInstCamData.micModelList[modInstCamData.micSelectedModel];
-      modInstCamData.micInstanceAddManyCallbackFunction(currentModel, mManyInstanceCreateNum);
+      modInstCamCallbacks.micInstanceAddManyCallbackFunction(currentModel, mManyInstanceCreateNum);
     }
 
     if (modelListEmtpy) {
@@ -2172,7 +2056,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::PopItemWidth();
     ImGui::SameLine();
     if (ImGui::Button("Set Template##Model")) {
-      modInstCamData.micModelAddBehaviorCallbackFunction(selectedModelName, mBehaviorManager);
+      modInstCamCallbacks.micModelAddBehaviorCallbackFunction(selectedModelName, mBehaviorManager);
     }
     ImGui::SameLine();
 
@@ -2181,7 +2065,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     }
 
     if (ImGui::Button("Clear Template##Model")) {
-      modInstCamData.micModelDelBehaviorCallbackFunction(selectedModelName);
+      modInstCamCallbacks.micModelDelBehaviorCallbackFunction(selectedModelName);
     }
 
     if (modelIsStatic) {
@@ -2264,7 +2148,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       ImGui::Indent();
       if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-        modInstCamData.micLevelDeleteCallbackFunction(selectedLevelName);
+        modInstCamCallbacks.micLevelDeleteCallbackFunction(selectedLevelName);
         settings = modInstCamData.micLevels.at(modInstCamData.micSelectedLevel)->getLevelSettings();
         ImGui::CloseCurrentPopup();
       }
@@ -2412,7 +2296,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     if (!nullLevelSelected) {
       modInstCamData.micLevels.at(modInstCamData.micSelectedLevel)->setLevelSettings(settings);
       if (recreateLevelData) {
-        modInstCamData.micLevelGenerateLevelDataCallbackFunction();
+        modInstCamCallbacks.micLevelGenerateLevelDataCallbackFunction();
       }
     }
 
@@ -3208,7 +3092,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::PushItemWidth(300.0f);
       ImGui::SliderInt("##IKIterations", &renderData.rdNumberOfIkIteratons, 1, 15, "%d", flags);
       if (ImGui::IsItemDeactivatedAfterEdit()) {
-        modInstCamData.micIkIterationsCallbackFunction(renderData.rdNumberOfIkIteratons);
+        modInstCamCallbacks.micIkIterationsCallbackFunction(renderData.rdNumberOfIkIteratons);
       }
 
       modSettings = mCurrentModel->getModelSettings();
@@ -3452,7 +3336,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Center This Instance##Instance")) {
-      modInstCamData.micInstanceCenterCallbackFunction(mCurrentInstance);
+      modInstCamCallbacks.micInstanceCenterCallbackFunction(mCurrentInstance);
     }
 
     ImGui::SameLine();
@@ -3470,7 +3354,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
 
     ImGui::SameLine();
     if (ImGui::Button("Delete Instance")) {
-      modInstCamData.micInstanceDeleteCallbackFunction(mCurrentInstance, true);
+      modInstCamCallbacks.micInstanceDeleteCallbackFunction(mCurrentInstance, true);
 
       // read back settings for UI
       settings = mCurrentInstance->getInstanceSettings();
@@ -3483,7 +3367,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::Text("                  ");
     ImGui::SameLine();
     if (ImGui::Button("Clone Instance")) {
-      modInstCamData.micInstanceCloneCallbackFunction(mCurrentInstance);
+      modInstCamCallbacks.micInstanceCloneCallbackFunction(mCurrentInstance);
 
       // read back settings for UI
       settings = mCurrentInstance->getInstanceSettings();
@@ -3496,7 +3380,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::PopItemWidth();
     ImGui::SameLine();
     if (ImGui::Button("Go!##Clone")) {
-      modInstCamData.micInstanceCloneManyCallbackFunction(mCurrentInstance, mManyInstanceCloneNum);
+      modInstCamCallbacks.micInstanceCloneManyCallbackFunction(mCurrentInstance, mManyInstanceCloneNum);
 
       // read back settings for UI
       settings = mCurrentInstance->getInstanceSettings();
@@ -3525,7 +3409,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         mCurrentInstance,
         settings, mSavedInstanceSettings);
       mSavedInstanceSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     ImGui::AlignTextToFramePadding();
@@ -3538,7 +3422,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         mCurrentInstance,
         settings, mSavedInstanceSettings);
       mSavedInstanceSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     ImGui::AlignTextToFramePadding();
@@ -3551,7 +3435,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         mCurrentInstance,
         settings, mSavedInstanceSettings);
       mSavedInstanceSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     ImGui::AlignTextToFramePadding();
@@ -3564,7 +3448,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
         mCurrentInstance,
         settings, mSavedInstanceSettings);
       mSavedInstanceSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     ImGui::Text("                  ");
@@ -3583,7 +3467,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       settings.isInstancePerModelIndexPosition = modelInstanceIndex;
 
       mSavedInstanceSettings = settings;
-      modInstCamData.micSetConfigDirtyCallbackFunction(true);
+      modInstCamCallbacks.micSetConfigDirtyCallbackFunction(true);
     }
 
     std::shared_ptr<AssimpModel> currentModel =mCurrentInstance->getModel();
@@ -3631,7 +3515,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::SameLine();
     if (ImGui::Button("Set Template##Instance")) {
       settings.isNodeTreeName = mSelectedTreeName;
-      modInstCamData.micInstanceAddBehaviorCallbackFunction(mCurrentInstance, mBehaviorManager);
+      modInstCamCallbacks.micInstanceAddBehaviorCallbackFunction(mCurrentInstance, mBehaviorManager);
     }
     ImGui::SameLine();
 
@@ -3644,7 +3528,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::BeginDisabled();
     }
     if (ImGui::Button("Clear Template##Instance")) {
-      modInstCamData.micInstanceDelBehaviorCallbackFunction(mCurrentInstance);
+      modInstCamCallbacks.micInstanceDelBehaviorCallbackFunction(mCurrentInstance);
       settings.isNodeTreeName.clear();
 
       // change data in instance while settngs are used
@@ -3702,7 +3586,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
     ImGui::AlignTextToFramePadding();
     ImGui::Text("Neighbor Tris:   %10li", settings.isNeighborGroundTriangles.size());
 
-    std::vector<int> navTargets = modInstCamData.micGetNavTargetsCallbackFunction();
+    std::vector<int> navTargets = modInstCamCallbacks.micGetNavTargetsCallbackFunction();
     size_t numNavTargets = navTargets.size();
 
     if (mSelectedNavTarget > numNavTargets) {
@@ -3769,7 +3653,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       if (ImGui::Button("Center Target##NavTarget")) {
         std::shared_ptr<AssimpInstance> instance =
           modInstCamData.micAssimpInstances.at(navTargets.at(mSelectedNavTarget));
-        modInstCamData.micInstanceCenterCallbackFunction(instance);
+        modInstCamCallbacks.micInstanceCenterCallbackFunction(instance);
       }
     } else {
       ImGui::Text("None");
@@ -3812,7 +3696,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       if (modInstCamData.micBehaviorData.count(mNewTreeName) > 0) {
         showDuplicateNameDialog = true;
       } else {
-        modInstCamData.micBehaviorData[mNewTreeName] = modInstCamData.micCreateEmptyNodeGraphCallbackFunction();
+        modInstCamData.micBehaviorData[mNewTreeName] = modInstCamCallbacks.micCreateEmptyNodeGraphCallbackFunction();
         modInstCamData.micBehaviorData[mNewTreeName]->getBehaviorData()->bdName = mNewTreeName;
       }
     }
@@ -3854,7 +3738,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::SameLine();
       ImGui::PushID(buttonId++);
       if (ImGui::Button("Edit Template##TreeTemplate")) {
-        modInstCamData.micEditNodeGraphCallbackFunction(treeName);
+        modInstCamCallbacks.micEditNodeGraphCallbackFunction(treeName);
       }
       ImGui::PopID();
       ImGui::SameLine();
@@ -3867,7 +3751,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
           ++iter;
         } else {
           iter = modInstCamData.micBehaviorData.erase(iter);
-          modInstCamData.micPostNodeTreeDelBehaviorCallbackFunction(treeName);
+          modInstCamCallbacks.micPostNodeTreeDelBehaviorCallbackFunction(treeName);
         }
       } else {
         ++iter;
@@ -3888,7 +3772,7 @@ void UserInterface::createSettingsWindow(VkRenderData& renderData, ModelInstance
       ImGui::Indent();
       if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
         modInstCamData.micBehaviorData.erase(mTreeToDelete);
-        modInstCamData.micPostNodeTreeDelBehaviorCallbackFunction(mTreeToDelete);
+        modInstCamCallbacks.micPostNodeTreeDelBehaviorCallbackFunction(mTreeToDelete);
         ImGui::CloseCurrentPopup();
       }
 
@@ -4126,8 +4010,8 @@ void UserInterface::createDebugWindow(VkRenderData& renderData) {
   ImGui::End();
 }
 
-void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanceCamData& modInstCamData) {
-  std::shared_ptr<BoundingBox3D> worldBoundaries = modInstCamData.micWorldGetBoundariesCallbackFunction();
+void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanceCamData& modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks) {
+  std::shared_ptr<BoundingBox3D> worldBoundaries = modInstCamCallbacks.micWorldGetBoundariesCallbackFunction();
   // window closed
   if (!mInstancePosWindowOpen) {
     return;
@@ -4168,7 +4052,7 @@ void UserInterface::createPositionsWindow(VkRenderData& renderData, ModelInstanc
 
   mOctreeLines.vertices.clear();
   // draw octree boxes first
-  const std::vector<BoundingBox3D> treeBoxes = modInstCamData.micOctreeGetBoxesCallbackFunction();
+  const std::vector<BoundingBox3D> treeBoxes = modInstCamCallbacks.micOctreeGetBoxesCallbackFunction();
   for (const auto& box : treeBoxes) {
     AABB boxAABB{};
     boxAABB.create(box.getFrontTopLeft());
@@ -4274,7 +4158,7 @@ void UserInterface::resetPositionWindowOctreeView() {
   mOctreeTranslation = glm::vec3(0.0f);
 }
 
-void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamData& modInstCamData) {
+void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamData& modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks) {
   ImGuiWindowFlags statusBarFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize;
   // status bar disabled
   if (!mStatusBarVisible) {
@@ -4296,7 +4180,7 @@ void UserInterface::createStatusBar(VkRenderData& renderData, ModelInstanceCamDa
   ImGui::Text("Mode (F10):");
   ImGui::SameLine();
   if (ImGui::Button(renderData.rdAppModeMap.at(renderData.rdApplicationMode).c_str())) {
-    modInstCamData.micSsetAppModeCallbackFunction(++renderData.rdApplicationMode);
+    modInstCamCallbacks.micSsetAppModeCallbackFunction(++renderData.rdApplicationMode);
   }
 
   // In case more modes are added, use a combo box

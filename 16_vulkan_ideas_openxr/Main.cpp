@@ -1,21 +1,23 @@
 #include <memory>
 #include <string>
 
-#include <Window.h>
+#include <AppWindow.h>
 #include <Logger.h>
 
 int main(int argc, char *argv[]) {
+  AppWindow w{};
 
-  std::unique_ptr<Window> w = std::make_unique<Window>();
-
-  if (!w->init(1280, 720, "Vulkan Renderer - Collecting Ideas - OpenXR")) {
+  if (!w.init(1280, 720, "Vulkan Renderer - Collecting Ideas - OpenXR")) {
     Logger::log(1, "%s error: Window init error\n", __FUNCTION__);
     return -1;
   }
 
-  w->mainLoop();
+  Logger::log(1, "%s: Window initialized, starting main loop\n", __FUNCTION__);
+  w.mainLoop();
 
-  w->cleanup();
+  Logger::log(1, "%s: main loop finished, cleaning up\n", __FUNCTION__);
+  w.cleanup();
 
+  Logger::log(1, "%s: application finished\n", __FUNCTION__);
   return 0;
 }

@@ -42,11 +42,6 @@ enum class cameraType : uint8_t {
   stationaryFollowing
 };
 
-enum class cameraProjection : uint8_t {
-  perspective = 0,
-  orthogonal
-};
-
 enum class moveState : uint8_t {
   idle = 0,
   walk,

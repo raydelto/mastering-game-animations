@@ -1,8 +1,9 @@
-#include <Window.h>
+#include <AppWindow.h>
 #include <Logger.h>
-#include <ModelInstanceCamData.h>
+#include <ModelInstanceCamCallbacks.h>
+#include <VkRenderer.h>
 
-bool Window::init(unsigned int width, unsigned int height, std::string title) {
+bool AppWindow::init(unsigned int width, unsigned int height, std::string title) {
   if (!glfwInit()) {
     Logger::log(1, "%s: glfwInit() error\n", __FUNCTION__);
     return false;
@@ -26,14 +27,40 @@ bool Window::init(unsigned int width, unsigned int height, std::string title) {
     return false;
   }
 
-  mRenderer = std::make_unique<VkRenderer>(mWindow);
-
   // allow to set window title in renderer
-  ModelInstanceCamData& rendererMICData = mRenderer->getModInstCamData();
-  rendererMICData.micGetWindowTitleFunction = [this]() { return getWindowTitle(); };
-  rendererMICData.micSetWindowTitleFunction = [this](std::string windowTitle) { setWindowTitle(windowTitle); };
+  ModelInstanceCamCallbacks rendererMICCallbacks;
+  rendererMICCallbacks.micGetWindowTitleFunction = [this]() { return getWindowTitle(); };
+  rendererMICCallbacks.micSetWindowTitleFunction = [this](std::string windowTitle) { setWindowTitle(windowTitle); };
 
-  glfwSetWindowUserPointer(mWindow, mRenderer.get());
+  rendererMICCallbacks.micIsAudioManagerInitializedCallbackFunction = [this]() { return mAudioManager.isInitialized(); };
+  rendererMICCallbacks.micPlayRandomMusicCallbackFunction = [this]() { mAudioManager.playRandomMusic(); };
+  rendererMICCallbacks.micStopMusicCallbackFunction = [this]() { mAudioManager.stopMusic(); };
+  rendererMICCallbacks.micPauseResumeMusicCallbackFunction = [this](bool pauseOrResume) { mAudioManager.pauseMusic(pauseOrResume); };
+  rendererMICCallbacks.micGetMusicPlayListCallbackFunction = [this]() { return mAudioManager.getPlayList(); };
+  rendererMICCallbacks.micIsMusicPausedCallbackFunction = [this]() { return mAudioManager.isMusicPaused(); };
+  rendererMICCallbacks.micIsMusicPlayingCallbackFunction = [this]() { return mAudioManager.isMusicPlaying(); };
+  rendererMICCallbacks.micGetMusicCurrentTrackCallbackFunction = [this]() { return mAudioManager.getCurrentTitle(); };
+  rendererMICCallbacks.micPlayNextMusicTrackCallbackFunction = [this]() { mAudioManager.playNextTitle(); };
+  rendererMICCallbacks.micPlayPrevMusicTrackCallbackFunction = [this]() { mAudioManager.playPrevTitle(); };
+  rendererMICCallbacks.micSetMusicVolumeCallbackFunction = [this](int volume) { mAudioManager.setMusicVolume(volume); };
+  rendererMICCallbacks.micGetMusicVolumeCallbackFunction = [this]() { return mAudioManager.getMusicVolume(); };
+  rendererMICCallbacks.micPlayMusicTitleCallbackFunction = [this](std::string title) { mAudioManager.playTitle(title); };
+
+  rendererMICCallbacks.micSetSoundEffectsVolumeCallbackFunction = [this](int volume) { mAudioManager.setSoundVolume(volume); };
+  rendererMICCallbacks.micGetSoundEffectsVolumeCallbackFunction = [this]() { return mAudioManager.getSoundVolume(); };
+  rendererMICCallbacks.micPlayWalkFootstepCallbackFunction = [this]() { mAudioManager.playWalkFootsteps(); };
+  rendererMICCallbacks.micPlayRunFootstepCallbackFunction = [this]() { mAudioManager.playRunFootsteps(); };
+  rendererMICCallbacks.micStopFootstepCallbackFunction = [this]() { mAudioManager.stopFootsteps(); };
+
+  if (!mVRHeadset.init(mWindow, rendererMICCallbacks)) {
+    glfwTerminate();
+    Logger::log(1, "%s error: Could not init VR Headset\n", __FUNCTION__);
+    return false;
+  }
+
+  std::shared_ptr<VkRenderer> renderer = mVRHeadset.getVulkanRenderer();
+
+  glfwSetWindowUserPointer(mWindow, renderer.get());
   glfwSetFramebufferSizeCallback(mWindow, [](GLFWwindow *win, int width, int height) {
       auto renderer = static_cast<VkRenderer*>(glfwGetWindowUserPointer(win));
       renderer->setSize(width, height);
@@ -70,12 +97,6 @@ bool Window::init(unsigned int width, unsigned int height, std::string title) {
     }
   );
 
-  if (!mRenderer->init(width, height)) {
-    glfwTerminate();
-    Logger::log(1, "%s error: Could not init Vulkan\n", __FUNCTION__);
-    return false;
-  }
-
   // use SDL for audio
   if (!mAudioManager.init()) {
     Logger::log(1, "%s error: unable to init audio, skipping\n", __FUNCTION__);
@@ -95,33 +116,12 @@ bool Window::init(unsigned int width, unsigned int height, std::string title) {
       Logger::log(1, "%s warning: could not load run footsteps, skipping\n", __FUNCTION__);
     }
   }
-
-  rendererMICData.micIsAudioManagerInitializedCallbackFunction = [this]() { return mAudioManager.isInitialized(); };
-  rendererMICData.micPlayRandomMusicCallbackFunction = [this]() { mAudioManager.playRandomMusic(); };
-  rendererMICData.micStopMusicCallbackFunction = [this]() { mAudioManager.stopMusic(); };
-  rendererMICData.micPauseResumeMusicCallbackFunction = [this](bool pauseOrResume) { mAudioManager.pauseMusic(pauseOrResume); };
-  rendererMICData.micGetMusicPlayListCallbackFunction = [this]() { return mAudioManager.getPlayList(); };
-  rendererMICData.micIsMusicPausedCallbackFunction = [this]() { return mAudioManager.isMusicPaused(); };
-  rendererMICData.micIsMusicPlayingCallbackFunction = [this]() { return mAudioManager.isMusicPlaying(); };
-  rendererMICData.micGetMusicCurrentTrackCallbackFunction = [this]() { return mAudioManager.getCurrentTitle(); };
-  rendererMICData.micPlayNextMusicTrackCallbackFunction = [this]() { mAudioManager.playNextTitle(); };
-  rendererMICData.micPlayPrevMusicTrackCallbackFunction = [this]() { mAudioManager.playPrevTitle(); };
-  rendererMICData.micSetMusicVolumeCallbackFunction = [this](int volume) { mAudioManager.setMusicVolume(volume); };
-  rendererMICData.micGetMusicVolumeCallbackFunction = [this]() { return mAudioManager.getMusicVolume(); };
-  rendererMICData.micPlayMusicTitleCallbackFunction = [this](std::string title) { mAudioManager.playTitle(title); };
-
-  rendererMICData.micSetSoundEffectsVolumeCallbackFunction = [this](int volume) { mAudioManager.setSoundVolume(volume); };
-  rendererMICData.micGetSoundEffectsVolumeCallbackFunction = [this]() { return mAudioManager.getSoundVolume(); };
-  rendererMICData.micPlayWalkFootstepCallbackFunction = [this]() { mAudioManager.playWalkFootsteps(); };
-  rendererMICData.micPlayRunFootstepCallbackFunction = [this]() { mAudioManager.playRunFootsteps(); };
-  rendererMICData.micStopFootstepCallbackFunction = [this]() { mAudioManager.stopFootsteps(); };
-
   Logger::log(1, "%s: Window with Vulkan successfully initialized\n", __FUNCTION__);
 
   return true;
 }
 
-void Window::mainLoop() {
+void AppWindow::mainLoop() {
   // force VSYNC
   glfwSwapInterval(1);
 
@@ -130,10 +130,14 @@ void Window::mainLoop() {
   float deltaTime = 0.0f;
 
   while (true) {
-    mRenderer->pollXREvents();
+    if (mVRHeadset.isXRApplicationRunning()) {
+      mVRHeadset.pollEvents();
 
-    if (!mRenderer->draw(deltaTime)) {
-      break;
+      if (mVRHeadset.isXRSessionRunning()) {
+        if (!mVRHeadset.draw(deltaTime)) {
+          break;
+        }
+      }
     }
 
     glfwPollEvents();
@@ -147,10 +151,9 @@ void Window::mainLoop() {
   }
 }
 
-void Window::cleanup() {
-  mRenderer->cleanup();
-
+void AppWindow::cleanup() {
   mAudioManager.cleanup();
+  mVRHeadset.cleanup();
 
   glfwSetWindowShouldClose(mWindow, GLFW_TRUE);
   glfwDestroyWindow(mWindow);
@@ -158,11 +161,11 @@ void Window::cleanup() {
   Logger::log(1, "%s: Terminating Window\n", __FUNCTION__);
 }
 
-std::string Window::getWindowTitle() {
+std::string AppWindow::getWindowTitle() {
   return mWindowTitle;
 }
 
-void Window::setWindowTitle(std::string newTitle) {
+void AppWindow::setWindowTitle(std::string newTitle) {
   mWindowTitle = newTitle;
   glfwSetWindowTitle(mWindow, mWindowTitle.c_str());
 }

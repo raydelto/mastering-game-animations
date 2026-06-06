@@ -9,6 +9,7 @@
 #include <AssimpModel.h>
 #include <AssimpInstance.h>
 #include <ModelInstanceCamData.h>
+#include <ModelInstanceCamCallbacks.h>
 #include <InstanceSettings.h>
 #include <CameraSettings.h>
 #include <Camera.h>
@@ -22,10 +23,10 @@ class UserInterface {
     void hideMouse(bool hide);
 
     void createFrame(VkRenderData& renderData);
-    void createSettingsWindow(VkRenderData &renderData, ModelInstanceCamData &modInstCamData);
+    void createSettingsWindow(VkRenderData &renderData, ModelInstanceCamData &modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks);
     void createDebugWindow(VkRenderData &renderData);
-    void createStatusBar(VkRenderData &renderData, ModelInstanceCamData &modInstCamData);
-    void createPositionsWindow(VkRenderData &renderData, ModelInstanceCamData &modInstCamData);
+    void createStatusBar(VkRenderData &renderData, ModelInstanceCamData &modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks);
+    void createPositionsWindow(VkRenderData &renderData, ModelInstanceCamData &modInstCamData, ModelInstanceCamCallbacks &modInstCamCallbacks);
     void resetPositionWindowOctreeView();
 
     void updateDescriptorSets(VkRenderData& renderData);

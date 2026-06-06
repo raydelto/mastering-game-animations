@@ -2,12 +2,14 @@
 #pragma once
 
 #include <vector>
+#include <array>
 #include <string>
 #include <cstdint>
 #include <memory>
 #include <map>
 #include <chrono>
 #include <random>
+#include <tuple>
 
 #include <glm/glm.hpp>
 
@@ -47,23 +49,43 @@
 #include <DynamicLightDebugModel.h>
 #include <FullSphereModel.h>
 
-#include <VRHeadset.h>
-
 #include <VkRenderData.h>
 #include <ModelInstanceCamData.h>
+#include <ModelInstanceCamCallbacks.h>
 
 #include <Callbacks.h>
 
 class VkRenderer {
   public:
-    VkRenderer(GLFWwindow *window);
-
-    bool init(unsigned int width, unsigned int height);
+    bool init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR);
     void setSize(unsigned int width, unsigned int height);
 
-    void pollXREvents();
+    VkDevice getDevice();
+    VkInstance getInstance();
+    VkPhysicalDevice getPhysicalDevice();
+    bool createXRPipeline(VkFormat format);
+    void destroyXRPipeline();
+
+    void setPhysicalDevice(VkPhysicalDevice physDevice);
+    void setRendererMICCallbacks(ModelInstanceCamCallbacks callbacks);
+
+    std::pair<uint32_t, uint32_t> getQueueFamilyAndIndex();
+    std::pair<float, float> getNearAndFarPlane();
+
+    void setXRSize(unsigned int width, unsigned int height);
 
     bool draw(float deltaTime);
+
+    bool initDraw(float deltaTime);
+    bool acquireDesktopImage();
+    bool updateLevelAndModels(float deltaTime);
+    bool renderGraphics();
+    bool copyToXRSwapchain(VkImageView imageVIew);
+    bool updateCamera(XRProjectionViewMatrices &matrices, float deltaTime);
+    bool submitGraphics();
+    bool checkForSelection();
+    bool presentDesktopImage();
+    bool finishDraw();
 
     void handleKeyEvents(int key, int scancode, int action, int mods);
     void handleMouseButtonEvents(int button, int action, int mods);
@@ -122,8 +144,11 @@ class VkRenderer {
 
     void drawScene(bool shadowMapPass = false, bool dynamicsShadows = false, uint32_t dynLight = 0);
 
+    uint32_t mImageIndex = 0;
+
     VkRenderData mRenderData{};
     ModelInstanceCamData mModelInstCamData{};
+    ModelInstanceCamCallbacks mModelInstCamCallbacks{};
 
     UserInterface mUserInterface{};
 
@@ -163,6 +188,7 @@ class VkRenderer {
 
     unsigned int mLineIndexCount = 0;
     uint32_t mCollidingSphereCount = 0;
+    uint32_t mSphereVertexCount = 0;
 
     bool mMouseLock = false;
     int mMouseXPos = 0;
@@ -309,6 +335,4 @@ class VkRenderer {
     void updateShaderLightData();
 
     DynamicLightDebugModel mDynLightModel{};
-
-    VRHeadset mVRHeadSet{};
 };

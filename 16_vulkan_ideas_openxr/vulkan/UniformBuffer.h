@@ -8,6 +8,8 @@
 
 class UniformBuffer {
   public:
+    static bool init(VkRenderData &renderData, std::vector<VkUniformBufferData> &uboData, size_t bufferSize = 1024);
+
     static bool init(VkRenderData &renderData, VkUniformBufferData &uboData, size_t size);
 
     template <typename T>
@@ -24,5 +26,7 @@ class UniformBuffer {
     }
 
     static void uploadData(VkRenderData &renderData, VkUniformBufferData &uboData, std::vector<glm::vec4> data);
+
+    static void cleanup(VkRenderData &renderData, std::vector<VkUniformBufferData> &uboData);
     static void cleanup(VkRenderData &renderData, VkUniformBufferData &uboData);
 };

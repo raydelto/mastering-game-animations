@@ -34,7 +34,6 @@ struct ModelInstanceCamData {
   int micSelectedCamera = 0;
 
   std::unordered_map<cameraType, std::string> micCameraTypeMap{};
-  std::unordered_map<cameraProjection, std::string> micCameraProjectionMap{};
   std::unordered_map<moveDirection, std::string> micMoveDirectionMap{};
   std::unordered_map<moveState, std::string> micMoveStateMap{};
 
@@ -56,92 +55,4 @@ struct ModelInstanceCamData {
    * so let's use a separate pending list */
   std::unordered_set<std::shared_ptr<AssimpModel>> micPendingDeleteAssimpModels{};
   std::unordered_set<std::shared_ptr<AssimpLevel>> micPendingDeleteAssimpLevels{};
-
-  // callbacks
-  setWindowTitleCallback micSetWindowTitleFunction;
-  getWindowTitleCallback micGetWindowTitleFunction;
-  setAppModeCallback micSsetAppModeCallbackFunction;
-
-  modelCheckCallback micModelCheckCallbackFunction;
-  modelAddCallback micModelAddCallbackFunction;
-  modelDeleteCallback micModelDeleteCallbackFunction;
-
-  instanceAddCallback micInstanceAddCallbackFunction;
-  instanceAddManyCallback micInstanceAddManyCallbackFunction;
-  instanceDeleteCallback micInstanceDeleteCallbackFunction;
-  instanceCloneCallback micInstanceCloneCallbackFunction;
-  instanceCloneManyCallback micInstanceCloneManyCallbackFunction;
-
-  instanceCenterCallback micInstanceCenterCallbackFunction;
-
-  dynLightAddCallback micDynLightAddCallbackFunction;
-  dynLightDeleteCallback micDynLightDeleteCallbackFunction;
-  dynLightCloneCallback micDynLightCloneCallbackFunction;
-  dynLightCenterCallback micDynLightCenterCallbackFunction;
-  dynLightSphereShadowChangedCallback dynLightSphereShadowChangedCallbackFunction;
-
-  undoRedoCallback micUndoCallbackFunction;
-  undoRedoCallback micRedoCallbackFunction;
-
-  loadSaveCallback micSaveConfigCallbackFunction;
-  loadSaveCallback micLoadConfigCallbackFunction;
-
-  newConfigCallback micNewConfigCallbackFunction;
-  setConfigDirtyCallback micSetConfigDirtyCallbackFunction;
-  getConfigDirtyCallback micGetConfigDirtyCallbackFunction;
-
-  cameraCloneCallback micCameraCloneCallbackFunction;
-  cameraDeleteCallback micCameraDeleteCallbackFunction;
-  cameraNameCheckCallback micCameraNameCheckCallbackFunction;
-
-  instanceGetPositionsCallback micInstanceGetPositionsCallbackFunction;
-
-  octreeQueryBBoxCallback micOctreeQueryBBoxCallbackFunction;
-  octreeFindAllIntersectionsCallback micOctreeFindAllIntersectionsCallbackFunction;
-  octreeGetBoxesCallback micOctreeGetBoxesCallbackFunction;
-
-  worldGetBoundariesCallback micWorldGetBoundariesCallbackFunction;
-
-  editNodeGraphCallback micEditNodeGraphCallbackFunction;
-  createEmptyNodeGraphCallback micCreateEmptyNodeGraphCallbackFunction;
-  nodeEventCallback micNodeEventCallbackFunction;
-  postNodeTreeDelBehaviorCallback micPostNodeTreeDelBehaviorCallbackFunction;
-
-  instanceAddBehaviorCallback micInstanceAddBehaviorCallbackFunction;
-  instanceDelBehaviorCallback micInstanceDelBehaviorCallbackFunction;
-  modelAddBehaviorCallback micModelAddBehaviorCallbackFunction;
-  modelDelBehaviorCallback micModelDelBehaviorCallbackFunction;
-
-  levelCheckCallback micLevelCheckCallbackFunction;
-  levelAddCallback micLevelAddCallbackFunction;
-  levelDeleteCallback micLevelDeleteCallbackFunction;
-  levelGenerateLevelDataCallback micLevelGenerateLevelDataCallbackFunction;
-  triangleOctreeChangeCallback micTriangleOctreeChangeCallbackFunction;
-
-  ikIterationsCallback micIkIterationsCallbackFunction;
-
-  getNavTargetsCallback micGetNavTargetsCallbackFunction;
-
-  isAudioManagerInitializedCallback micIsAudioManagerInitializedCallbackFunction;
-  playRandomMusicCallback micPlayRandomMusicCallbackFunction;
-  pauseResumeMusicCallback micPauseResumeMusicCallbackFunction;
-  isMusicPausedCallback micIsMusicPausedCallbackFunction;
-  isMusicPlayingCallback micIsMusicPlayingCallbackFunction;
-  stopMusicCallback micStopMusicCallbackFunction;
-  playNextMusicTrackCallback micPlayNextMusicTrackCallbackFunction;
-  playPrevMusicTrackCallback micPlayPrevMusicTrackCallbackFunction;
-  playMusicTitleCallback micPlayMusicTitleCallbackFunction;
-
-  setMusicVolumeCallback micSetMusicVolumeCallbackFunction;
-  getMusicVolumeCallback micGetMusicVolumeCallbackFunction;
-
-  getMusicPlayListCallback micGetMusicPlayListCallbackFunction;
-  getMusicCurrentTrackCallback micGetMusicCurrentTrackCallbackFunction;
-
-  setSoundEffectsVolumeCallback micSetSoundEffectsVolumeCallbackFunction;
-  getSoundEffectsVolumeCallback micGetSoundEffectsVolumeCallbackFunction;
-
-  playWalkFootstepCallback micPlayWalkFootstepCallbackFunction;
-  playRunFootstepCallback micPlayRunFootstepCallbackFunction;
-  stopFootstepCallback micStopFootstepCallbackFunction;
 };

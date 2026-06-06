@@ -4,11 +4,11 @@
 #include <chrono>
 #include <GLFW/glfw3.h>
 
-#include <VkRenderer.h>
+#include <VRHeadset.h>
 #include <AudioManager.h>
 #include <Callbacks.h>
 
-class Window {
+class AppWindow {
   public:
     bool init(unsigned int width, unsigned int height, std::string title);
     void mainLoop();
@@ -23,7 +23,7 @@ class Window {
 
     std::string mWindowTitle;
 
-    std::unique_ptr<VkRenderer> mRenderer = nullptr;
+    VRHeadset mVRHeadset{};
 
     AudioManager mAudioManager{};
 };

@@ -2,13 +2,17 @@
 #include <cstring>
 #include <algorithm>
 
-#include <XRCopyPipeline.h>
 #include <VRHeadset.h>
+#include <glm/gtx/string_cast.hpp>
 
 #include <Logger.h>
 
-bool VRHeadset::initXR() {
+bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
   Logger::log(1, "%s: VR Headset init start\n", __FUNCTION__);
+  if (!window) {
+    Logger::log(1, "%s error: invalid GLFWwindow handle\n", __FUNCTION__);
+    return false;
+  }
 
   if (!createXRInstance()) {
     return false;
@@ -46,13 +50,17 @@ bool VRHeadset::initXR() {
     return false;
   }
 
-  Logger::log(1, "%s: VR Headset init success\n", __FUNCTION__);
+  mRenderer = std::make_shared<VkRenderer>();
+  mRenderer->setRendererMICCallbacks(callbacks);
+  mRenderer->setXRSize(mWidth, mHeight);
 
-  return true;
-}
+  if (!mRenderer->init(window, mVKDeviceExtensionsForXR, mVKInstanceExtensionsForXR)) {
+    return false;
+  }
 
-bool VRHeadset::initXRSecondHalf(VkRenderData& renderData) {
-  if (!createXRSession(renderData)) {
+  mVulkanDevice = mRenderer->getDevice();
+
+  if (!createXRSession()) {
     return false;
   }
 
@@ -60,29 +68,30 @@ bool VRHeadset::initXRSecondHalf(VkRenderData& renderData) {
     return false;
   }
 
-  if (!createXRSwapchain(renderData)) {
+  if (!createXRSwapchain()) {
     return false;
   }
 
-  if (!createXRPipeline(renderData)) {
+  if (!mRenderer->createXRPipeline(mSwapchainFormat)) {
     return false;
   }
 
-  Logger::log(1, "%s: VR Headset 2nd half init success\n", __FUNCTION__);
+  Logger::log(1, "%s: VR Headset init success\n", __FUNCTION__);
 
   return true;
 }
 
-void VRHeadset::cleanupXR() {
-  destroyXRDebugMessenger();
-  destroyXRInstance();
-}
+void VRHeadset::cleanup() {
+  mRenderer->destroyXRPipeline();
 
-void VRHeadset::cleanupXRSecondHalf(VkRenderData &renderData) {
-  destroyXRPipeline(renderData);
-  destroyXRSwapchain(renderData);
+  destroyXRSwapchain();
   destroyXRReferenceSpace();
   destroyXRSession();
+
+  mRenderer->cleanup();
+
+  destroyXRDebugMessenger();
+  destroyXRInstance();
 }
 
 bool VRHeadset::isXRSessionRunning() {
@@ -93,8 +102,8 @@ bool VRHeadset::isXRApplicationRunning() {
   return mApplicationRunning;
 }
 
-std::pair<unsigned int, unsigned int> VRHeadset::getXRResolution() {
-  return std::make_pair(mWidth, mHeight);
+std::shared_ptr<VkRenderer> VRHeadset::getVulkanRenderer() {
+  return mRenderer;
 }
 
 void VRHeadset::pollEvents() {
@@ -201,6 +210,51 @@ void VRHeadset::pollEvents() {
     }
   }
 }
+
+bool VRHeadset::draw(float deltaTime) {
+  if (!mRenderer->initDraw(deltaTime)) {
+    return false;
+  }
+
+  if (!mRenderer->acquireDesktopImage()) {
+    return false;
+  }
+
+  if (!mRenderer->updateLevelAndModels(deltaTime)) {
+    return false;
+  }
+
+  if (!mRenderer->renderGraphics()) {
+    return false;
+  }
+
+  if (!renderXRFrame(deltaTime)) {
+    return false;
+  }
+
+  if (!mRenderer->submitGraphics()) {
+    return false;
+  }
+
+  if (!endXRFrame()) {
+    return false;
+  }
+
+  if (!mRenderer->checkForSelection()) {
+    return false;
+  }
+
+  if (!mRenderer->presentDesktopImage()) {
+    return false;
+  }
+
+  if (!mRenderer->finishDraw()) {
+    return false;
+  }
+
+  return true;
+}
+
 
 bool VRHeadset::createXRInstance() {
   std::strncpy(mXRAppInfo.applicationName, "Mastering C++ Game Animation Programming - VR", XR_MAX_APPLICATION_NAME_SIZE);
@@ -419,7 +473,9 @@ bool VRHeadset::getViewConfigViews() {
   }
 
   mWidth = mViewConfigurationViews.at(0).recommendedImageRectWidth;
-  mHeight = mViewConfigurationViews.at(0).recommendedImageRectWidth;
+  mHeight = mViewConfigurationViews.at(0).recommendedImageRectHeight;
+
+  mViews.resize(mViewConfigurationViews.size(), {XR_TYPE_VIEW});
 
   return true;
 }
@@ -485,7 +541,10 @@ bool VRHeadset::getVulkanGraphicsRequirements() {
 }
 
 
-bool VRHeadset::createXRSession(VkRenderData& renderData) {
+bool VRHeadset::createXRSession() {
+  VkPhysicalDevice vulkanPhysDevice = mRenderer->getPhysicalDevice();
+  VkInstance vulkanInstance = mRenderer->getInstance();
+
   PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDeviceKHR = nullptr;
   XrResult result = xrGetInstanceProcAddr(mXRInstance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction *)&xrGetVulkanGraphicsDeviceKHR);
   if (result != XR_SUCCESS) {
@@ -493,42 +552,24 @@ bool VRHeadset::createXRSession(VkRenderData& renderData) {
     return false;
   }
 
-  result = xrGetVulkanGraphicsDeviceKHR(mXRInstance, mSystemID, renderData.rdVkbInstance.instance, &mPhysicalDevice);
+  result = xrGetVulkanGraphicsDeviceKHR(mXRInstance, mSystemID, vulkanInstance, &mPhysicalDevice);
   if (result != XR_SUCCESS) {
     Logger::log(1, "%s error: Failed to get OpenXC physical device (error code: %i)\n", __FUNCTION__, result);
     return false;
   }
 
-  if (renderData.rdVkbPhysicalDevice.physical_device != mPhysicalDevice) {
+  if (vulkanPhysDevice != mPhysicalDevice) {
     Logger::log(1, "%s warning: OpenXR physial device is different from Vulkan physical device\n", __FUNCTION__);
-    renderData.rdVkbPhysicalDevice.physical_device = mPhysicalDevice;
+    mRenderer->setPhysicalDevice(mPhysicalDevice);
   }
 
   XrGraphicsBindingVulkanKHR xRGraphicsBinding{};
   xRGraphicsBinding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR;
-  xRGraphicsBinding.instance = renderData.rdVkbInstance.instance;
-  xRGraphicsBinding.physicalDevice = renderData.rdVkbPhysicalDevice.physical_device;
-  xRGraphicsBinding.device = renderData.rdVkbDevice.device;
+  xRGraphicsBinding.instance = vulkanInstance;
+  xRGraphicsBinding.physicalDevice = vulkanPhysDevice;
+  xRGraphicsBinding.device = mVulkanDevice;
 
-  std::vector<VkQueueFamilyProperties> queueFamilies = renderData.rdVkbPhysicalDevice.get_queue_families();
-
-  int i = 0;
-  for (const auto& queueFamily : queueFamilies) {
-    if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-      xRGraphicsBinding.queueFamilyIndex = i;
-      break;
-    }
-
-    ++i;
-  }
-
-  auto queueIndexRet = renderData.rdVkbDevice.get_queue_index(vkb::QueueType::graphics);
-  if (queueIndexRet.has_value()) {
-    xRGraphicsBinding.queueIndex = queueIndexRet.value();
-  }
-
-  Logger::log(1, "%s: Found graphics queue familiy at index %i, graphics queue at index %i\n", __FUNCTION__, xRGraphicsBinding.queueFamilyIndex, xRGraphicsBinding.queueIndex);
-
+  std::tie(xRGraphicsBinding.queueFamilyIndex, xRGraphicsBinding.queueIndex) = mRenderer->getQueueFamilyAndIndex();
 
   XrSessionCreateInfo sessionInfo{};
   sessionInfo.type = XR_TYPE_SESSION_CREATE_INFO;
@@ -576,14 +617,6 @@ bool VRHeadset::createXRDebugMessenger() {
 
   Logger::log(1, "%s: Debug utils manager created\n", __FUNCTION__);
   return true;
-}
-
-std::vector<std::string> VRHeadset::getVKDeviceExtensionsForXR() {
-  return mVKDeviceExtensionsForXR;
-}
-
-std::vector<std::string> VRHeadset::getVKInstanceExtensionsForXR() {
-  return mVKInstanceExtensionsForXR;
 }
 
 bool VRHeadset::getVKDeviceExtensions() {
@@ -664,7 +697,7 @@ bool VRHeadset::createXRReferenceSpace() {
   return true;
 }
 
-bool VRHeadset::createXRSwapchain(VkRenderData &renderData) {
+bool VRHeadset::createXRSwapchain() {
   uint32_t formatCount = 0;
   XrResult result = xrEnumerateSwapchainFormats(mSession, 0, &formatCount, nullptr);
   if (result != XR_SUCCESS) {
@@ -688,112 +721,113 @@ bool VRHeadset::createXRSwapchain(VkRenderData &renderData) {
     }
   }
 
-  mSwapchains.resize(mViewConfigurationViews.size());
-  for (size_t i = 0; i < mViewConfigurationViews.size(); ++i) {
-    uint32_t viewCount = static_cast<uint32_t>(mViewConfigurationViews.size());
+  uint32_t viewCount = static_cast<uint32_t>(mViewConfigurationViews.size());
 
-    XrSwapchainCreateInfo swapchainCreateInfo{};
-    swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-    swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    swapchainCreateInfo.format = chosenFormat;
-    swapchainCreateInfo.sampleCount = mViewConfigurationViews.at(i).recommendedSwapchainSampleCount;
-    swapchainCreateInfo.width = mViewConfigurationViews.at(i).recommendedImageRectWidth;
-    swapchainCreateInfo.height = mViewConfigurationViews.at(i).recommendedImageRectHeight;
-    swapchainCreateInfo.faceCount = 1;
-    swapchainCreateInfo.arraySize = viewCount;
-    swapchainCreateInfo.mipCount = 1;
+  XrSwapchainCreateInfo swapchainCreateInfo{};
+  swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
+  swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+  swapchainCreateInfo.format = chosenFormat;
+  swapchainCreateInfo.sampleCount = mViewConfigurationViews.at(0).recommendedSwapchainSampleCount;
+  swapchainCreateInfo.width = mViewConfigurationViews.at(0).recommendedImageRectWidth;
+  swapchainCreateInfo.height = mViewConfigurationViews.at(0).recommendedImageRectHeight;
 
-    result = xrCreateSwapchain(mSession, &swapchainCreateInfo, &mSwapchains.at(i).swapchain);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s error: Failed to create spwachain (error code: %i)\n", __FUNCTION__, result);
+  swapchainCreateInfo.faceCount = 1;
+  swapchainCreateInfo.arraySize = viewCount;
+  swapchainCreateInfo.mipCount = 1;
+
+  result = xrCreateSwapchain(mSession, &swapchainCreateInfo, &mSwapchain.swapchain);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to create spwachain (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  mSwapchainFormat = static_cast<VkFormat>(chosenFormat);
+
+  uint32_t swapchainImageCount = 0;
+  result = xrEnumerateSwapchainImages(mSwapchain.swapchain, 0, &swapchainImageCount, nullptr);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get number of swapchain images (error code: %i)\n", __FUNCTION__, result);
+  }
+
+  Logger::log(1, "%s: OpenXR Swapchain has %i images\n", __FUNCTION__, swapchainImageCount);
+
+  std::vector<XrSwapchainImageVulkanKHR> swapchainImages(swapchainImageCount, { .type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
+
+  result = xrEnumerateSwapchainImages(mSwapchain.swapchain, swapchainImageCount, &swapchainImageCount, (XrSwapchainImageBaseHeader*)swapchainImages.data());
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get swapchain images (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  mSwapchain.swapchainImages = std::move(swapchainImages);
+
+  for (uint32_t j = 0; j < swapchainImageCount; ++j) {
+    VkImageViewCreateInfo imageViewCI{};
+    imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCI.viewType =VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    imageViewCI.image = mSwapchain.swapchainImages.at(j).image;
+    imageViewCI.format = mSwapchainFormat;
+    imageViewCI.subresourceRange.baseMipLevel = 0;
+    imageViewCI.subresourceRange.levelCount = 1;
+    imageViewCI.subresourceRange.baseArrayLayer = 0;
+    imageViewCI.subresourceRange.layerCount = viewCount;
+    imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+    VkImageView imageView;
+    VkResult vkresult = vkCreateImageView(mVulkanDevice, &imageViewCI, nullptr, &imageView);
+    if (vkresult != VK_SUCCESS) {
+      Logger::log(1, "%s error: Failed to create image view (error code: %i)\n", __FUNCTION__, vkresult);
       return false;
     }
 
-    mSwapchains.at(i).format = static_cast<VkFormat>(chosenFormat);
-
-    uint32_t swapchainImageCount = 0;
-    result = xrEnumerateSwapchainImages(mSwapchains.at(i).swapchain, 0, &swapchainImageCount, nullptr);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s error: Failed to get number of swapchain images (error code: %i)\n", __FUNCTION__, result);
-    }
-
-    Logger::log(1, "%s: OpenXR Swapchain %i has %i images\n", __FUNCTION__, i, swapchainImageCount);
-
-    std::vector<XrSwapchainImageVulkanKHR> swapchainImages(swapchainImageCount, { .type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR });
-
-    result = xrEnumerateSwapchainImages(mSwapchains.at(i).swapchain, swapchainImageCount, &swapchainImageCount, (XrSwapchainImageBaseHeader*)swapchainImages.data());
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s error: Failed to get swapchain images (error code: %i)\n", __FUNCTION__, result);
-      return false;
-    }
-
-    mSwapchains.at(i).swapchainImages = std::move(swapchainImages);
-
-    for (uint32_t j = 0; j < swapchainImageCount; j++) {
-      VkImageViewCreateInfo imageViewCI{};
-      imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-      imageViewCI.viewType =VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-      imageViewCI.image = mSwapchains.at(i).swapchainImages.at(j).image;
-      imageViewCI.format = mSwapchains.at(i).format;
-      imageViewCI.subresourceRange.baseMipLevel = 0;
-      imageViewCI.subresourceRange.levelCount = 1;
-      imageViewCI.subresourceRange.baseArrayLayer = 0;
-      imageViewCI.subresourceRange.layerCount = viewCount;
-      imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-      VkImageView imageView;
-      VkResult vkresult = vkCreateImageView(renderData.rdVkbDevice.device, &imageViewCI, nullptr, &imageView);
-      if (vkresult != VK_SUCCESS) {
-        Logger::log(1, "%s error: Failed to create image view (error code: %i)\n", __FUNCTION__, vkresult);
-        return false;
-      }
-
-      mSwapchains.at(i).swapchainImageViews.push_back(imageView);
-    }
+    mSwapchain.swapchainImageViews.push_back(imageView);
   }
 
   Logger::log(1, "%s: OpenXR Swapchains created (%ix%i)\n", __FUNCTION__, mWidth, mHeight);
   return true;
 }
 
-bool VRHeadset::createXRPipeline(VkRenderData& renderData) {
-  std::vector<VkFormat> swapchainCopyAttachmentFormats {
-    mSwapchains.at(0).format,
-  };
+void VRHeadset::createXRCameraMatrices() {
+  for (uint32_t i = 0; i < mViewCount; ++i) {
+    glm::mat4 projMatrix = glm::mat4(0.0f);
 
-  std::string vertexShaderFile = "shader/xr_swapchain_copy.vert.spv";
-  std::string fragmentShaderFile = "shader/xr_swapchain_copy.frag.spv";
-  if (!XRCopyPipeline::init(renderData, swapchainCopyAttachmentFormats, renderData.rdSwapchainCopyPipelineLayout,
-      mXRSwapchainCopyPipeline,
-      vertexShaderFile, fragmentShaderFile)) {
-    Logger::log(1, "%s error: could not init XR Swapchain Copy shader pipeline\n", __FUNCTION__);
-    return false;
+    const float left = std::tan(mViews.at(i).fov.angleLeft);
+    const float right = std::tan(mViews.at(i).fov.angleRight);
+    // swap for Vulkan
+    const float bottom = std::tan(mViews.at(i).fov.angleUp);
+    const float top = std::tan(mViews.at(i).fov.angleDown);
+
+    // ignore near value in first two elements
+    projMatrix[0][0] = 2.0f / (right - left);
+    projMatrix[1][1] = 2.0f / (top - bottom);
+
+    projMatrix[2][0] = (right + left) / (right - left);
+    projMatrix[2][1] = (top + bottom) / (top - bottom);
+    projMatrix[2][2] = mFarPlane / (mNearPlane - mFarPlane);
+    projMatrix[2][3] = -1.0f;
+    projMatrix[3][2] = -(mFarPlane * mNearPlane) / (mFarPlane - mNearPlane);
+
+    mProjViewMatrices.projectionMat.at(i) = projMatrix;
+
+    glm::vec3 posePosition = glm::vec3(
+      mViews.at(i).pose.position.x,
+      mViews.at(i).pose.position.y,
+      mViews.at(i).pose.position.z);
+
+    // TODO: scaling
+    mProjViewMatrices.viewTransposeMat.at(i) = glm::translate(glm::mat4(1.0f), posePosition * 5.0f);
+
+    glm::quat poseOrientation = glm::quat();
+      poseOrientation.x = mViews.at(i).pose.orientation.x;
+      poseOrientation.y = mViews.at(i).pose.orientation.y;
+      poseOrientation.z = mViews.at(i).pose.orientation.z;
+      poseOrientation.w = mViews.at(i).pose.orientation.w;
+
+    mProjViewMatrices.viewOrientationMat.at(i) = glm::mat4_cast( poseOrientation);
   }
-
-  return true;
 }
 
-glm::mat4 VRHeadset::createXRProjectionMatrix(float left, float right, float bottom, float top, float nearZ, float farZ) {
-  glm::mat4 projMatrix = glm::mat4(0.0f);
-
-  // ignore near value in first two elements
-  projMatrix[0][0] = 2.0f / (right - left);
-  projMatrix[1][1] = 2.0f / (top - bottom);
-
-  projMatrix[2][0] = (right + left) / (right - left);
-  projMatrix[2][1] = (top + bottom) / (top - bottom);
-  projMatrix[2][2] = farZ / (nearZ - farZ);
-  projMatrix[2][3] = -1.0f;
-  projMatrix[3][2] = -(farZ * nearZ) / (farZ - nearZ);
-
-  return projMatrix;
-}
-
-
-
-bool VRHeadset::beginXRFrame(VkRenderData &renderData) {
-  mFrameState = { .type = XR_TYPE_FRAME_STATE };
-
+bool VRHeadset::renderXRFrame(float deltaTime) {
   XrFrameWaitInfo frameWaitInfo{};
   frameWaitInfo.type = XR_TYPE_FRAME_WAIT_INFO;
 
@@ -812,180 +846,103 @@ bool VRHeadset::beginXRFrame(VkRenderData &renderData) {
     return false;
   }
 
+  mRenderLayerInfos = {};
+
+  XrViewState viewState{};
+  viewState.type = XR_TYPE_VIEW_STATE;
+
+  XrViewLocateInfo viewLocateInfo{};
+  viewLocateInfo.type = XR_TYPE_VIEW_LOCATE_INFO;
+  viewLocateInfo.viewConfigurationType = mViewConfiguration;
+  viewLocateInfo.displayTime = mFrameState.predictedDisplayTime;
+  viewLocateInfo.space = mLocalSpace;
+
+  result = xrLocateViews(mSession, &viewLocateInfo, &viewState, static_cast<uint32_t>(mViews.size()), &mViewCount, mViews.data());
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s: Failed to locate views (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  mRenderLayerInfos.layerProjectionViews.resize(mViewCount);
+
+  XrSwapchainImageAcquireInfo acquireInfo{};
+  acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;
+
+  result = xrAcquireSwapchainImage(mSwapchain.swapchain, &acquireInfo, &mColorImageIndex);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s: Failed to acquire image from Swapchain (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  XrSwapchainImageWaitInfo waitInfo{};
+  waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
+  waitInfo.timeout = XR_INFINITE_DURATION;
+
+  result = xrWaitSwapchainImage(mSwapchain.swapchain, &waitInfo);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s: Failed to wait for image from Swapchain (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  // Camera update
+  std::tie(mNearPlane, mFarPlane) = mRenderer->getNearAndFarPlane();
+  createXRCameraMatrices();
+
+  const uint32_t &width = mViewConfigurationViews.at(0).recommendedImageRectWidth;
+  const uint32_t &height = mViewConfigurationViews.at(0).recommendedImageRectHeight;
+
+  for (uint32_t i = 0; i < mViewCount; ++i) {
+    mRenderLayerInfos.layerProjectionViews.at(i).type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+    mRenderLayerInfos.layerProjectionViews.at(i).pose = mViews.at(i).pose;
+    mRenderLayerInfos.layerProjectionViews.at(i).fov = mViews.at(i).fov;
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.swapchain = mSwapchain.swapchain;
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.imageRect.offset.x = 0;
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.imageRect.offset.y = 0;
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.imageRect.extent.width = static_cast<int32_t>(width);
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.imageRect.extent.height = static_cast<int32_t>(height);
+    mRenderLayerInfos.layerProjectionViews.at(i).subImage.imageArrayIndex = i;  // Useful for multiview rendering.
+  }
+
+
   bool sessionActive = (mSessionState == XR_SESSION_STATE_SYNCHRONIZED || mSessionState == XR_SESSION_STATE_VISIBLE || mSessionState == XR_SESSION_STATE_FOCUSED);
   if (sessionActive && mFrameState.shouldRender) {
-    mViews = std::vector<XrView>(mViewConfigurationViews.size(), { XR_TYPE_VIEW });
-
-    XrViewState viewState{};
-    viewState.type = XR_TYPE_VIEW_STATE;
-
-    XrViewLocateInfo viewLocateInfo{};
-    viewLocateInfo.type = XR_TYPE_VIEW_LOCATE_INFO;
-    viewLocateInfo.viewConfigurationType = mViewConfiguration;
-    viewLocateInfo.displayTime = mFrameState.predictedDisplayTime;
-    viewLocateInfo.space = mLocalSpace;
-
-    XrResult result = xrLocateViews(mSession, &viewLocateInfo, &viewState, static_cast<uint32_t>(mViews.size()), &mViewCount, mViews.data());
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s: Failed to locate views (error code: %i)\n", __FUNCTION__, result);
-      return false;
-    }
-
-    // Camera update
-    for (uint32_t i = 0; i < mViewCount; ++i) {
-      // orientation as quaternion
-      renderData.rdXRPoseOrientations.at(i).x = mViews.at(i).pose.orientation.x;
-      renderData.rdXRPoseOrientations.at(i).y = mViews.at(i).pose.orientation.y;
-      renderData.rdXRPoseOrientations.at(i).z = mViews.at(i).pose.orientation.z;
-      renderData.rdXRPoseOrientations.at(i).w = mViews.at(i).pose.orientation.w;
-
-      renderData.rdXRPosePositions.at(i).x = mViews.at(i).pose.position.x;
-      renderData.rdXRPosePositions.at(i).y = mViews.at(i).pose.position.y;
-      renderData.rdXRPosePositions.at(i).z = mViews.at(i).pose.position.z;
-
-      // field of view angles are in radians
-      renderData.rdXRFoVs.at(i).left = mViews.at(i).fov.angleLeft;
-      renderData.rdXRFoVs.at(i).right = mViews.at(i).fov.angleRight;
-      renderData.rdXRFoVs.at(i).up = mViews.at(i).fov.angleUp;
-      renderData.rdXRFoVs.at(i).down = mViews.at(i).fov.angleDown;
-    }
+    mRenderer->copyToXRSwapchain(mSwapchain.swapchainImageViews.at(mColorImageIndex));
   }
+
+  // always update camera for local view
+  mRenderer->updateCamera(mProjViewMatrices, deltaTime);
 
   return true;
 }
 
-bool VRHeadset::renderXRFrame(VkRenderData &renderData) {
-  bool rendered = false;
-  XRRenderLayerInfo renderLayerInfos;
-  renderLayerInfos.predictedDisplayTime = mFrameState.predictedDisplayTime;
-
-  bool sessionActive = (mSessionState == XR_SESSION_STATE_SYNCHRONIZED || mSessionState == XR_SESSION_STATE_VISIBLE || mSessionState == XR_SESSION_STATE_FOCUSED);
-  if (sessionActive && mFrameState.shouldRender) {
-    rendered = renderXRLayer(renderData, renderLayerInfos);
-    if (rendered) {
-      renderLayerInfos.layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader *>(&renderLayerInfos.layerProjection));
-    }
+bool VRHeadset::endXRFrame() {
+  XrSwapchainImageReleaseInfo releaseInfo{};
+  releaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
+  XrResult result = xrReleaseSwapchainImage(mSwapchain.swapchain, &releaseInfo);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s: Failed to release image back to Swapchain (error code: %i)\n", __FUNCTION__, result);
+    return false;
   }
+
+  mRenderLayerInfos.layerProjection.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT | XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+  mRenderLayerInfos.layerProjection.space = mLocalSpace;
+  mRenderLayerInfos.layerProjection.viewCount = static_cast<uint32_t>(mRenderLayerInfos.layerProjectionViews.size());
+  mRenderLayerInfos.layerProjection.views = mRenderLayerInfos.layerProjectionViews.data();
+
+  mRenderLayerInfos.layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader *>(&mRenderLayerInfos.layerProjection));
 
   XrFrameEndInfo frameEndInfo{};
   frameEndInfo.type = XR_TYPE_FRAME_END_INFO;
   frameEndInfo.displayTime = mFrameState.predictedDisplayTime;
   frameEndInfo.environmentBlendMode = mEnvironmentBlendMode;
-  frameEndInfo.layerCount = static_cast<uint32_t>(renderLayerInfos.layers.size());
-  frameEndInfo.layers = renderLayerInfos.layers.data();
+  frameEndInfo.layerCount = static_cast<uint32_t>(mRenderLayerInfos.layers.size());
+  frameEndInfo.layers = mRenderLayerInfos.layers.data();
 
-  XrResult result = xrEndFrame(mSession, &frameEndInfo);
+  result = xrEndFrame(mSession, &frameEndInfo);
   if (result != XR_SUCCESS) {
     Logger::log(1, "%s: Failed to end OpenXR frame (error code: %i)\n", __FUNCTION__, result);
     return false;
   }
-
-  return true;
-}
-
-bool VRHeadset::renderXRLayer(VkRenderData &renderData, XRRenderLayerInfo& renderLayerInfo) {
-  renderLayerInfo.layerProjectionViews.resize(mViewCount, { .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW });
-  for (uint32_t i = 0; i < mViewCount; ++i) {
-    uint32_t colorImageIndex = 0;
-    XrSwapchainImageAcquireInfo acquireInfo{};
-    acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;
-
-    XrResult result = xrAcquireSwapchainImage(mSwapchains.at(i).swapchain, &acquireInfo, &colorImageIndex);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s: Failed to acquire image from Swapchain (error code: %i)\n", __FUNCTION__, result);
-      return false;
-    }
-
-    XrSwapchainImageWaitInfo waitInfo{};
-    waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
-    waitInfo.timeout = XR_INFINITE_DURATION;
-
-    result = xrWaitSwapchainImage(mSwapchains.at(i).swapchain, &waitInfo);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s: Failed to wait for image from Swapchain (error code: %i)\n", __FUNCTION__, result);
-      return false;
-    }
-
-    const uint32_t &width = mViewConfigurationViews.at(i).recommendedImageRectWidth;
-    const uint32_t &height = mViewConfigurationViews.at(i).recommendedImageRectHeight;
-
-    renderLayerInfo.layerProjectionViews.at(i).type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-    renderLayerInfo.layerProjectionViews.at(i).pose = mViews.at(i).pose;
-    renderLayerInfo.layerProjectionViews.at(i).fov = mViews.at(i).fov;
-    renderLayerInfo.layerProjectionViews.at(i).subImage.swapchain = mSwapchains.at(i).swapchain;
-    renderLayerInfo.layerProjectionViews.at(i).subImage.imageRect.offset.x = 0;
-    renderLayerInfo.layerProjectionViews.at(i).subImage.imageRect.offset.y = 0;
-    renderLayerInfo.layerProjectionViews.at(i).subImage.imageRect.extent.width = static_cast<int32_t>(width);
-    renderLayerInfo.layerProjectionViews.at(i).subImage.imageRect.extent.height = static_cast<int32_t>(height);
-    renderLayerInfo.layerProjectionViews.at(i).subImage.imageArrayIndex = i;  // Useful for multiview rendering.
-
-    // Vulkan rendering here
-    // copy to Swapchain
-    VkClearValue colorClearValue;
-    colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
-    VkViewport swapchainCopyViewport{};
-    swapchainCopyViewport.x = 0.0f;
-    swapchainCopyViewport.y = 0.0f;
-    swapchainCopyViewport.width = static_cast<float>(width);
-    swapchainCopyViewport.height = static_cast<float>(height);
-    swapchainCopyViewport.minDepth = 0.0f;
-    swapchainCopyViewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = { 0, 0 };
-    scissor.extent = VkExtent2D{width, height};
-
-    vkCmdSetViewport(renderData.rdCommandBuffers.at(renderData.currentFrame), 0, 1, &swapchainCopyViewport);
-    vkCmdSetScissor(renderData.rdCommandBuffers.at(renderData.currentFrame), 0, 1, &scissor);
-
-    VkRenderingAttachmentInfo swapchainAttachmentInfo {};
-    swapchainAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    swapchainAttachmentInfo.imageView = mSwapchains.at(i).swapchainImageViews.at(colorImageIndex);
-    swapchainAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    swapchainAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    swapchainAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    swapchainAttachmentInfo.clearValue = colorClearValue;
-
-    std::vector<VkRenderingAttachmentInfo> swapchainCopyAttachmentInfos {
-      swapchainAttachmentInfo,
-    };
-
-    VkRect2D swapchainRenderArea = VkRect2D{VkOffset2D{}, VkExtent2D{width, height}};
-
-    VkRenderingInfo swapchainCopyRenderInfo{};
-    swapchainCopyRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    swapchainCopyRenderInfo.renderArea = swapchainRenderArea;
-    swapchainCopyRenderInfo.layerCount = 2;
-    swapchainCopyRenderInfo.viewMask = 0b00000011;
-    swapchainCopyRenderInfo.colorAttachmentCount = static_cast<uint32_t>(swapchainCopyAttachmentInfos.size());
-    swapchainCopyRenderInfo.pColorAttachments = swapchainCopyAttachmentInfos.data();
-
-    vkCmdBeginRendering(renderData.rdCommandBuffers.at(renderData.currentFrame), &swapchainCopyRenderInfo);
-
-    vkCmdBindPipeline(renderData.rdCommandBuffers.at(renderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mXRSwapchainCopyPipeline);
-
-    vkCmdBindDescriptorSets(renderData.rdCommandBuffers.at(renderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, renderData.rdSwapchainCopyPipelineLayout, 0, 1,
-      &renderData.rdSwapchainCopyDescriptorSets.at(renderData.currentFrame), 0, nullptr);
-
-    vkCmdDraw(renderData.rdCommandBuffers.at(renderData.currentFrame), 3, 1, 0, 0);
-
-    vkCmdEndRendering(renderData.rdCommandBuffers.at(renderData.currentFrame));
-
-    // Vulkan rendering end
-
-    XrSwapchainImageReleaseInfo releaseInfo{};
-    releaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
-    result = xrReleaseSwapchainImage(mSwapchains.at(i).swapchain, &releaseInfo);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s: Failed to release image back to Swapchain (error code: %i)\n", __FUNCTION__, result);
-      return false;
-    }
-  }
-
-  renderLayerInfo.layerProjection.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT | XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
-  renderLayerInfo.layerProjection.space = mLocalSpace;
-  renderLayerInfo.layerProjection.viewCount = static_cast<uint32_t>(renderLayerInfo.layerProjectionViews.size());
-  renderLayerInfo.layerProjection.views = renderLayerInfo.layerProjectionViews.data();
 
   return true;
 }
@@ -1024,21 +981,15 @@ void VRHeadset::destroyXRReferenceSpace() {
   }
 }
 
-void VRHeadset::destroyXRSwapchain(VkRenderData &renderData) {
-  for (size_t i = 0; i < mViewConfigurationViews.size(); ++i) {
-    for (VkImageView &imageView : mSwapchains.at(i).swapchainImageViews) {
-      vkDestroyImageView(renderData.rdVkbDevice.device, imageView, nullptr);
-    }
-
-    XrResult result = xrDestroySwapchain(mSwapchains.at(i).swapchain);
-    if (result != XR_SUCCESS) {
-      Logger::log(1, "%s error: Failed to destroy swapchain (error code: %i)\n", __FUNCTION__, result);
-    }
+void VRHeadset::destroyXRSwapchain() {
+  for (VkImageView &imageView : mSwapchain.swapchainImageViews) {
+    vkDestroyImageView(mVulkanDevice, imageView, nullptr);
   }
-}
 
-void VRHeadset::destroyXRPipeline(VkRenderData& renderData) {
-  XRCopyPipeline::cleanup(renderData, mXRSwapchainCopyPipeline);
+  XrResult result = xrDestroySwapchain(mSwapchain.swapchain);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to destroy swapchain (error code: %i)\n", __FUNCTION__, result);
+  }
 }
 
 XrBool32 VRHeadset::handleXRErrors(XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT type,
