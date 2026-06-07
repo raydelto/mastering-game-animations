@@ -28,11 +28,6 @@ float linearDepth(float depth) {
 void main() {
   FragColor = texture(tex, texCoord) * vec4(color, 1.0);
 
-  /* orthographic projection already has linear depth */
-  if (farPlane == 0.0) {
-    outDepth = gl_FragCoord.z;
-  } else {
-    outDepth = linearDepth(gl_FragCoord.z);
-  }
+  outDepth = linearDepth(gl_FragCoord.z);
   outNormal = vec4(normalize(normal) * 0.5 + 0.5, 1.0);
 }

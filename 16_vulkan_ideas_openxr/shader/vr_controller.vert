@@ -1,0 +1,38 @@
+#version 460 core
+#extension GL_EXT_multiview : enable
+
+layout (location = 0) in vec4 aPos; // last float is uv.x :)
+layout (location = 1) in vec4 aColor;
+layout (location = 2) in vec4 aNormal; // last float is uv.y
+layout (location = 3) in uvec4 aBoneNum; // ignored
+layout (location = 4) in vec4 aBoneWeight; // ignored
+
+layout (location = 0) out vec3 color;
+layout (location = 1) out vec3 normal;
+layout (location = 2) out vec2 texCoord;
+
+layout (push_constant) uniform Constants {
+  uint modelStride;
+  uint worldPosOffset;
+  uint skinMatrixOffset;
+};
+
+layout (std140, set = 1, binding = 0) uniform Matrices {
+  mat4 viewMat[2];
+  mat4 projectionMat[2];
+};
+
+layout (std430, set = 1, binding = 1) readonly buffer WorldPosMatrices {
+  mat4 worldPosMat[];
+};
+
+void main() {
+  mat4 modelMat = worldPosMat[worldPosOffset];
+
+  gl_Position = projectionMat[gl_ViewIndex] * viewMat[gl_ViewIndex] * modelMat * vec4(aPos.xyz, 1.0);
+
+  normal = transpose(inverse(mat3(modelMat))) * aNormal.xyz;
+
+  color = aColor.rgb;
+  texCoord = vec2(aPos.w, aNormal.w);
+}

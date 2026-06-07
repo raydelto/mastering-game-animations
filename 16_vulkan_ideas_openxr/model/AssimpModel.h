@@ -31,6 +31,8 @@ class AssimpModel {
     void drawInstanced(VkRenderData &renderData, uint32_t instanceCount, bool selectionModeActive);
     void drawInstancedNoMorphAnims(VkRenderData &renderData, uint32_t instanceCount, bool selectionModeActive);
     void drawInstancedMorphAnims(VkRenderData &renderData, uint32_t instanceCount, bool selectionModeActive);
+    void drawXRControllers(VkRenderData &renderData);
+
     unsigned int getTriangleCount();
 
     std::string getModelFileName();

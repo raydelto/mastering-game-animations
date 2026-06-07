@@ -40,11 +40,8 @@ float unlinearizeDepth(float depth) {
 
 vec3 getWorldPosFromDepth(vec2 uv) {
   float depth = 1.0;
-  if (farPlane == 0.0) {
-    depth = texture(ssaoInputDepth, vec3(uv, float(gl_ViewIndex))).r;
-  } else {
-    depth = unlinearizeDepth(texture(ssaoInputDepth, vec3(uv, float(gl_ViewIndex))).r);
-  }
+  depth = unlinearizeDepth(texture(ssaoInputDepth, vec3(uv, float(gl_ViewIndex))).r);
+
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
   pos = invProjectionMat[gl_ViewIndex] * pos;

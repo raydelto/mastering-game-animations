@@ -313,7 +313,27 @@ bool VkRenderer::init(GLFWwindow *window, std::vector<std::string> &deviceExtFor
     Logger::log(1, "%s error: could not load light model '%s'\n", __FUNCTION__, lightModelName.c_str());
     return false;
   }
-  Logger::log(1, "%s: light mode '%s' loaded\n", __FUNCTION__, lightModelName.c_str());
+  Logger::log(1, "%s: light model '%s' loaded\n", __FUNCTION__, lightModelName.c_str());
+
+  // create glTF model for VR controllers
+  mRHandVRControllerModel = std::make_shared<AssimpModel>();
+  std::string rHandControllerModelName = "assets/vr-controller/rhand.glb";
+  if (!mRHandVRControllerModel->loadModel(mRenderData, rHandControllerModelName)) {
+    Logger::log(1, "%s error: could not load VR Controller right hand model '%s'\n", __FUNCTION__, rHandControllerModelName.c_str());
+    return false;
+  }
+  Logger::log(1, "%s: VR Controller right hand model '%s' loaded\n", __FUNCTION__, rHandControllerModelName.c_str());
+
+  mLHandVRControllerModel = std::make_shared<AssimpModel>();
+  std::string lHandControllerModelName = "assets/vr-controller/lhand.glb";
+  if (!mLHandVRControllerModel->loadModel(mRenderData, lHandControllerModelName)) {
+    Logger::log(1, "%s error: could not load VR Controller left hand model '%s'\n", __FUNCTION__, lHandControllerModelName.c_str());
+    return false;
+  }
+  Logger::log(1, "%s: VR Controller left hand model '%s' loaded\n", __FUNCTION__, lHandControllerModelName.c_str());
+
+  mVRHandWorldPosMatrices.resize(2);
+  Logger::log(1, "%s: VR Controller mode data initialized\n", __FUNCTION__);
 
   // try to load the default configuration file
   if (loadConfigFile(mDefaultConfigFileName)) {
@@ -4272,6 +4292,47 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
   }
 }
 
+bool VkRenderer::drawXRControllers(bool shadowMapPass, bool dynamcicShadows, uint32_t dynLight) {
+  // draw VR controllers
+  if (shadowMapPass) {
+    if (dynamcicShadows) {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        mRenderData.rdDynamicShadowMapVRControllerPipeline);
+      vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdDynLightShadowMapConstantDepthBias, 0.0f, mRenderData.rdDynLightShadowMapSlopeDepthBias);
+    } else {
+      vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+          mRenderData.rdShadowMapVRControllerPipeline);
+      vkCmdSetDepthBias(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdShadowMapConstantDepthBias, 0.0f, mRenderData.rdShadowMapSlopeDepthBias);
+    }
+  } else {
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame),
+      VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdVRControllerPipeline);
+  }
+
+  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+    mRenderData.rdVRControllerPipelineLayout, 1, 1, &mRenderData.rdVRControllerDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+
+  mRenderData.rdUploadToUBOTimer.start();
+  mRenderData.rdModelData.pkWorldPosOffset = 0;
+  mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
+  vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdVRControllerPipelineLayout,
+    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+  mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
+
+  mRHandVRControllerModel->drawXRControllers(mRenderData);
+
+  mRenderData.rdUploadToUBOTimer.start();
+  mRenderData.rdModelData.pkWorldPosOffset = 1;
+  mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
+  vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdVRControllerPipelineLayout,
+    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+  mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
+
+  mLHandVRControllerModel->drawXRControllers(mRenderData);
+
+  return true;
+}
+
 bool VkRenderer::initDraw(float deltaTime) {
   if (!mApplicationRunning) {
     return false;
@@ -4374,10 +4435,11 @@ bool VkRenderer::updateLevelAndModels(float deltaTime) {
   // clear and resize world pos matrices
   mWorldPosMatrices.clear();
   mWorldPosMatrices.resize(mModelInstCamData.micAssimpInstances.size() + mModelInstCamData.micDynLights.size());
-  mPerInstanceAnimData.clear();
-  mPerInstanceAnimData.resize(lookupBufferSize);
   mSelectedInstance.clear();
   mSelectedInstance.resize(mModelInstCamData.micAssimpInstances.size() + mModelInstCamData.micDynLights.size());
+
+  mPerInstanceAnimData.clear();
+  mPerInstanceAnimData.resize(lookupBufferSize);
   mFaceAnimPerInstanceData.clear();
   mFaceAnimPerInstanceData.resize(mModelInstCamData.micAssimpInstances.size());
 
@@ -4765,7 +4827,7 @@ bool VkRenderer::updateLevelAndModels(float deltaTime) {
   // we also use light at position 0 as "no light selected"
   for (size_t i = 1; i < mModelInstCamData.micDynLights.size(); ++i) {
     DynamicLightSettings lightSettings = mModelInstCamData.micDynLights.at(i)->getDynLightSettings();
-    mWorldPosMatrices.at(instanceToStore + i - 1) = mModelInstCamData.micDynLights.at(i)  ->getWorldTransformMatrix();
+    mWorldPosMatrices.at(instanceToStore + i - 1) = mModelInstCamData.micDynLights.at(i)->getWorldTransformMatrix();
 
     if (mMousePick) {
       mSelectedInstance.at(instanceToStore + i - 1).y = static_cast<float>(lightSettings.dlsIndexPosition) + LIGHT_OBJECT_OFFSET;
@@ -5350,6 +5412,7 @@ bool VkRenderer::renderGraphics() {
 
       vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &dynShadowMapRenderInfo);
       drawScene(true, true, i * 6);
+      drawXRControllers(true, true, i * 6);
       vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
     }
 
@@ -5606,6 +5669,7 @@ bool VkRenderer::renderGraphics() {
 
     vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &shadowMapRenderInfo);
     drawScene(true);
+    drawXRControllers(true);
     vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
     // combine all four depth images into a single image for debug display (ImGui can't handle array textures)
@@ -5880,6 +5944,7 @@ bool VkRenderer::renderGraphics() {
   vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &renderInfo);
 
   drawScene();
+  drawXRControllers();
 
   vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
@@ -6313,7 +6378,6 @@ bool VkRenderer::renderGraphics() {
       vkCmdDraw(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), dynLightVertexCount, mRenderData.rdNumDynamicLights, 0, 1);
     }
   }
-
   vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
 
   // copy images to swapchain, must be done via shaders as swapchain may be color attachment only
@@ -6527,12 +6591,16 @@ bool VkRenderer::updateCamera(XRProjectionViewMatrices &matrices, float deltaTim
   return true;
 }
 
-bool VkRenderer::submitGraphics() {
+bool VkRenderer::endRendering() {
   if (!CommandBuffer::end(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame))) {
     Logger::log(1, "%s error: failed to end ImGui command buffer\n", __FUNCTION__);
     return false;
   }
 
+  return true;
+}
+
+bool VkRenderer::submitGraphics() {
   // submit command buffer
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -6560,6 +6628,37 @@ bool VkRenderer::submitGraphics() {
     Logger::log(1, "%s error: failed to submit draw command buffer (%i)\n", __FUNCTION__, result);
     return false;
   }
+
+  return true;
+}
+
+bool VkRenderer::updateXRControllerPositions(std::array<glm::mat4, 2> &transformMatrix) {
+  std::shared_ptr<Camera> cam = mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera);
+
+  glm::mat4 camTranspose = glm::translate(glm::mat4(1.0f), cam->getWorldPosition());
+  glm::mat4 camOrientation = glm::mat4(glm::mat3(cam->getViewMatrix()));
+
+  for (int i = 0; i < 2; ++i) {
+    mVRHandWorldPosMatrices.at(i) = camTranspose * transformMatrix.at(i);
+  }
+
+  bool bufferResized = ShaderStorageBuffer::uploadSsboData(mRenderData, mRenderData.rdVRControllerModelRootMatrixBuffers.at(mRenderData.currentFrame), mVRHandWorldPosMatrices);
+  if (bufferResized) {
+    VkHelper::updateDescriptorSets(mRenderData);
+  }
+
+  return true;
+}
+
+bool VkRenderer::moveCamera(glm::vec3 amount) {
+  std::shared_ptr<Camera> camera = mModelInstCamData.micCameras.at(mModelInstCamData.micSelectedCamera);
+  CameraSettings camSettings = camera->getCameraSettings();
+
+  camSettings.csWorldPosition.x += amount.x * 0.25f;
+  camSettings.csWorldPosition.y += amount.y * 0.25f;
+  camSettings.csWorldPosition.z += amount.z * 0.25f;
+
+  camera->setCameraSettings(camSettings);
 
   return true;
 }
@@ -6686,12 +6785,6 @@ bool VkRenderer::finishDraw() {
 }
 
 void VkRenderer::cleanup() {
-  VkResult result = vkDeviceWaitIdle(mRenderData.rdVkbDevice.device);
-  if (result != VK_SUCCESS) {
-    Logger::log(1, "%s fatal error: could not wait for device idle (error: %i)\n", __FUNCTION__, result);
-    return;
-  }
-
   // delete models and levels to destroy Vulkan objects
   for (const auto& model : mModelInstCamData.micModelList) {
     model->cleanup(mRenderData);
@@ -6709,6 +6802,10 @@ void VkRenderer::cleanup() {
     level->cleanup(mRenderData);
   }
 
+  mModelInstCamData.micDynLights.erase(mModelInstCamData.micDynLights.begin(), mModelInstCamData.micDynLights.end());
+
+  mRHandVRControllerModel->cleanup(mRenderData);
+  mLHandVRControllerModel->cleanup(mRenderData);
   mLightModel->cleanup(mRenderData);
 
   mUserInterface.cleanup(mRenderData);

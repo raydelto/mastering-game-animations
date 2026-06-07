@@ -77,13 +77,8 @@ void main() {
   gl_FragDepth = depth;
 
   float fading = 1.0;
-  if (farPlane == 0.0) {
-    fading = 1.0 - abs(2.0 * fract(depth) - 1.0);
-  }
-  else {
-    float linearDepth = computeLinearDepth(fragPos3D);
-    fading = max(0.0, (0.5 - linearDepth));
-  }
+  float linearDepth = computeLinearDepth(fragPos3D);
+  fading = max(0.0, (0.5 - linearDepth));
 
   FragColor = (grid(fragPos3D, 1.0, true) + grid(fragPos3D, 0.1, true) + grid(fragPos3D, 0.01, true))* float(t > 0); // adding multiple resolution for the grid
   FragColor.a *= fading;

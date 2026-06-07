@@ -30,6 +30,14 @@ bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
     return false;
   }
 
+  if (!createXRActionSet()) {
+    return false;
+  }
+
+  if (!suggestXRBindings()) {
+    return false;
+  }
+
   if (!getViewConfigViews()) {
     return false;
   }
@@ -64,6 +72,14 @@ bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
     return false;
   }
 
+  if (!createXRActionPoses()) {
+    return false;
+  }
+
+  if (!attachActionSet()) {
+    return false;
+  }
+
   if (!createXRReferenceSpace()) {
     return false;
   }
@@ -82,6 +98,11 @@ bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
 }
 
 void VRHeadset::cleanup() {
+  VkResult result = vkDeviceWaitIdle(mVulkanDevice);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s fatal error: could not wait for device idle (error: %i)\n", __FUNCTION__, result);
+  }
+
   mRenderer->destroyXRPipeline();
 
   destroyXRSwapchain();
@@ -224,11 +245,31 @@ bool VRHeadset::draw(float deltaTime) {
     return false;
   }
 
+  if (!beginXRFrame()) {
+    return false;
+  }
+
+  // Camera update
+  std::tie(mNearPlane, mFarPlane) = mRenderer->getNearAndFarPlane();
+  createXRCameraMatrices();
+  if (!mRenderer->updateCamera(mProjViewMatrices, deltaTime)) {
+    return false;
+  }
+
+  calculateXRHandPositions();
+  if (!mRenderer->updateXRControllerPositions(mHandTransformMatrices)) {
+    return false;
+  }
+
   if (!mRenderer->renderGraphics()) {
     return false;
   }
 
-  if (!renderXRFrame(deltaTime)) {
+  if (!renderXRFrame()) {
+    return false;
+  }
+
+  if (!mRenderer->endRendering()) {
     return false;
   }
 
@@ -685,13 +726,15 @@ bool VRHeadset::getVKInstanceExtension() {
 
 bool VRHeadset::createXRReferenceSpace() {
   // Fill out an XrReferenceSpaceCreateInfo structure and create a reference XrSpace, specifying a Local space with an identity pose as the origin.
-  XrReferenceSpaceCreateInfo referenceSpaceCI{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+  XrReferenceSpaceCreateInfo referenceSpaceCI{};
+  referenceSpaceCI.type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO;
   referenceSpaceCI.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
   referenceSpaceCI.poseInReferenceSpace = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
 
   XrResult result = xrCreateReferenceSpace(mSession, &referenceSpaceCI, &mLocalSpace);
   if (result != XR_SUCCESS) {
-    Logger::log(1, "%s error: Failed to create reference space (error code: %i)\n", __FUNCTION__, result);
+    Logger::log(1, "%s error: Failed to create local reference space (error code: %i)\n", __FUNCTION__, result);
+    return false;
   }
 
   return true;
@@ -787,6 +830,265 @@ bool VRHeadset::createXRSwapchain() {
   return true;
 }
 
+XrPath VRHeadset::CreateXrPath(std::string pathString) {
+  XrPath xrPath;
+
+  XrResult result = xrStringToPath(mXRInstance, pathString.c_str(), &xrPath);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to create XR Path (error code: %i)\n", __FUNCTION__, result);
+  }
+
+  return xrPath;
+}
+
+std::string VRHeadset::FromXrPath(XrPath path) {
+  uint32_t stringLength;
+  char text[XR_MAX_PATH_LENGTH];
+
+  XrResult result = xrPathToString(mXRInstance, path, XR_MAX_PATH_LENGTH, &stringLength, text);
+
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to retreive XR Path (error code: %i)\n", __FUNCTION__, result);
+  } else {
+    return std::string(text);
+  }
+  return std::string();
+}
+
+void VRHeadset::createXRAction(XrAction& xrAction, std::string name, XrActionType xrActionType, std::vector<std::string> subactionPaths) {
+  XrActionCreateInfo actionCI{};
+  actionCI.type = XR_TYPE_ACTION_CREATE_INFO;
+  actionCI.actionType = xrActionType;
+
+  std::vector<XrPath> subactionXRPaths;
+  for (auto p : subactionPaths) {
+    subactionXRPaths.push_back(CreateXrPath(p.c_str()));
+  }
+
+  actionCI.countSubactionPaths = (uint32_t)subactionXRPaths.size();
+  actionCI.subactionPaths = subactionXRPaths.data();
+
+  strncpy(actionCI.actionName, name.c_str(), XR_MAX_ACTION_NAME_SIZE);
+  strncpy(actionCI.localizedActionName, name.c_str(), XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+
+  XrResult result = xrCreateAction(mActionSet, &actionCI, &xrAction);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to create Action (error code: %i)\n", __FUNCTION__, result);
+  }
+}
+
+bool VRHeadset::createXRActionSet() {
+  XrActionSetCreateInfo actionSetCI{};
+  actionSetCI.type = XR_TYPE_ACTION_SET_CREATE_INFO;
+  strncpy(actionSetCI.actionSetName, "mastering-animations-actionset", XR_MAX_ACTION_SET_NAME_SIZE);
+  strncpy(actionSetCI.localizedActionSetName, "Mastering C++ Game Animation Programming ActionSet", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
+  actionSetCI.priority = 0;
+
+  XrResult result = xrCreateActionSet(mXRInstance, &actionSetCI, &mActionSet);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to create ActionSet (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  createXRAction(mPalmPoseAction, "palm-pose", XR_ACTION_TYPE_POSE_INPUT, {"/user/hand/right", "/user/hand/left"});
+  createXRAction(mFlyLeftRighAction, "free-fly-lr", XR_ACTION_TYPE_FLOAT_INPUT, {"/user/hand/right"});
+  createXRAction(mFlyFwdBackAction, "free-fly-fb", XR_ACTION_TYPE_FLOAT_INPUT, {"/user/hand/right"});
+  createXRAction(mFlyUpDownAction, "free-fly-ud", XR_ACTION_TYPE_FLOAT_INPUT, {"/user/hand/left"});
+
+  mHandPaths.at(0) = CreateXrPath("/user/hand/right");
+  mHandPaths.at(1) = CreateXrPath("/user/hand/left");
+
+  Logger::log(1, "%s: ActionSet created\n", __FUNCTION__);
+
+  return true;
+}
+
+bool VRHeadset::suggestXRBinding(std::string profilePath, std::vector<XrActionSuggestedBinding> bindings) {
+  XrInteractionProfileSuggestedBinding interactionProfileSuggestedBinding{};
+  interactionProfileSuggestedBinding.type = XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING;
+  interactionProfileSuggestedBinding.interactionProfile = CreateXrPath(profilePath.c_str());
+  interactionProfileSuggestedBinding.suggestedBindings = bindings.data();
+  interactionProfileSuggestedBinding.countSuggestedBindings = (uint32_t)bindings.size();
+
+  XrResult result = xrSuggestInteractionProfileBindings(mXRInstance, &interactionProfileSuggestedBinding);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to suggest bindings with '%s' (error code: %i)\n", __FUNCTION__, profilePath.c_str(), result);
+    return false;
+  }
+
+  return true;
+}
+
+bool VRHeadset::suggestXRBindings() {
+  bool anyOk = false;
+  anyOk |= suggestXRBinding("/interaction_profiles/valve/index_controller",
+  {
+    { mPalmPoseAction, CreateXrPath("/user/hand/right/input/grip/pose") },
+    { mPalmPoseAction, CreateXrPath("/user/hand/left/input/grip/pose") },
+    { mFlyLeftRighAction, CreateXrPath("/user/hand/right/input/thumbstick/x") },
+    { mFlyFwdBackAction, CreateXrPath("/user/hand/right/input/thumbstick/y") },
+    { mFlyUpDownAction, CreateXrPath("/user/hand/left/input/thumbstick/y") }
+  });
+
+  if (!anyOk) {
+    Logger::log(1, "%s error: Could not finish suggested bindings\n", __FUNCTION__);
+    return false;
+  }
+
+  Logger::log(1, "%s: XR Suggested Bindings ok\n", __FUNCTION__);
+
+  return true;
+}
+
+XrSpace VRHeadset::createXRActionPoseSpace(XrSession session, XrAction xrAction, std::string subactionPath) {
+  XrSpace xrSpace;
+  const XrPosef xrPoseIdentity = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+
+  XrActionSpaceCreateInfo actionSpaceCI{};
+  actionSpaceCI.type = XR_TYPE_ACTION_SPACE_CREATE_INFO;
+  actionSpaceCI.action = xrAction;
+  actionSpaceCI.poseInActionSpace = xrPoseIdentity;
+
+  if (!subactionPath.empty()) {
+    actionSpaceCI.subactionPath = CreateXrPath(subactionPath.c_str());
+  }
+
+  XrResult result = xrCreateActionSpace(session, &actionSpaceCI, &xrSpace);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Could not create ActionSpace\n", __FUNCTION__);
+  }
+
+  return xrSpace;
+}
+
+bool VRHeadset::createXRActionPoses() {
+  mHandPoseSpace.at(0) = createXRActionPoseSpace(mSession, mPalmPoseAction, "/user/hand/right");
+  mHandPoseSpace.at(1) = createXRActionPoseSpace(mSession, mPalmPoseAction, "/user/hand/left");
+
+  Logger::log(1, "%s: Action Poses created\n", __FUNCTION__);
+
+  return true;
+}
+
+bool VRHeadset::attachActionSet() {
+  XrSessionActionSetsAttachInfo actionSetAttachInfo{};
+  actionSetAttachInfo.type = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO;
+  actionSetAttachInfo.countActionSets = 1;
+  actionSetAttachInfo.actionSets = &mActionSet;
+
+  XrResult result = xrAttachSessionActionSets(mSession, &actionSetAttachInfo);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Could not create ActionSpace\n", __FUNCTION__);
+    return false;
+  }
+
+  Logger::log(1, "%s: ActionSet attached\n", __FUNCTION__);
+
+  return true;
+}
+
+void VRHeadset::pollActions(XrTime predictedTime) {
+  XrActiveActionSet activeActionSet{};
+  activeActionSet.actionSet = mActionSet;
+  activeActionSet.subactionPath = XR_NULL_PATH;
+
+  XrActionsSyncInfo actionsSyncInfo{};
+  actionsSyncInfo.type = XR_TYPE_ACTIONS_SYNC_INFO;
+  actionsSyncInfo.countActiveActionSets = 1;
+  actionsSyncInfo.activeActionSets = &activeActionSet;
+
+  XrResult result = xrSyncActions(mSession, &actionsSyncInfo);
+  // silent ignore
+  if (result == XR_SESSION_NOT_FOCUSED) {
+    return;
+  } else if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to sync Actions (error: %i)\n", __FUNCTION__, result);
+    return;
+  }
+
+  XrActionStateGetInfo actionStateGetInfo{};
+  actionStateGetInfo.type = XR_TYPE_ACTION_STATE_GET_INFO;
+  actionStateGetInfo.action = mPalmPoseAction;
+
+  // for both hands
+  for (int i = 0; i < 2; ++i) {
+    actionStateGetInfo.subactionPath = mHandPaths.at(i);
+    XrResult result = xrGetActionStatePose(mSession, &actionStateGetInfo, &mHandPoseState.at(i));
+    if (result != XR_SUCCESS) {
+      Logger::log(1, "%s error: Failed to set Pose State\n", __FUNCTION__);
+      break;
+    }
+
+    if (mHandPoseState.at(i).isActive) {
+      XrSpaceLocation spaceLocation{};
+      spaceLocation.type = XR_TYPE_SPACE_LOCATION;
+
+      result = xrLocateSpace(mHandPoseSpace.at(i), mLocalSpace, predictedTime, &spaceLocation);
+
+      if (result == XR_SUCCESS &&
+          (spaceLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0 &&
+          (spaceLocation.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0) {
+        mHandPose.at(i) = spaceLocation.pose;
+      } else {
+        mHandPoseState.at(i).isActive = false;
+      }
+    }
+  }
+
+  // right hand only
+  actionStateGetInfo.action = mFlyLeftRighAction;
+  actionStateGetInfo.subactionPath = mHandPaths.at(0);
+
+  result = xrGetActionStateFloat(mSession, &actionStateGetInfo, &mFlyLeftRightState);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get float state of fly left/right action (error: %i)\n", __FUNCTION__,result);
+  }
+
+  actionStateGetInfo.action = mFlyFwdBackAction;
+  actionStateGetInfo.subactionPath = mHandPaths.at(0);
+
+  result = xrGetActionStateFloat(mSession, &actionStateGetInfo, &mFlyFwdBackState);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get float state of fly forward/back action (error: %i)\n", __FUNCTION__,result);
+  }
+
+  // left hand
+  actionStateGetInfo.action = mFlyUpDownAction;
+  actionStateGetInfo.subactionPath = mHandPaths.at(1);
+
+  result = xrGetActionStateFloat(mSession, &actionStateGetInfo, &mFlyUpDownState);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get float state of fly up/down action (error: %i)\n", __FUNCTION__,result);
+  }
+
+  if (mFlyLeftRightState.isActive || mFlyFwdBackState.isActive || mFlyUpDownState.isActive) {
+    mRenderer->moveCamera(glm::vec3(mFlyLeftRightState.currentState, mFlyUpDownState.currentState, -mFlyFwdBackState.currentState));
+  }
+}
+
+void VRHeadset::calculateXRHandPositions() {
+  for (int i = 0; i < 2; ++i) {
+    if (mHandPoseState.at(i).isActive) {
+      glm::vec3 posePosition = glm::vec3(
+        mHandPose.at(i).position.x,
+        mHandPose.at(i).position.y,
+        mHandPose.at(i).position.z);
+
+      glm::mat4 transposeMat = glm::translate(glm::mat4(1.0f), posePosition);
+
+      glm::quat poseOrientation = glm::quat();
+      poseOrientation.x = mHandPose.at(i).orientation.x;
+      poseOrientation.y = mHandPose.at(i).orientation.y;
+      poseOrientation.z = mHandPose.at(i).orientation.z;
+      poseOrientation.w = mHandPose.at(i).orientation.w;
+
+      glm::mat4 orientationMat = glm::mat4_cast(poseOrientation);
+
+      mHandTransformMatrices.at(i) = transposeMat *  orientationMat;
+    }
+  }
+}
+
 void VRHeadset::createXRCameraMatrices() {
   for (uint32_t i = 0; i < mViewCount; ++i) {
     glm::mat4 projMatrix = glm::mat4(0.0f);
@@ -815,7 +1117,7 @@ void VRHeadset::createXRCameraMatrices() {
       mViews.at(i).pose.position.z);
 
     // TODO: scaling
-    mProjViewMatrices.viewTransposeMat.at(i) = glm::translate(glm::mat4(1.0f), posePosition * 5.0f);
+    mProjViewMatrices.viewTransposeMat.at(i) = glm::translate(glm::mat4(1.0f), posePosition);
 
     glm::quat poseOrientation = glm::quat();
       poseOrientation.x = mViews.at(i).pose.orientation.x;
@@ -823,11 +1125,11 @@ void VRHeadset::createXRCameraMatrices() {
       poseOrientation.z = mViews.at(i).pose.orientation.z;
       poseOrientation.w = mViews.at(i).pose.orientation.w;
 
-    mProjViewMatrices.viewOrientationMat.at(i) = glm::mat4_cast( poseOrientation);
+    mProjViewMatrices.viewOrientationMat.at(i) = glm::mat4_cast(poseOrientation);
   }
 }
 
-bool VRHeadset::renderXRFrame(float deltaTime) {
+bool VRHeadset::beginXRFrame() {
   XrFrameWaitInfo frameWaitInfo{};
   frameWaitInfo.type = XR_TYPE_FRAME_WAIT_INFO;
 
@@ -846,7 +1148,10 @@ bool VRHeadset::renderXRFrame(float deltaTime) {
     return false;
   }
 
-  mRenderLayerInfos = {};
+  bool sessionActive = (mSessionState == XR_SESSION_STATE_SYNCHRONIZED || mSessionState == XR_SESSION_STATE_VISIBLE || mSessionState == XR_SESSION_STATE_FOCUSED);
+  if (sessionActive && mFrameState.shouldRender) {
+    pollActions(mFrameState.predictedDisplayTime);
+  }
 
   XrViewState viewState{};
   viewState.type = XR_TYPE_VIEW_STATE;
@@ -863,12 +1168,18 @@ bool VRHeadset::renderXRFrame(float deltaTime) {
     return false;
   }
 
+  mRenderLayerInfos = {};
   mRenderLayerInfos.layerProjectionViews.resize(mViewCount);
 
+  return true;
+}
+
+
+bool VRHeadset::renderXRFrame() {
   XrSwapchainImageAcquireInfo acquireInfo{};
   acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;
 
-  result = xrAcquireSwapchainImage(mSwapchain.swapchain, &acquireInfo, &mColorImageIndex);
+  XrResult result = xrAcquireSwapchainImage(mSwapchain.swapchain, &acquireInfo, &mColorImageIndex);
   if (result != XR_SUCCESS) {
     Logger::log(1, "%s: Failed to acquire image from Swapchain (error code: %i)\n", __FUNCTION__, result);
     return false;
@@ -883,10 +1194,6 @@ bool VRHeadset::renderXRFrame(float deltaTime) {
     Logger::log(1, "%s: Failed to wait for image from Swapchain (error code: %i)\n", __FUNCTION__, result);
     return false;
   }
-
-  // Camera update
-  std::tie(mNearPlane, mFarPlane) = mRenderer->getNearAndFarPlane();
-  createXRCameraMatrices();
 
   const uint32_t &width = mViewConfigurationViews.at(0).recommendedImageRectWidth;
   const uint32_t &height = mViewConfigurationViews.at(0).recommendedImageRectHeight;
@@ -908,9 +1215,6 @@ bool VRHeadset::renderXRFrame(float deltaTime) {
   if (sessionActive && mFrameState.shouldRender) {
     mRenderer->copyToXRSwapchain(mSwapchain.swapchainImageViews.at(mColorImageIndex));
   }
-
-  // always update camera for local view
-  mRenderer->updateCamera(mProjViewMatrices, deltaTime);
 
   return true;
 }

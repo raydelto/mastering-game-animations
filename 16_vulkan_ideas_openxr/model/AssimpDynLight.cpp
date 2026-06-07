@@ -12,6 +12,8 @@ AssimpDynLight::AssimpDynLight(std::shared_ptr<AssimpModel> model, glm::vec3 pos
     Logger::log(1, "%s error: invalid model given\n", __FUNCTION__);
     return;
   }
+  mAssimpModel = model;
+
   mDynLightSettings.dlsWorldPosition = position;
   mDynLightSettings.dlsWorldRotation = rotation;
 
@@ -28,6 +30,10 @@ void AssimpDynLight::updateModelRootMatrix() {
 
   mLocalTransformMatrix = mLocalTranslationMatrix * mLocalRotationMatrix;
   mInstanceRootMatrix = mLocalTransformMatrix * mModelRootMatrix;
+}
+
+std::shared_ptr<AssimpModel> AssimpDynLight::getModel() {
+  return mAssimpModel;
 }
 
 glm::vec3 AssimpDynLight::getWorldPosition() {

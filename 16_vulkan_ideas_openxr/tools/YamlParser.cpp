@@ -127,7 +127,6 @@ YAML::Emitter& operator<<(YAML::Emitter& out, const CameraSettings& settings) {
   out << YAML::Value << settings.csViewElevation;
   out << YAML::Key << "camera-type";
   out << YAML::Value << static_cast<int>(settings.csCamType);
-  out << YAML::Key << "camera-projection";
   if (settings.csCamType == cameraType::firstPerson) {
     out << YAML::Key << "1st-person-view-lock";
     out << YAML::Value << settings.csFirstPersonLockView;

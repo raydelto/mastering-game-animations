@@ -48,6 +48,7 @@
 #include <AssimpDynLight.h>
 #include <DynamicLightDebugModel.h>
 #include <FullSphereModel.h>
+#include <AssimpVRController.h>
 
 #include <VkRenderData.h>
 #include <ModelInstanceCamData.h>
@@ -82,10 +83,15 @@ class VkRenderer {
     bool renderGraphics();
     bool copyToXRSwapchain(VkImageView imageVIew);
     bool updateCamera(XRProjectionViewMatrices &matrices, float deltaTime);
+    bool endRendering();
     bool submitGraphics();
     bool checkForSelection();
     bool presentDesktopImage();
     bool finishDraw();
+
+    bool updateXRControllerPositions(std::array<glm::mat4, 2> &transformMatrix);
+    bool drawXRControllers(bool shadowMapPass = false, bool dynamicsShadows = false, uint32_t dynLight = 0);
+    bool moveCamera(glm::vec3 amount);
 
     void handleKeyEvents(int key, int scancode, int action, int mods);
     void handleMouseButtonEvents(int button, int action, int mods);
@@ -335,4 +341,8 @@ class VkRenderer {
     void updateShaderLightData();
 
     DynamicLightDebugModel mDynLightModel{};
+
+    std::vector<glm::mat4> mVRHandWorldPosMatrices{};
+    std::shared_ptr<AssimpModel> mRHandVRControllerModel;
+    std::shared_ptr<AssimpModel> mLHandVRControllerModel;
 };

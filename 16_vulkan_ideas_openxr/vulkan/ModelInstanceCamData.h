@@ -17,6 +17,7 @@ class AssimpInstance;
 class AssimpSettingsContainer;
 class AssimpLevel;
 class AssimpDynLight;
+class AssimpVRController;
 class Camera;
 class SingleInstanceBehavior;
 

@@ -7,7 +7,6 @@ layout (location = 2) in vec4 aNormal; // last float is uv.y
 layout (location = 3) in uvec4 aBoneNum; // ignored
 layout (location = 4) in vec4 aBoneWeight; // ignored
 
-
 layout (push_constant) uniform Constants {
   uint modelStride;
   uint worldPosOffset;

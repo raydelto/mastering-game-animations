@@ -477,6 +477,7 @@ struct VkRenderData {
   std::vector<VkShaderStorageBufferData> rdShadowMapCascadeDataBuffers{};
   std::vector<VkShaderStorageBufferData> rdDynamicLightBuffers{};
   std::vector<VkShaderStorageBufferData> rdDynamicLightDebugBuffers{};
+  std::vector<VkShaderStorageBufferData> rdVRControllerModelRootMatrixBuffers{};
 
   // OpenXR specific stuff
   uint32_t rdXRWidth = 0;
@@ -542,6 +543,7 @@ struct VkRenderData {
   VkPipelineLayout rdLightSpherePipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdLightSphereShadowPipelineLayout = VK_NULL_HANDLE;
   VkPipelineLayout rdSwapchainCopyPipelineLayout = VK_NULL_HANDLE;
+  VkPipelineLayout rdVRControllerPipelineLayout = VK_NULL_HANDLE;
 
   VkPipeline rdAssimpPipeline = VK_NULL_HANDLE;
   VkPipeline rdAssimpSkinningPipeline = VK_NULL_HANDLE;
@@ -577,6 +579,10 @@ struct VkRenderData {
   VkPipeline rdLightSphereShadowPipeline = VK_NULL_HANDLE;
   VkPipeline rdSwapchainCopyPipeline = VK_NULL_HANDLE;
   VkPipeline rdXRSwapchainCopyPipeline = VK_NULL_HANDLE;
+
+  VkPipeline rdVRControllerPipeline = VK_NULL_HANDLE;
+  VkPipeline rdShadowMapVRControllerPipeline = VK_NULL_HANDLE;
+  VkPipeline rdDynamicShadowMapVRControllerPipeline = VK_NULL_HANDLE;
 
   VkCommandPool rdCommandPool = VK_NULL_HANDLE;
   VkCommandPool rdComputeCommandPool = VK_NULL_HANDLE;
@@ -617,6 +623,7 @@ struct VkRenderData {
   VkDescriptorSetLayout rdLightSphereDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdLightSphereShadowDescriptorLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout rdSwapchainCopyDescriptorLayout = VK_NULL_HANDLE;
+  VkDescriptorSetLayout rdVRControllerDescriptorLayout = VK_NULL_HANDLE;
 
   std::vector<VkDescriptorSet> rdAssimpDescriptorSets{};
   std::vector<VkDescriptorSet> rdAssimpSkinningDescriptorSets{};
@@ -642,6 +649,7 @@ struct VkRenderData {
   std::vector<VkDescriptorSet> rdLightSphereDescriptorSets{};
   std::vector<VkDescriptorSet> rdLightSphereShadowsDescriptorSets{};
   std::vector<VkDescriptorSet> rdSwapchainCopyDescriptorSets{};
+  std::vector<VkDescriptorSet> rdVRControllerDescriptorSets{};
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;

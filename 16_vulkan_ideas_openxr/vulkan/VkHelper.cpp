@@ -501,6 +501,11 @@ bool VkHelper::createSSBOs(VkRenderData& renderData) {
     return false;
   }
 
+  if (!ShaderStorageBuffer::init(renderData, renderData.rdVRControllerModelRootMatrixBuffers)) {
+    Logger::log(1, "%s error: could not create dynamic light debug data SSBO\n", __FUNCTION__);
+    return false;
+  }
+
   return true;
 }
 
@@ -1586,6 +1591,49 @@ bool VkHelper::createDescriptorLayouts(VkRenderData& renderData) {
     }
   }
 
+
+  {
+    // VR Controller shander
+    VkDescriptorSetLayoutBinding renderDataUboBind{};
+    renderDataUboBind.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    renderDataUboBind.binding = 0;
+    renderDataUboBind.descriptorCount = 1;
+    renderDataUboBind.pImmutableSamplers = nullptr;
+    renderDataUboBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding modelRootSsboBind{};
+    modelRootSsboBind.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    modelRootSsboBind.binding = 1;
+    modelRootSsboBind.descriptorCount = 1;
+    modelRootSsboBind.pImmutableSamplers = nullptr;
+    modelRootSsboBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutBinding shadowMapCascadeDataBind{};
+    shadowMapCascadeDataBind.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    shadowMapCascadeDataBind.binding = 2;
+    shadowMapCascadeDataBind.descriptorCount = 1;
+    shadowMapCascadeDataBind.pImmutableSamplers = nullptr;
+    shadowMapCascadeDataBind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    std::vector<VkDescriptorSetLayoutBinding> vrControllerBindings = {
+      renderDataUboBind,
+      modelRootSsboBind,
+      shadowMapCascadeDataBind
+    };
+
+    VkDescriptorSetLayoutCreateInfo vrControllerCreateInfo{};
+    vrControllerCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    vrControllerCreateInfo.bindingCount = static_cast<uint32_t>(vrControllerBindings.size());
+    vrControllerCreateInfo.pBindings = vrControllerBindings.data();
+
+    result = vkCreateDescriptorSetLayout(renderData.rdVkbDevice.device, &vrControllerCreateInfo,
+      nullptr, &renderData.rdVRControllerDescriptorLayout);
+    if (result != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not create VR Controller buffer descriptor set layout (error: %i)\n", __FUNCTION__, result);
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -2043,6 +2091,26 @@ bool VkHelper::createDescriptorSets(VkRenderData& renderData) {
     if (vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &swapchainCopyAllocInfo,
         renderData.rdSwapchainCopyDescriptorSets.data()) != VK_SUCCESS) {
       Logger::log(1, "%s error: could not allocate memory for swapchain copy descriptor set", __FUNCTION__);
+      return false;
+    }
+  }
+
+  {
+    // VR Controllers
+    renderData.rdVRControllerDescriptorSets.resize(renderData.rdNumFramesInFlight);
+    // we need a matching number of layouts xD
+    std::vector<VkDescriptorSetLayout> vrControllerLayouts(renderData.rdNumFramesInFlight, renderData.rdVRControllerDescriptorLayout);
+
+    VkDescriptorSetAllocateInfo descriptorAllocateInfo{};
+    descriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorAllocateInfo.descriptorPool = renderData.rdDescriptorPool;
+    descriptorAllocateInfo.descriptorSetCount = static_cast<uint32_t>(renderData.rdNumFramesInFlight);
+    descriptorAllocateInfo.pSetLayouts = vrControllerLayouts.data();
+
+    VkResult result = vkAllocateDescriptorSets(renderData.rdVkbDevice.device, &descriptorAllocateInfo,
+      renderData.rdVRControllerDescriptorSets.data());
+    if (result != VK_SUCCESS) {
+      Logger::log(1, "%s error: could not allocate VR Controller descriptor set (error: %i)\n", __FUNCTION__, result);
       return false;
     }
   }
@@ -2542,6 +2610,57 @@ void VkHelper::updateDescriptorSets(VkRenderData& renderData) {
 
     std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
       matrixWriteDescriptorSet,
+    };
+
+    vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),
+      writeDescriptorSets.data(), 0, nullptr);
+  }
+
+  for (int i = 0; i < renderData.rdNumFramesInFlight; ++i) {
+    // VR Controllers
+    VkDescriptorBufferInfo matrixInfo{};
+    matrixInfo.buffer = renderData.rdRenderUploadDataUBOs.at(i).buffer;
+    matrixInfo.offset = 0;
+    matrixInfo.range = VK_WHOLE_SIZE;
+
+    VkDescriptorBufferInfo worldPosInfo{};
+    worldPosInfo.buffer = renderData.rdVRControllerModelRootMatrixBuffers.at(i).buffer;
+    worldPosInfo.offset = 0;
+    worldPosInfo.range = VK_WHOLE_SIZE;
+
+    VkDescriptorBufferInfo shadowMapCascadeInfo{};
+    shadowMapCascadeInfo.buffer = renderData.rdShadowMapCascadeDataBuffers.at(i).buffer;
+    shadowMapCascadeInfo.offset = 0;
+    shadowMapCascadeInfo.range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet matrixWriteDescriptorSet{};
+    matrixWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    matrixWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matrixWriteDescriptorSet.dstSet = renderData.rdVRControllerDescriptorSets.at(i);
+    matrixWriteDescriptorSet.dstBinding = 0;
+    matrixWriteDescriptorSet.descriptorCount = 1;
+    matrixWriteDescriptorSet.pBufferInfo = &matrixInfo;
+
+    VkWriteDescriptorSet posWriteDescriptorSet{};
+    posWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    posWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    posWriteDescriptorSet.dstSet = renderData.rdVRControllerDescriptorSets.at(i);
+    posWriteDescriptorSet.dstBinding = 1;
+    posWriteDescriptorSet.descriptorCount = 1;
+    posWriteDescriptorSet.pBufferInfo = &worldPosInfo;
+
+    VkWriteDescriptorSet shadowMapCascadeDescriptorSet{};
+    shadowMapCascadeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    shadowMapCascadeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    shadowMapCascadeDescriptorSet.dstSet = renderData.rdVRControllerDescriptorSets.at(i);
+    shadowMapCascadeDescriptorSet.dstBinding = 2;
+    shadowMapCascadeDescriptorSet.descriptorCount = 1;
+    shadowMapCascadeDescriptorSet.pBufferInfo = &shadowMapCascadeInfo;
+
+    std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+      matrixWriteDescriptorSet,
+      posWriteDescriptorSet,
+      shadowMapCascadeDescriptorSet
     };
 
     vkUpdateDescriptorSets(renderData.rdVkbDevice.device, static_cast<uint32_t>(writeDescriptorSets.size()),
@@ -3590,9 +3709,19 @@ bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
   std::vector<VkDescriptorSetLayout> swapchainCopyLayout = {
     renderData.rdSwapchainCopyDescriptorLayout };
 
-    if (!PipelineLayout::init(renderData, renderData.rdSwapchainCopyPipelineLayout, swapchainCopyLayout)) {
-      Logger::log(1, "%s error: could not init swapchain copy pipeline layout\n", __FUNCTION__);
-      return false;
+  if (!PipelineLayout::init(renderData, renderData.rdSwapchainCopyPipelineLayout, swapchainCopyLayout)) {
+    Logger::log(1, "%s error: could not init swapchain copy pipeline layout\n", __FUNCTION__);
+    return false;
+  }
+
+  std::vector<VkDescriptorSetLayout> vrLayouts = {
+    renderData.rdAssimpTextureDescriptorLayout,
+    renderData.rdVRControllerDescriptorLayout };
+
+  // VR Controllers, need separate buffer
+  if (!PipelineLayout::init(renderData, renderData.rdVRControllerPipelineLayout, vrLayouts, pushConstants)) {
+    Logger::log(1, "%s error: could not init VR Controller pipeline layout\n", __FUNCTION__);
+    return false;
   }
 
   return true;
@@ -3868,12 +3997,32 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
   vertexShaderFile = "shader/swapchain_copy.vert.spv";
   fragmentShaderFile = "shader/swapchain_copy.frag.spv";
   if (!CopyPipeline::init(renderData, swapchainCopyAttachmentFormats, renderData.rdSwapchainCopyPipelineLayout,
-      renderData.rdSwapchainCopyPipeline,
-      vertexShaderFile, fragmentShaderFile)) {
+      renderData.rdSwapchainCopyPipeline, vertexShaderFile, fragmentShaderFile)) {
     Logger::log(1, "%s error: could not init Swapchain Copy shader pipeline\n", __FUNCTION__);
     return false;
   }
 
+  vertexShaderFile = "shader/vr_controller.vert.spv";
+  fragmentShaderFile = "shader/vr_controller.frag.spv";
+  if (!ModelLevelPipeline::init(renderData, assimpAttachmentFormats, renderData.rdVRControllerPipelineLayout,
+      renderData.rdVRControllerPipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init VR Controller shader pipeline\n", __FUNCTION__);
+    return false;
+  }
+
+  vertexShaderFile = "shader/shadowmap_vr_controller.vert.spv";
+  fragmentShaderFile = "shader/shadowmap_vr_controller.frag.spv";
+  if (!ShadowMapPipeline::init(renderData, renderData.rdVRControllerPipelineLayout,
+    renderData.rdShadowMapVRControllerPipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init VR Controller shadow map shader pipeline\n", __FUNCTION__);
+    return false;
+  }
+
+  if (!DynamicShadowMapPipeline::init(renderData, renderData.rdVRControllerPipelineLayout,
+    renderData.rdDynamicShadowMapVRControllerPipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init VR Controller dynamic shadow map shader pipeline\n", __FUNCTION__);
+    return false;
+  }
   return true;
 }
 
@@ -5005,6 +5154,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ModelLevelPipeline::cleanup(renderData, renderData.rdAssimpLevelPipeline);
   ModelLevelPipeline::cleanup(renderData, renderData.rdAssimpPostCompositePipeline);
   ModelLevelPipeline::cleanup(renderData, renderData.rdAssimpPostCompositeSelectionPipeline);
+  ModelLevelPipeline::cleanup(renderData, renderData.rdVRControllerPipeline);
   LinePipeline::cleanup(renderData, renderData.rdLinePipeline);
   LinePipeline::cleanup(renderData, renderData.rdSpherePipeline);
   GridLinePipeline::cleanup(renderData, renderData.rdGridLinePipeline);
@@ -5016,10 +5166,12 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpSkinningPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpSkinningMorphPipeline);
   ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapAssimpLevelPipeline);
+  ShadowMapPipeline::cleanup(renderData, renderData.rdShadowMapVRControllerPipeline);
   DynamicShadowMapPipeline::cleanup(renderData, renderData.rdDynamicShadowMapAssimpPipeline);
   DynamicShadowMapPipeline::cleanup(renderData, renderData.rdDynamicShadowMapAssimpSkinningPipeline);
   DynamicShadowMapPipeline::cleanup(renderData, renderData.rdDynamicShadowMapAssimpSkinningMorphPipeline);
   DynamicShadowMapPipeline::cleanup(renderData, renderData.rdDynamicShadowMapAssimpLevelPipeline);
+  DynamicShadowMapPipeline::cleanup(renderData, renderData.rdDynamicShadowMapVRControllerPipeline);
   LightSpherePipeline::cleanup(renderData, renderData.rdLightSpherePipeline);
   LightSpherePipeline::cleanup(renderData, renderData.rdLightSphereShadowPipeline);
   CompositePipeline::cleanup(renderData, renderData.rdCompositePipeline);
@@ -5050,6 +5202,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   PipelineLayout::cleanup(renderData, renderData.rdLightSpherePipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdLightSphereShadowPipelineLayout);
   PipelineLayout::cleanup(renderData, renderData.rdSwapchainCopyPipelineLayout);
+  PipelineLayout::cleanup(renderData, renderData.rdVRControllerPipelineLayout);
 
   UniformBuffer::cleanup(renderData, renderData.rdRenderUploadDataUBOs);
   UniformBuffer::cleanup(renderData, renderData.rdSSAOKernelSamplesUBO);
@@ -5085,6 +5238,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   ShaderStorageBuffer::cleanup(renderData, renderData.rdShadowMapCascadeDataBuffers);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdDynamicLightBuffers);
   ShaderStorageBuffer::cleanup(renderData, renderData.rdDynamicLightDebugBuffers);
+  ShaderStorageBuffer::cleanup(renderData, renderData.rdVRControllerModelRootMatrixBuffers);
 
   Texture::cleanup(renderData, renderData.rdSkyboxTexture);
 
@@ -5136,6 +5290,8 @@ void VkHelper::cleanup(VkRenderData& renderData) {
     renderData.rdAssimpComputeBoundingSpheresDescriptorSets.data());;
   vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, renderData.rdNumFramesInFlight,
     renderData.rdSwapchainCopyDescriptorSets.data());;
+  vkFreeDescriptorSets(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, renderData.rdNumFramesInFlight,
+    renderData.rdVRControllerDescriptorSets.data());;
 
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdAssimpDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdAssimpSkinningDescriptorLayout, nullptr);
@@ -5162,6 +5318,7 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightSphereDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdLightSphereShadowDescriptorLayout, nullptr);
   vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdSwapchainCopyDescriptorLayout, nullptr);
+  vkDestroyDescriptorSetLayout(renderData.rdVkbDevice.device, renderData.rdVRControllerDescriptorLayout, nullptr);
 
   vkDestroyDescriptorPool(renderData.rdVkbDevice.device, renderData.rdDescriptorPool, nullptr);
 

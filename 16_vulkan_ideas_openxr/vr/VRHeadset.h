@@ -42,8 +42,11 @@ class VRHeadset {
     std::shared_ptr<VkRenderer> mRenderer = nullptr;
     VkDevice mVulkanDevice = VK_NULL_HANDLE;
 
-    bool renderXRFrame(float deltaTime);
+    bool beginXRFrame();
+    bool renderXRFrame();
     bool endXRFrame();
+
+    void pollActions(XrTime predictedTime);
 
     void createXRCameraMatrices();
     XRProjectionViewMatrices mProjViewMatrices{};
@@ -53,6 +56,11 @@ class VRHeadset {
     bool createXRSession();
     bool createXRReferenceSpace();
     bool createXRSwapchain();
+
+    bool createXRActionSet();
+    bool suggestXRBindings();
+    bool createXRActionPoses();
+    bool attachActionSet();
 
     bool getInstanceID();
     bool getSystemID();
@@ -99,6 +107,8 @@ class VRHeadset {
     XrSessionState mSessionState = XR_SESSION_STATE_UNKNOWN;
 
     XrSpace mLocalSpace = XR_NULL_HANDLE;
+    XrSpace mViewSpace = XR_NULL_HANDLE;
+    XrSpaceLocation mViewSpaceLocation{};
     XrFrameState mFrameState{XR_TYPE_FRAME_STATE};
 
     struct XRSwapchainInfo {
@@ -122,8 +132,6 @@ class VRHeadset {
     std::vector<XrView> mViews{};
     uint32_t mViewCount = 0;
 
-    bool renderXRLayer(VkRenderData &renderData, XRRenderLayerInfo &renderLayerInfo);
-
     XrViewConfigurationType mViewConfiguration = XR_VIEW_CONFIGURATION_TYPE_MAX_ENUM;
     std::vector<XrViewConfigurationType> mApplicationViewConfigurations = { XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO };
     std::vector<XrViewConfigurationType> mViewConfigurations{};
@@ -134,8 +142,38 @@ class VRHeadset {
     std::vector<XrEnvironmentBlendMode> mEnvironmentBlendModes{};
 
     XrGraphicsRequirementsVulkanKHR mGraphicsRequirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR };
-    XrDebugUtilsMessengerEXT mDebugMessenger{};
 
+    XrPath CreateXrPath(std::string pathString);
+    std::string FromXrPath(XrPath path);
+
+    XrActionSet mActionSet{};
+    void createXRAction(XrAction &xrAction, std::string name, XrActionType xrActionType, std::vector<std::string> subactionPaths = {});
+    bool suggestXRBinding(std::string profilePath, std::vector<XrActionSuggestedBinding> bindings);
+    XrSpace createXRActionPoseSpace(XrSession session, XrAction xrAction, std::string subactionPath);
+
+    XrAction mPalmPoseAction{};
+    std::array<XrPath, 2> mHandPaths{};
+    std::array<XrSpace, 2> mHandPoseSpace{};
+    std::vector<XrActionStatePose> mHandPoseState = { { .type = XR_TYPE_ACTION_STATE_POSE } , { .type = XR_TYPE_ACTION_STATE_POSE } };
+
+    // In STAGE space, viewHeightM should be 0. In LOCAL space, it should be offset downwards, below the viewer's initial position.
+    float mViewHeightM = 1.5f;
+    std::vector<XrPosef> mHandPose = {
+      {{1.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -mViewHeightM}},
+      {{1.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -mViewHeightM}}
+    };
+
+    void calculateXRHandPositions();
+    std::array<glm::mat4, 2> mHandTransformMatrices{};
+
+    XrAction mFlyLeftRighAction{};
+    XrActionStateFloat mFlyLeftRightState = { .type = XR_TYPE_ACTION_STATE_FLOAT };
+    XrAction mFlyFwdBackAction{};
+    XrActionStateFloat mFlyFwdBackState = { .type = XR_TYPE_ACTION_STATE_FLOAT };
+    XrAction mFlyUpDownAction{};
+    XrActionStateFloat mFlyUpDownState = { .type = XR_TYPE_ACTION_STATE_FLOAT };
+
+    XrDebugUtilsMessengerEXT mDebugMessenger{};
     static XrBool32 handleXRErrors(XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT type,
       const XrDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData);
 };

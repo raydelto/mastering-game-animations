@@ -93,11 +93,8 @@ float unlinearizeDepth(float depth) {
 
 vec3 getWorldPosFromDepth(vec2 uv) {
   float depth = 0.0;
-  if (farPlane == 0.0) {
-    depth = texture(inputDepth, vec3(uv, float(gl_ViewIndex))).r;
-  } else {
-    depth = unlinearizeDepth(texture(inputDepth, vec3(uv, float(gl_ViewIndex))).r);
-  }
+  depth = unlinearizeDepth(texture(inputDepth, vec3(uv, float(gl_ViewIndex))).r);
+
   vec2 xy = uv * 2.0 - 1.0;
   vec4 pos = vec4(xy, depth, 1.0);
   pos = invProjectionMat[gl_ViewIndex] * pos;
@@ -166,13 +163,8 @@ void main() {
   float diff = max(dot(normalize(normal), normalize(vec3(lightDir))), 0.0);
   vec3 diffuse = diff * vec3(lightColor) * albedo.rgb;
 
-  float fogAmount;
-  /* Fog makes no sense in orthographic projection */
-  if (farPlane == 0.0) {
-    fogAmount = 0.0;
-  } else {
-    fogAmount = 1.0 - clamp(exp(-pow(fogDensity * fragDepth, 2.0)), 0.0, 1.0);
-  }
+  float fogAmount = 1.0 - clamp(exp(-pow(fogDensity * fragDepth, 2.0)), 0.0, 1.0);
+
   vec4 fogColor = 0.25 * vec4(vec3(lightColor), 1.0);
 
   switch (compositeDebug) {
