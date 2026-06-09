@@ -9,11 +9,15 @@
 
 #include <VkRenderData.h>
 
+#define XR_USE_GRAPHICS_API_VULKAN
+#include <openxr/openxr.h>
+#include <openxr/openxr_platform.h>
+
 class VkHelper {
   public:
-    static bool initVulkan(VkRenderData& renderData);
+    static bool initVulkan(VkRenderData& renderData, XrInstance xrInstance = XR_NULL_HANDLE, XrSystemId systemId = 0);
 
-    static bool deviceInit(VkRenderData& renderData);
+    static bool deviceInit(VkRenderData& renderData, XrInstance xrInstance = XR_NULL_HANDLE, XrSystemId systemId = 0);
     static bool initVma(VkRenderData& renderData);
     static bool getQueues(VkRenderData& renderData);
     static bool createSwapchain(VkRenderData& renderData);

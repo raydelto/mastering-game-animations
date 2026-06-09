@@ -56,9 +56,11 @@
 
 #include <Callbacks.h>
 
+#include <openxr/openxr.h>
+
 class VkRenderer {
   public:
-    bool init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR);
+    bool init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR, XrInstance xrInstance = XR_NULL_HANDLE, XrSystemId systemId = 0);
     void setSize(unsigned int width, unsigned int height);
 
     VkDevice getDevice();

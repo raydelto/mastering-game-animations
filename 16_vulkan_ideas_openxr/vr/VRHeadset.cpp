@@ -62,7 +62,7 @@ bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
   mRenderer->setRendererMICCallbacks(callbacks);
   mRenderer->setXRSize(mWidth, mHeight);
 
-  if (!mRenderer->init(window, mVKDeviceExtensionsForXR, mVKInstanceExtensionsForXR)) {
+  if (!mRenderer->init(window, mVKDeviceExtensionsForXR, mVKInstanceExtensionsForXR, mXRInstance, mSystemID)) {
     return false;
   }
 
@@ -195,6 +195,7 @@ void VRHeadset::pollEvents() {
               break;
             }
             mSessionRunning = true;
+            break;
           }
           case XR_SESSION_STATE_STOPPING:
           {
@@ -204,17 +205,20 @@ void VRHeadset::pollEvents() {
               break;
             }
             mSessionRunning = false;
+            break;
           }
           case XR_SESSION_STATE_EXITING:
           {
             mSessionRunning = false;
             mApplicationRunning = false;
+            break;
           }
           case XR_SESSION_STATE_LOSS_PENDING:
           {
             // XXX: Recovery may be possible but we stop for now
             mSessionRunning = false;
             mApplicationRunning = false;
+            break;
           }
           default:
             Logger::log(1, "%s warning: Found unhandled session change state %i\n", __FUNCTION__, sessionStateChanged->state);
@@ -930,6 +934,39 @@ bool VRHeadset::suggestXRBindings() {
     { mFlyUpDownAction, CreateXrPath("/user/hand/left/input/thumbstick/y") }
   });
 
+  anyOk |= suggestXRBinding("/interaction_profiles/oculus/touch_controller",
+  {
+    { mPalmPoseAction, CreateXrPath("/user/hand/right/input/grip/pose") },
+    { mPalmPoseAction, CreateXrPath("/user/hand/left/input/grip/pose") },
+    { mFlyLeftRighAction, CreateXrPath("/user/hand/right/input/thumbstick/x") },
+    { mFlyFwdBackAction, CreateXrPath("/user/hand/right/input/thumbstick/y") },
+    { mFlyUpDownAction, CreateXrPath("/user/hand/left/input/thumbstick/y") }
+  });
+
+  anyOk |= suggestXRBinding("/interaction_profiles/htc/vive_controller",
+  {
+    { mPalmPoseAction, CreateXrPath("/user/hand/right/input/grip/pose") },
+    { mPalmPoseAction, CreateXrPath("/user/hand/left/input/grip/pose") },
+    { mFlyLeftRighAction, CreateXrPath("/user/hand/right/input/trackpad/x") },
+    { mFlyFwdBackAction, CreateXrPath("/user/hand/right/input/trackpad/y") },
+    { mFlyUpDownAction, CreateXrPath("/user/hand/left/input/trackpad/y") }
+  });
+
+  anyOk |= suggestXRBinding("/interaction_profiles/microsoft/motion_controller",
+  {
+    { mPalmPoseAction, CreateXrPath("/user/hand/right/input/grip/pose") },
+    { mPalmPoseAction, CreateXrPath("/user/hand/left/input/grip/pose") },
+    { mFlyLeftRighAction, CreateXrPath("/user/hand/right/input/thumbstick/x") },
+    { mFlyFwdBackAction, CreateXrPath("/user/hand/right/input/thumbstick/y") },
+    { mFlyUpDownAction, CreateXrPath("/user/hand/left/input/thumbstick/y") }
+  });
+
+  anyOk |= suggestXRBinding("/interaction_profiles/khr/simple_controller",
+  {
+    { mPalmPoseAction, CreateXrPath("/user/hand/right/input/grip/pose") },
+    { mPalmPoseAction, CreateXrPath("/user/hand/left/input/grip/pose") }
+  });
+
   if (!anyOk) {
     Logger::log(1, "%s error: Could not finish suggested bindings\n", __FUNCTION__);
     return false;
@@ -1168,7 +1205,9 @@ bool VRHeadset::beginXRFrame() {
     return false;
   }
 
-  mRenderLayerInfos = {};
+  mRenderLayerInfos.layers.clear();
+  mRenderLayerInfos.layerProjectionViews.clear();
+  mRenderLayerInfos.layerProjection = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
   mRenderLayerInfos.layerProjectionViews.resize(mViewCount);
 
   return true;

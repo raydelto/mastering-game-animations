@@ -122,21 +122,19 @@ bool AppWindow::init(unsigned int width, unsigned int height, std::string title)
 }
 
 void AppWindow::mainLoop() {
-  // force VSYNC
-  glfwSwapInterval(1);
+  // Disable VSYNC for the mirror window to prevent double-blocking with xrWaitFrame
+  glfwSwapInterval(0);
 
   std::chrono::time_point<std::chrono::steady_clock> loopStartTime = std::chrono::steady_clock::now();
   std::chrono::time_point<std::chrono::steady_clock> loopEndTime = std::chrono::steady_clock::now();
   float deltaTime = 0.0f;
 
-  while (true) {
-    if (mVRHeadset.isXRApplicationRunning()) {
-      mVRHeadset.pollEvents();
+  while (mVRHeadset.isXRApplicationRunning() && !glfwWindowShouldClose(mWindow)) {
+    mVRHeadset.pollEvents();
 
-      if (mVRHeadset.isXRSessionRunning()) {
-        if (!mVRHeadset.draw(deltaTime)) {
-          break;
-        }
+    if (mVRHeadset.isXRSessionRunning()) {
+      if (!mVRHeadset.draw(deltaTime)) {
+        break;
       }
     }
 

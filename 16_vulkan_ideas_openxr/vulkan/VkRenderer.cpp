@@ -42,7 +42,7 @@
 
 #include <Logger.h>
 
-bool VkRenderer::init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR) {
+bool VkRenderer::init(GLFWwindow *window, std::vector<std::string> &deviceExtForXR, std::vector<std::string> &instExtsForXR, XrInstance xrInstance, XrSystemId systemId) {
   mRenderData.rdWindow = window;
 
   int width = 1024;
@@ -90,7 +90,7 @@ bool VkRenderer::init(GLFWwindow *window, std::vector<std::string> &deviceExtFor
   }
   mRenderData.rdXRInstanceExtensions = instExts;
 
-  if (!VkHelper::initVulkan(mRenderData)) {
+  if (!VkHelper::initVulkan(mRenderData, xrInstance, systemId)) {
     return false;
   }
 
@@ -5406,7 +5406,7 @@ bool VkRenderer::renderGraphics() {
       VkRenderingInfo dynShadowMapRenderInfo{};
       dynShadowMapRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
       dynShadowMapRenderInfo.renderArea = dynLightShadowMapenderArea;
-      dynShadowMapRenderInfo.layerCount = 6;
+      dynShadowMapRenderInfo.layerCount = 1;
       dynShadowMapRenderInfo.viewMask = 0b00111111;
       dynShadowMapRenderInfo.pDepthAttachment = &dynShadowMapBufferAttachmentInfo;
 
@@ -5637,7 +5637,7 @@ bool VkRenderer::renderGraphics() {
     shadowMapRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     shadowMapRenderInfo.renderArea = shadowMapenderArea;
     shadowMapRenderInfo.viewMask = 0b00001111;
-    shadowMapRenderInfo.layerCount = mRenderData.SHADOW_MAP_LAYERS;
+    shadowMapRenderInfo.layerCount = 1;
     shadowMapRenderInfo.pDepthAttachment = &shadowMapBufferAttachmentInfo;
 
     VkImageSubresourceRange shadowMapDepthBufferSubresourceRangeOne{};
@@ -5912,7 +5912,7 @@ bool VkRenderer::renderGraphics() {
   VkRenderingInfo renderInfo{};
   renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
   renderInfo.renderArea = renderArea;
-  renderInfo.layerCount = 2;
+  renderInfo.layerCount = 1;
   renderInfo.viewMask = 0b00000011;
   renderInfo.colorAttachmentCount = static_cast<uint32_t>(attachmentInfos.size());
   renderInfo.pColorAttachments = attachmentInfos.data();
@@ -5974,7 +5974,7 @@ bool VkRenderer::renderGraphics() {
     VkRenderingInfo lightSphereRenderInfo{};
     lightSphereRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     lightSphereRenderInfo.renderArea = renderArea;
-    lightSphereRenderInfo.layerCount = 2;
+    lightSphereRenderInfo.layerCount = 1;
     lightSphereRenderInfo.viewMask = 0b11;
     lightSphereRenderInfo.colorAttachmentCount = static_cast<uint32_t>(lightSphereAttachmentInfos.size());
     lightSphereRenderInfo.pColorAttachments = lightSphereAttachmentInfos.data();
@@ -6070,7 +6070,7 @@ bool VkRenderer::renderGraphics() {
     VkRenderingInfo ssaoRenderInfo{};
     ssaoRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     ssaoRenderInfo.renderArea = renderArea;
-    ssaoRenderInfo.layerCount = 2;
+    ssaoRenderInfo.layerCount = 1;
     ssaoRenderInfo.viewMask = 0b11;
     ssaoRenderInfo.colorAttachmentCount = static_cast<uint32_t>(ssaoAttachmentInfos.size());
     ssaoRenderInfo.pColorAttachments = ssaoAttachmentInfos.data();
@@ -6105,7 +6105,7 @@ bool VkRenderer::renderGraphics() {
     VkRenderingInfo ssaoBlurRenderInfo{};
     ssaoBlurRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     ssaoBlurRenderInfo.renderArea = renderArea;
-    ssaoBlurRenderInfo.layerCount = 2;
+    ssaoBlurRenderInfo.layerCount = 1;
     ssaoBlurRenderInfo.viewMask = 0b11;
     ssaoBlurRenderInfo.colorAttachmentCount = static_cast<uint32_t>(ssaoBlurAttachmentInfos.size());
     ssaoBlurRenderInfo.pColorAttachments = ssaoBlurAttachmentInfos.data();
@@ -6176,7 +6176,7 @@ bool VkRenderer::renderGraphics() {
   VkRenderingInfo compositeRenderInfo{};
   compositeRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
   compositeRenderInfo.renderArea = renderArea;
-  compositeRenderInfo.layerCount = 2;
+  compositeRenderInfo.layerCount = 1;
   compositeRenderInfo.viewMask = 0b00000011;
   compositeRenderInfo.colorAttachmentCount = static_cast<uint32_t>(compositeAttachmentInfos.size());
   compositeRenderInfo.pColorAttachments = compositeAttachmentInfos.data();
@@ -6701,7 +6701,7 @@ bool VkRenderer::copyToXRSwapchain(VkImageView imageView) {
   VkRenderingInfo swapchainCopyRenderInfo{};
   swapchainCopyRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
   swapchainCopyRenderInfo.renderArea = swapchainRenderArea;
-  swapchainCopyRenderInfo.layerCount = 2;
+  swapchainCopyRenderInfo.layerCount = 1;
   swapchainCopyRenderInfo.viewMask = 0b00000011;
   swapchainCopyRenderInfo.colorAttachmentCount = static_cast<uint32_t>(swapchainCopyAttachmentInfos.size());
   swapchainCopyRenderInfo.pColorAttachments = swapchainCopyAttachmentInfos.data();

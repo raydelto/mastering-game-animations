@@ -5,6 +5,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(Main)
 
+# Add MinGW / MSYS2 paths to CMAKE_PREFIX_PATH when building with MinGW on Windows
+if(WIN32 AND MINGW)
+  if(DEFINED ENV{MINGW_PREFIX})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{MINGW_PREFIX}")
+  endif()
+  if(CMAKE_CXX_COMPILER)
+    get_filename_component(_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(_compiler_root "${_compiler_dir}" DIRECTORY)
+    list(APPEND CMAKE_PREFIX_PATH "${_compiler_root}")
+  endif()
+  list(APPEND CMAKE_PREFIX_PATH "C:/msys64/mingw64")
+  add_compile_definitions(WINAPI_PARTITION_SYSTEM=1)
+endif()
+
 # use custom file to find libraries
 if(WIN32)
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")

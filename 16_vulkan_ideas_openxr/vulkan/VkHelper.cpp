@@ -33,7 +33,7 @@
 
 #include <Logger.h>
 
-bool VkHelper::initVulkan(VkRenderData& renderData) {
+bool VkHelper::initVulkan(VkRenderData& renderData, XrInstance xrInstance, XrSystemId systemId) {
   // Base OpenXR init as first step - Instance, SystemID, ReferenceSpace etc.
 
   // if (!mVRHeadset.init()) {
@@ -41,7 +41,7 @@ bool VkHelper::initVulkan(VkRenderData& renderData) {
   // }
 
   // Vulkan device init uses data from OpenXR Session
-  if (!deviceInit(renderData)) {
+  if (!deviceInit(renderData, xrInstance, systemId)) {
     return false;
   }
 
@@ -135,20 +135,33 @@ bool VkHelper::initVulkan(VkRenderData& renderData) {
   return true;
 }
 
-bool VkHelper::deviceInit(VkRenderData& renderData) {
+bool VkHelper::deviceInit(VkRenderData& renderData, XrInstance xrInstance, XrSystemId systemId) {
   /* instance and window - we need at least Vukan 1.3 for dynamic rendering */
   vkb::InstanceBuilder instBuild;
-  auto instRet = instBuild
+  instBuild
   .use_default_debug_messenger()
   .request_validation_layers()
-  .enable_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) // required to use VK_EXT_swapchain_maintenance1
-  .enable_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) // required to use VK_EXT_surface_maintenance1
   .enable_extensions(renderData.rdXRInstanceExtensions)
-  .require_api_version(1, 3, 0)
-  .build();
+  .require_api_version(1, 3, 0);
+
+  /* VK_EXT_surface_maintenance1 (and its dependency VK_KHR_get_surface_capabilities2) are
+     not available on every driver (e.g. some integrated GPUs), so only request them when
+     present instead of failing instance creation outright. */
+  auto sysInfoRet = vkb::SystemInfo::get_system_info();
+  if (sysInfoRet &&
+      sysInfoRet.value().is_extension_available(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) &&
+      sysInfoRet.value().is_extension_available(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) {
+    instBuild.enable_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    instBuild.enable_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+  } else {
+    Logger::log(1, "%s warning: VK_EXT_surface_maintenance1 not available, continuing without it\n", __FUNCTION__);
+  }
+
+  auto instRet = instBuild.build();
 
   if (!instRet) {
-    Logger::log(1, "%s error: could not build vkb instance\n", __FUNCTION__);
+    Logger::log(1, "%s error: could not build vkb instance: %s (VkResult: %i)\n", __FUNCTION__,
+      instRet.error().message().c_str(), instRet.vk_result());
     return false;
   }
   renderData.rdVkbInstance = instRet.value();
@@ -181,9 +194,25 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   vk12features.shaderOutputViewportIndex = VK_TRUE;
   vk12features.shaderOutputLayer = VK_TRUE;
 
+  VkPhysicalDevice xrPhysicalDevice = VK_NULL_HANDLE;
+  if (xrInstance != XR_NULL_HANDLE && systemId != 0) {
+    PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDeviceKHR = nullptr;
+    XrResult xrResult = xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction *)&xrGetVulkanGraphicsDeviceKHR);
+    if (xrResult == XR_SUCCESS && xrGetVulkanGraphicsDeviceKHR != nullptr) {
+      xrResult = xrGetVulkanGraphicsDeviceKHR(xrInstance, systemId, renderData.rdVkbInstance.instance, &xrPhysicalDevice);
+      if (xrResult != XR_SUCCESS) {
+        Logger::log(1, "%s warning: Failed to get Vulkan graphics device from OpenXR (error: %i)\n", __FUNCTION__, xrResult);
+      } else {
+        Logger::log(1, "%s: OpenXR requested physical device %p\n", __FUNCTION__, xrPhysicalDevice);
+      }
+    } else {
+      Logger::log(1, "%s warning: Failed to get proc address of xrGetVulkanGraphicsDeviceKHR\n", __FUNCTION__);
+    }
+  }
+
   // just get the first available device
   vkb::PhysicalDeviceSelector physicalDevSel{renderData.rdVkbInstance};
-  auto physicalDevSelRet = physicalDevSel
+  physicalDevSel
   .set_surface(renderData.rdSurface)
   .set_required_features(vk10features)
   .set_required_features_11(vk11features)
@@ -191,8 +220,25 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   .add_required_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
   .add_required_extension_features(dynamicRenderingFeature)
   .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME) // required for GL_ARB_shader_viewport_layer_array
-  .add_required_extensions(renderData.rdXRDeviceExtensions)
-  .select();
+  .add_required_extensions(renderData.rdXRDeviceExtensions);
+
+  auto physicalDevSelRet = physicalDevSel.select();
+  if (physicalDevSelRet && xrPhysicalDevice != VK_NULL_HANDLE) {
+    auto devicesRet = physicalDevSel.select_devices();
+    if (devicesRet) {
+      bool found = false;
+      for (auto& pd : devicesRet.value()) {
+        if (pd.physical_device == xrPhysicalDevice) {
+          physicalDevSelRet = pd;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        Logger::log(1, "%s warning: OpenXR requested physical device was not found in vk-bootstrap list, falling back to default selector\n", __FUNCTION__);
+      }
+    }
+  }
 
   if (!physicalDevSelRet) {
     Logger::log(1, "%s error: could not get physical devices\n", __FUNCTION__);
