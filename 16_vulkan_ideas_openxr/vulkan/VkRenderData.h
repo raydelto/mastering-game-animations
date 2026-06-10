@@ -660,4 +660,9 @@ struct VkRenderData {
 
   VkDescriptorPool rdDescriptorPool = VK_NULL_HANDLE;
   VkDescriptorPool rdImguiDescriptorPool = VK_NULL_HANDLE;
+
+  // not found on my system, so load it dynamically
+  PFN_vkCmdSetColorBlendEquationEXT rdvkCmdSetColorBlendEquationEXT = nullptr;
+  PFN_vkCmdSetColorBlendEnableEXT rdvkCmdSetColorBlendEnableEXT = nullptr;
+
 };

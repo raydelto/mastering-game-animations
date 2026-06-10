@@ -164,6 +164,15 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
   dynamicRenderingFeature.dynamicRendering = VK_TRUE;
 
+  VkPhysicalDeviceShaderObjectFeaturesEXT deviceShaderFeature{};
+  deviceShaderFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT;
+  deviceShaderFeature.shaderObject = VK_TRUE;
+
+  VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynState3Feature{};
+  dynState3Feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
+  dynState3Feature.extendedDynamicState3ColorBlendEquation = VK_TRUE;
+  dynState3Feature.extendedDynamicState3ColorBlendEnable = VK_TRUE;
+
   // force anisotropy and line width
   VkPhysicalDeviceFeatures vk10features{};
   vk10features.samplerAnisotropy = VK_TRUE;
@@ -189,8 +198,11 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
   .set_required_features_11(vk11features)
   .set_required_features_12(vk12features)
   .add_required_extension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
-  .add_required_extension_features(dynamicRenderingFeature)
+  .add_required_extension(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME) // rquired for dynamic color settings in pipeline
   .add_required_extension(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME) // required for GL_ARB_shader_viewport_layer_array
+  .add_required_extension_features(dynamicRenderingFeature)
+  .add_required_extension_features(deviceShaderFeature)
+  .add_required_extension_features(dynState3Feature)
   .add_required_extensions(renderData.rdXRDeviceExtensions)
   .select();
 
@@ -215,6 +227,10 @@ bool VkHelper::deviceInit(VkRenderData& renderData) {
     return false;
   }
   renderData.rdVkbDevice = devBuilderRet.value();
+
+  // not found in my loader, need to get from library xD
+  renderData.rdvkCmdSetColorBlendEnableEXT = reinterpret_cast<PFN_vkCmdSetColorBlendEnableEXT>(vkGetDeviceProcAddr(renderData.rdVkbDevice.device, "vkCmdSetColorBlendEnableEXT"));
+  renderData.rdvkCmdSetColorBlendEquationEXT = reinterpret_cast<PFN_vkCmdSetColorBlendEquationEXT>(vkGetDeviceProcAddr(renderData.rdVkbDevice.device, "vkCmdSetColorBlendEquationEXT"));
 
   return true;
 }
@@ -3522,7 +3538,7 @@ bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
     renderData.rdAssimpTextureDescriptorLayout,
     renderData.rdAssimpDescriptorLayout };
 
-  std::vector<VkPushConstantRange> pushConstants = { { VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkPushConstants) } };
+  std::vector<VkPushConstantRange> pushConstants = { { VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkPushConstants) } };
 
   if (!PipelineLayout::init(renderData, renderData.rdAssimpPipelineLayout, layouts, pushConstants)) {
     Logger::log(1, "%s error: could not init Assimp pipeline layout\n", __FUNCTION__);
@@ -3756,7 +3772,7 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
     renderData.rdVkbSwapchain.image_format,
   };
 
-  std::vector<VkFormat> colorOnlyAttachmentFormats {
+  std::vector<VkFormat> colorAndDepthAttachmentFormats {
     renderData.rdGBuffer.color.format,
     renderData.rdGBuffer.depth.format,
   };
@@ -4031,7 +4047,7 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
 
   vertexShaderFile = "shader/vr_vis_mask.vert.spv";
   fragmentShaderFile = "shader/vr_vis_mask.frag.spv";
-  if (!SimpleVertexMeshPipeline::init(renderData, colorOnlyAttachmentFormats, renderData.rdLinePipelineLayout,
+  if (!SimpleVertexMeshPipeline::init(renderData, colorAndDepthAttachmentFormats, renderData.rdLinePipelineLayout,
       renderData.rdXRVisMaskMeshPipeline, vertexShaderFile, fragmentShaderFile)) {
     Logger::log(1, "%s error: could not init Visibility Mask Mesh drawing shader pipeline\n", __FUNCTION__);
     return false;
@@ -4059,6 +4075,40 @@ bool VkHelper::createXRPipeline(VkRenderData& renderData, VkFormat format) {
 
 void VkHelper::destroyXRPipeline(VkRenderData& renderData) {
   XRCopyPipeline::cleanup(renderData, renderData.rdXRSwapchainCopyPipeline);
+}
+
+void VkHelper::enableBlending(VkRenderData& renderData, uint32_t attachmentCount) {
+
+  std::vector<VkColorBlendEquationEXT> blendEquations{};
+  for (uint32_t i = 0; i < attachmentCount; ++i) {
+    VkColorBlendEquationEXT colorBlendEquation{};
+    colorBlendEquation.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colorBlendEquation.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendEquation.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendEquation.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendEquation.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendEquation.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    blendEquations.emplace_back(colorBlendEquation);
+  }
+
+  renderData.rdvkCmdSetColorBlendEquationEXT(renderData.rdCommandBuffers.at(renderData.currentFrame), 0, attachmentCount, blendEquations.data());
+
+  std::vector<VkBool32> colorBlendEnable{};
+  colorBlendEnable.resize(attachmentCount, VK_TRUE);
+
+  renderData.rdvkCmdSetColorBlendEnableEXT(renderData.rdCommandBuffers.at(renderData.currentFrame), 0, attachmentCount, colorBlendEnable.data());
+
+  vkCmdSetDepthCompareOp(renderData.rdCommandBuffers.at(renderData.currentFrame), VK_COMPARE_OP_LESS);
+}
+
+void VkHelper::disableBlending(VkRenderData& renderData, uint32_t attachmentCount) {
+  std::vector<VkBool32> colorBlendEnable{};
+  colorBlendEnable.resize(attachmentCount, VK_FALSE);
+
+  renderData.rdvkCmdSetColorBlendEnableEXT(renderData.rdCommandBuffers.at(renderData.currentFrame), 0, attachmentCount, colorBlendEnable.data());
+
+  vkCmdSetDepthCompareOp(renderData.rdCommandBuffers.at(renderData.currentFrame), VK_COMPARE_OP_ALWAYS);
 }
 
 bool VkHelper::createSyncObjects(VkRenderData& renderData) {

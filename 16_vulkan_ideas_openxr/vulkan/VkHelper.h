@@ -32,6 +32,9 @@ class VkHelper {
     static bool createXRPipeline(VkRenderData& renderData, VkFormat format);
     static void destroyXRPipeline(VkRenderData& renderData);
 
+    static void enableBlending(VkRenderData &renderData, uint32_t attachmentCount);
+    static void disableBlending(VkRenderData &renderData, uint32_t attachmentCount);
+
     static bool createImages(VkRenderData& renderData);
     static void cleanupImages(VkRenderData& renderData);
 

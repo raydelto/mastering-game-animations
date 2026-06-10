@@ -10,5 +10,6 @@ class SimpleVertexMeshPipeline {
   public:
     static bool init(VkRenderData &renderData, std::vector<VkFormat> colorAttachmentFormats,
       VkPipelineLayout& pipelineLayout, VkPipeline& pipeline, std::string vertexShaderFilename, std::string fragmentShaderFilename);
+
     static void cleanup(VkRenderData &renderData, VkPipeline &pipeline);
 };

@@ -123,7 +123,13 @@ bool SimpleVertexMeshPipeline::init(VkRenderData& renderData,std::vector<VkForma
   depthStencilInfo.maxDepthBounds = 1.0f;
   depthStencilInfo.stencilTestEnable = VK_FALSE;
 
-  std::vector<VkDynamicState> dynStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+  std::vector<VkDynamicState> dynStates = {
+    VK_DYNAMIC_STATE_VIEWPORT,
+    VK_DYNAMIC_STATE_SCISSOR,
+    VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
+    VK_DYNAMIC_STATE_COLOR_BLEND_ENABLE_EXT,
+    VK_DYNAMIC_STATE_COLOR_BLEND_EQUATION_EXT,
+  };
 
   VkPipelineDynamicStateCreateInfo dynStatesInfo{};
   dynStatesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;

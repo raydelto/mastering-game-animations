@@ -4124,7 +4124,7 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
     mRenderData.rdModelData.pkWorldPosOffset = levelPosOffset;
     mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
     vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpLevelPipelineLayout,
-      VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
 
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
     level->draw(mRenderData);
@@ -4183,10 +4183,10 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
         mRenderData.rdModelData.pkSkinMatOffset = skinMatOffset;
         if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
           vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningSelectionPipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         } else {
           vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningPipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         }
         mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -4234,10 +4234,10 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
           mRenderData.rdModelData.pkSkinMatOffset = skinMatOffset;
           if (mMousePick && mRenderData.rdApplicationMode == appMode::edit) {
             vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningMorphSelectionPipelineLayout,
-              VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
           } else {
             vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSkinningMorphPipelineLayout,
-              VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
           }
           mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -4279,10 +4279,10 @@ void VkRenderer::drawScene(bool shadowMapPass, bool dynamcicShadows, uint32_t dy
         mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
         if (mMousePick) {
           vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSelectionPipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         } else {
           vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpPipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
         }
         mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -4318,7 +4318,7 @@ bool VkRenderer::drawXRControllers(bool shadowMapPass, bool dynamcicShadows, uin
   mRenderData.rdModelData.pkWorldPosOffset = 0;
   mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
   vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdVRControllerPipelineLayout,
-    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   mRHandVRControllerModel->drawXRControllers(mRenderData);
@@ -4327,7 +4327,7 @@ bool VkRenderer::drawXRControllers(bool shadowMapPass, bool dynamcicShadows, uin
   mRenderData.rdModelData.pkWorldPosOffset = 1;
   mRenderData.rdModelData.pShadowMapLayerIndex = dynLight;
   vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdVRControllerPipelineLayout,
-    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
   mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
   mLHandVRControllerModel->drawXRControllers(mRenderData);
@@ -6368,6 +6368,7 @@ bool VkRenderer::renderGraphics() {
   mRenderData.rdLevelGroundNeighborUpdateTimer.start();
   if (mRenderData.rdDrawGroundTriangles) {
     vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshMeshPipeline);
+    VkHelper::enableBlending(mRenderData, 2);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
@@ -6397,10 +6398,10 @@ bool VkRenderer::renderGraphics() {
     mRenderData.rdModelData.pkWorldPosOffset = mWorldPosOffset;
     if (mMousePick) {
       vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpSelectionPipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
     } else {
       vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdAssimpPipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
     }
     mRenderData.rdUploadToUBOTime += mRenderData.rdUploadToUBOTimer.stop();
 
@@ -6733,6 +6734,7 @@ void VkRenderer::drawXRVisibilityMask() {
   VkDeviceSize offset = 0;
 
   vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdXRVisMaskMeshPipeline);
+  VkHelper::disableBlending(mRenderData, 2);
 
   vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
     mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
@@ -6740,7 +6742,7 @@ void VkRenderer::drawXRVisibilityMask() {
   for (uint32_t layer = 0; layer < 2; layer++) {
     mRenderData.rdModelData.pkVirtMaskLayer = layer;
     vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdLinePipelineLayout,
-    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
 
     vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mVisibilityMaskVertices.at(layer).buffer, &offset);
     vkCmdBindIndexBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mVisibilityMaskIndices.at(layer).buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -6870,6 +6872,11 @@ bool VkRenderer::finishDraw() {
 }
 
 void VkRenderer::cleanup() {
+  VkResult result = vkDeviceWaitIdle(mRenderData.rdVkbDevice.device);
+  if (result != VK_SUCCESS) {
+    Logger::log(1, "%s fatal error: could not wait for device idle (error: %i)\n", __FUNCTION__, result);
+  }
+
   for (int i = 0; i < 2; ++i) {
     IndexBuffer::cleanup(mRenderData, mVisibilityMaskIndices.at(i));
     VertexBuffer::cleanup(mRenderData, mVisibilityMaskVertices.at(i));
