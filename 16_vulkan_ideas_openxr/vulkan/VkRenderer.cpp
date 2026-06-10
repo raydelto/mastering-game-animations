@@ -26,7 +26,7 @@
 #include <ComputePipeline.h>
 #include <LinePipeline.h>
 #include <GridLinePipeline.h>
-#include <GroundMeshPipeline.h>
+#include <SimpleVertexMeshPipeline.h>
 #include <SkyboxPipeline.h>
 #include <CompositePipeline.h>
 #include <SSAOPipeline.h>
@@ -1745,6 +1745,8 @@ void VkRenderer::generateLevelWireframe() {
   float g = 0.0f;
   float b = 0.0f;
 
+  const float wireframeOffset = 0.005f;
+
   for (const auto& level : mModelInstCamData.micLevels) {
     if (level->getTriangleCount() == 0) {
       continue;
@@ -1776,24 +1778,24 @@ void VkRenderer::generateLevelWireframe() {
         glm::vec3 normal2 = glm::normalize(normalMat * glm::vec3(mesh.vertices.at(mesh.indices.at(i + 2)).normal));
 
         // move vertices in direction of normal 
-        vert.position = point0 + normal0 * 0.005f;
+        vert.position = point0 + normal0 * wireframeOffset;
         mLevelWireframeMesh->vertices.emplace_back(vert);
         mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
-        vert.position = point1 + normal1 * 0.005f;
-        mLevelWireframeMesh->vertices.emplace_back(vert);
-        mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
-
-        vert.position = point1 + normal1 * 0.005f;
-        mLevelWireframeMesh->vertices.emplace_back(vert);
-        mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
-        vert.position = point2 + normal2 * 0.005f;
+        vert.position = point1 + normal1 * wireframeOffset;
         mLevelWireframeMesh->vertices.emplace_back(vert);
         mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
 
-        vert.position = point2 + normal2 * 0.005f;
+        vert.position = point1 + normal1 * wireframeOffset;
         mLevelWireframeMesh->vertices.emplace_back(vert);
         mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
-        vert.position = point0 + normal0 * 0.005f;
+        vert.position = point2 + normal2 * wireframeOffset;
+        mLevelWireframeMesh->vertices.emplace_back(vert);
+        mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
+
+        vert.position = point2 + normal2 * wireframeOffset;
+        mLevelWireframeMesh->vertices.emplace_back(vert);
+        mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
+        vert.position = point0 + normal0 * wireframeOffset;
         mLevelWireframeMesh->vertices.emplace_back(vert);
         mRenderData.rdLevelWireframeMiniMapMesh->vertices.emplace_back(vert);
 
@@ -5862,21 +5864,85 @@ bool VkRenderer::renderGraphics() {
 
   VkRect2D renderArea = VkRect2D{VkOffset2D{}, VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight}};
 
+  // render XR visibility mask
+  VkRenderingAttachmentInfo visColorAttachmentInfo {};
+  visColorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  visColorAttachmentInfo.imageView = mRenderData.rdGBuffer.color.imageView;
+  visColorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  visColorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  visColorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  visColorAttachmentInfo.clearValue = colorClearValue;
+
+  VkRenderingAttachmentInfo visDepthImageAttachmentInfo {};
+  visDepthImageAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  visDepthImageAttachmentInfo.imageView = mRenderData.rdGBuffer.depth.imageView;
+  visDepthImageAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  visDepthImageAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  visDepthImageAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  visDepthImageAttachmentInfo.clearValue = depthImageClearValue;
+
+  VkRenderingAttachmentInfo visDepthAttachmentInfo {};
+  visDepthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  visDepthAttachmentInfo.imageView = mRenderData.rdDepthBufferData.imageView;
+  visDepthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+  visDepthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  visDepthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  visDepthAttachmentInfo.clearValue = depthClearValue;
+
+  std::vector<VkRenderingAttachmentInfo> visMaskttachmentInfos {
+    visColorAttachmentInfo,
+    visDepthImageAttachmentInfo,
+  };
+
+  VkRenderingInfo visMaskRenderInfo{};
+  visMaskRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  visMaskRenderInfo.renderArea = renderArea;
+  visMaskRenderInfo.layerCount = 2;
+  visMaskRenderInfo.viewMask = 0b00000011;
+  visMaskRenderInfo.colorAttachmentCount = static_cast<uint32_t>(visMaskttachmentInfos.size());
+  visMaskRenderInfo.pColorAttachments = visMaskttachmentInfos.data();
+  visMaskRenderInfo.pDepthAttachment = &visDepthAttachmentInfo;
+
+  VkViewport viewport{};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = static_cast<float>(mRenderData.rdXRWidth);
+  viewport.height = static_cast<float>(mRenderData.rdXRHeight);
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+
+  VkRect2D scissor{};
+  scissor.offset = { 0, 0 };
+  scissor.extent = VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight};
+
+  vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
+  vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
+
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
+  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.depth.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
+
+  vkCmdBeginRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), &visMaskRenderInfo);
+
+  drawXRVisibilityMask();
+
+  vkCmdEndRendering(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame));
+
+  // scene drawing
   VkRenderingAttachmentInfo colorAttachmentInfo {};
   colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   colorAttachmentInfo.imageView = mRenderData.rdGBuffer.color.imageView;
   colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
   colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  colorAttachmentInfo.clearValue = colorClearValue;
+  //colorAttachmentInfo.clearValue = colorClearValue;
 
   VkRenderingAttachmentInfo depthImageAttachmentInfo {};
   depthImageAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   depthImageAttachmentInfo.imageView = mRenderData.rdGBuffer.depth.imageView;
   depthImageAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  depthImageAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depthImageAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
   depthImageAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depthImageAttachmentInfo.clearValue = depthImageClearValue;
+  //depthImageAttachmentInfo.clearValue = depthImageClearValue;
 
   VkRenderingAttachmentInfo normalAttachmentInfo {};
   normalAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -5898,9 +5964,9 @@ bool VkRenderer::renderGraphics() {
   depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   depthAttachmentInfo.imageView = mRenderData.rdDepthBufferData.imageView;
   depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
   depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  depthAttachmentInfo.clearValue = depthClearValue;
+  //depthAttachmentInfo.clearValue = depthClearValue;
 
   std::vector<VkRenderingAttachmentInfo> attachmentInfos {
     colorAttachmentInfo,
@@ -5918,23 +5984,9 @@ bool VkRenderer::renderGraphics() {
   renderInfo.pColorAttachments = attachmentInfos.data();
   renderInfo.pDepthAttachment = &depthAttachmentInfo;
 
-  VkViewport viewport{};
-  viewport.x = 0.0f;
-  viewport.y = 0.0f;
-  viewport.width = static_cast<float>(mRenderData.rdXRWidth);
-  viewport.height = static_cast<float>(mRenderData.rdXRHeight);
-  viewport.minDepth = 0.0f;
-  viewport.maxDepth = 1.0f;
-
-  VkRect2D scissor{};
-  scissor.offset = { 0, 0 };
-  scissor.extent = VkExtent2D{mRenderData.rdXRWidth, mRenderData.rdXRHeight};
-
   vkCmdSetViewport(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &viewport);
   vkCmdSetScissor(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), 0, 1, &scissor);
 
-  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.color.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
-  VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.depth.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
   VkHelper::transitionImageLayout(mRenderData, mRenderData.rdGBuffer.normal.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
   VkHelper::transitionImageLayout(mRenderData, mRenderData.rdSelectionImageData.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 2);
 
@@ -6315,7 +6367,7 @@ bool VkRenderer::renderGraphics() {
 
   mRenderData.rdLevelGroundNeighborUpdateTimer.start();
   if (mRenderData.rdDrawGroundTriangles) {
-    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshPipeline);
+    vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdGroundMeshMeshPipeline);
 
     vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
       mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
@@ -6663,8 +6715,41 @@ bool VkRenderer::moveCamera(glm::vec3 amount) {
   return true;
 }
 
+void VkRenderer::setXRVisibilityMask(XRVisibilityMask visibilityMask) {
+  for (int i = 0; i < 2; ++i) {
+    VertexBuffer::init(mRenderData, mVisibilityMaskVertices.at(i), visibilityMask.vertices.at(i).vertices.size() * sizeof(VkSimpleVertex));
+    VertexBuffer::uploadData(mRenderData, mVisibilityMaskVertices.at(i), visibilityMask.vertices.at(i).vertices);
+
+    IndexBuffer::init(mRenderData, mVisibilityMaskIndices.at(i), visibilityMask.indices.at(i).size() * sizeof(uint32_t));
+    IndexBuffer::uploadData(mRenderData, mVisibilityMaskIndices.at(i), visibilityMask.indices.at(i));
+
+    mNumVisMaskTriangles.at(i) = visibilityMask.indices.at(i).size();
+
+    Logger::log(1, "%s: visibility mask %i will draw from %i triangles\n", __FUNCTION__, i, mNumVisMaskTriangles);
+  }
+}
+
+void VkRenderer::drawXRVisibilityMask() {
+  VkDeviceSize offset = 0;
+
+  vkCmdBindPipeline(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS, mRenderData.rdXRVisMaskMeshPipeline);
+
+  vkCmdBindDescriptorSets(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), VK_PIPELINE_BIND_POINT_GRAPHICS,
+    mRenderData.rdLinePipelineLayout, 0, 1, &mRenderData.rdGroundMeshDescriptorSets.at(mRenderData.currentFrame), 0, nullptr);
+
+  for (uint32_t layer = 0; layer < 2; layer++) {
+    mRenderData.rdModelData.pkVirtMaskLayer = layer;
+    vkCmdPushConstants(mRenderData.rdCommandBuffers.at(mRenderData.currentFrame), mRenderData.rdLinePipelineLayout,
+    VK_SHADER_STAGE_VERTEX_BIT, 0, static_cast<uint32_t>(sizeof(VkPushConstants)), &mRenderData.rdModelData);
+
+    vkCmdBindVertexBuffers(mRenderData.rdCommandBuffers[mRenderData.currentFrame], 0, 1, &mVisibilityMaskVertices.at(layer).buffer, &offset);
+    vkCmdBindIndexBuffer(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mVisibilityMaskIndices.at(layer).buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(mRenderData.rdCommandBuffers[mRenderData.currentFrame], mNumVisMaskTriangles.at(layer), 1, 0, 0, 0);
+  }
+}
+
 bool VkRenderer::copyToXRSwapchain(VkImageView imageView) {
-  // Vulkan rendering here
   // copy to Swapchain
   VkClearValue colorClearValue;
   colorClearValue.color = { { 0.25f, 0.25f, 0.25f, 1.0f } };
@@ -6785,6 +6870,11 @@ bool VkRenderer::finishDraw() {
 }
 
 void VkRenderer::cleanup() {
+  for (int i = 0; i < 2; ++i) {
+    IndexBuffer::cleanup(mRenderData, mVisibilityMaskIndices.at(i));
+    VertexBuffer::cleanup(mRenderData, mVisibilityMaskVertices.at(i));
+  }
+
   // delete models and levels to destroy Vulkan objects
   for (const auto& model : mModelInstCamData.micModelList) {
     model->cleanup(mRenderData);

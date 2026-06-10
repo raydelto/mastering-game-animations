@@ -224,6 +224,7 @@ struct VkPushConstants {
   uint32_t pkWorldPosOffset;
   uint32_t pkSkinMatOffset;
   int32_t pShadowMapLayerIndex;
+  uint32_t pkVirtMaskLayer;
 };
 
 struct VkComputePushConstants {
@@ -232,10 +233,15 @@ struct VkComputePushConstants {
 };
 
 // OpenXR
-struct XRProjectionViewMatrices{
+struct XRProjectionViewMatrices {
   std::array<glm::mat4, 2> projectionMat{};
   std::array<glm::mat4, 2> viewOrientationMat{};
   std::array<glm::mat4, 2> viewTransposeMat{};
+};
+
+struct XRVisibilityMask {
+  std::array<VkSimpleMesh, 2> vertices{};
+  std::array<std::vector<uint32_t>, 2> indices{};
 };
 
 struct VkRenderData {
@@ -560,7 +566,7 @@ struct VkRenderData {
   VkPipeline rdLinePipeline = VK_NULL_HANDLE;
   VkPipeline rdSpherePipeline = VK_NULL_HANDLE;
   VkPipeline rdGridLinePipeline = VK_NULL_HANDLE;
-  VkPipeline rdGroundMeshPipeline = VK_NULL_HANDLE;
+  VkPipeline rdGroundMeshMeshPipeline = VK_NULL_HANDLE;
   VkPipeline rdSkyboxPipeline = VK_NULL_HANDLE;
   VkPipeline rdCompositePipeline = VK_NULL_HANDLE;
   VkPipeline rdSSAOPipeline = VK_NULL_HANDLE;
@@ -579,6 +585,7 @@ struct VkRenderData {
   VkPipeline rdLightSphereShadowPipeline = VK_NULL_HANDLE;
   VkPipeline rdSwapchainCopyPipeline = VK_NULL_HANDLE;
   VkPipeline rdXRSwapchainCopyPipeline = VK_NULL_HANDLE;
+  VkPipeline rdXRVisMaskMeshPipeline = VK_NULL_HANDLE;
 
   VkPipeline rdVRControllerPipeline = VK_NULL_HANDLE;
   VkPipeline rdShadowMapVRControllerPipeline = VK_NULL_HANDLE;

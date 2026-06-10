@@ -17,7 +17,7 @@
 #include <ComputePipeline.h>
 #include <LinePipeline.h>
 #include <GridLinePipeline.h>
-#include <GroundMeshPipeline.h>
+#include <SimpleVertexMeshPipeline.h>
 #include <SkyboxPipeline.h>
 #include <CompositePipeline.h>
 #include <SSAOPipeline.h>
@@ -3636,7 +3636,7 @@ bool VkHelper::createPipelineLayouts(VkRenderData& renderData) {
   std::vector<VkDescriptorSetLayout> lineLayouts = {
     renderData.rdLineDescriptorLayout };
 
-  if (!PipelineLayout::init(renderData, renderData.rdLinePipelineLayout, lineLayouts)) {
+  if (!PipelineLayout::init(renderData, renderData.rdLinePipelineLayout, lineLayouts, pushConstants)) {
     Logger::log(1, "%s error: could not init Assimp line drawing pipeline layout\n", __FUNCTION__);
     return false;
   }
@@ -3756,6 +3756,11 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
     renderData.rdVkbSwapchain.image_format,
   };
 
+  std::vector<VkFormat> colorOnlyAttachmentFormats {
+    renderData.rdGBuffer.color.format,
+    renderData.rdGBuffer.depth.format,
+  };
+
   std::string vertexShaderFile = "shader/assimp.vert.spv";
   std::string fragmentShaderFile = "shader/assimp.frag.spv";
   if (!ModelLevelPipeline::init(renderData, assimpAttachmentFormats, renderData.rdAssimpPipelineLayout,
@@ -3815,8 +3820,8 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
 
   vertexShaderFile = "shader/assimp_groundmesh.vert.spv";
   fragmentShaderFile = "shader/assimp_groundmesh.frag.spv";
-  if (!GroundMeshPipeline::init(renderData, compositeAttachmentFormats, renderData.rdLinePipelineLayout,
-      renderData.rdGroundMeshPipeline,
+  if (!SimpleVertexMeshPipeline::init(renderData, compositeAttachmentFormats, renderData.rdLinePipelineLayout,
+      renderData.rdGroundMeshMeshPipeline,
       vertexShaderFile, fragmentShaderFile)) {
     Logger::log(1, "%s error: could not init Assimp Ground Mesh drawing shader pipeline\n", __FUNCTION__);
     return false;
@@ -4023,6 +4028,15 @@ bool VkHelper::createPipelines(VkRenderData& renderData) {
     Logger::log(1, "%s error: could not init VR Controller dynamic shadow map shader pipeline\n", __FUNCTION__);
     return false;
   }
+
+  vertexShaderFile = "shader/vr_vis_mask.vert.spv";
+  fragmentShaderFile = "shader/vr_vis_mask.frag.spv";
+  if (!SimpleVertexMeshPipeline::init(renderData, colorOnlyAttachmentFormats, renderData.rdLinePipelineLayout,
+      renderData.rdXRVisMaskMeshPipeline, vertexShaderFile, fragmentShaderFile)) {
+    Logger::log(1, "%s error: could not init Visibility Mask Mesh drawing shader pipeline\n", __FUNCTION__);
+    return false;
+  }
+
   return true;
 }
 
@@ -4467,15 +4481,24 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
   srcLayoutTransferBarrier.srcAccessMask = 0;
   srcLayoutTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
+  VkOffset3D blitSizeSrc{};
+  blitSizeSrc.x = renderData.rdXRWidth;
+  blitSizeSrc.y = renderData.rdXRHeight;
+  blitSizeSrc.z = 1;
+
+  VkOffset3D blitSizeDest{};
+  blitSizeDest.x = renderData.rdHalfWidth;
+  blitSizeDest.y = renderData.rdHeight;
+  blitSizeDest.z = 1;
+
   // copy selection image to local image
-  VkImageCopy imageCopyRegion{};
+  VkImageBlit imageCopyRegion{};
   imageCopyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   imageCopyRegion.srcSubresource.layerCount = 1;
+  imageCopyRegion.srcOffsets[1] = blitSizeSrc;
   imageCopyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   imageCopyRegion.dstSubresource.layerCount = 1;
-  imageCopyRegion.extent.width = renderData.rdHalfWidth;
-  imageCopyRegion.extent.height = renderData.rdHeight;
-  imageCopyRegion.extent.depth = 1;
+  imageCopyRegion.dstOffsets[1] = blitSizeDest;
 
   // transition destination (local) image to general layout to allow mapping
   VkImageMemoryBarrier destLayoutTransferBarrier{};
@@ -4501,8 +4524,8 @@ float VkHelper::getPixelValueFromPos(VkRenderData& renderData, VkImage srcImage,
     0, 0, nullptr, 0, nullptr, 1, &layoutTransferBarrier);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
     0, 0, nullptr, 0, nullptr, 1, &srcLayoutTransferBarrier);
-  vkCmdCopyImage(readbackCommandBuffer, srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    readbackImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
+  vkCmdBlitImage(readbackCommandBuffer, srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    readbackImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion, VK_FILTER_NEAREST);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
     0, 0, nullptr, 0, nullptr, 1, &destLayoutTransferBarrier);
   vkCmdPipelineBarrier(readbackCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -5158,7 +5181,8 @@ void VkHelper::cleanup(VkRenderData& renderData) {
   LinePipeline::cleanup(renderData, renderData.rdLinePipeline);
   LinePipeline::cleanup(renderData, renderData.rdSpherePipeline);
   GridLinePipeline::cleanup(renderData, renderData.rdGridLinePipeline);
-  GroundMeshPipeline::cleanup(renderData, renderData.rdGroundMeshPipeline);
+  SimpleVertexMeshPipeline::cleanup(renderData, renderData.rdGroundMeshMeshPipeline);
+  SimpleVertexMeshPipeline::cleanup(renderData, renderData.rdXRVisMaskMeshPipeline);
   SkyboxPipeline::cleanup(renderData, renderData.rdSkyboxPipeline);
   SSAOPipeline::cleanup(renderData, renderData.rdSSAOPipeline);
   SSAOPipeline::cleanup(renderData, renderData.rdSSAOBlurPipeline);

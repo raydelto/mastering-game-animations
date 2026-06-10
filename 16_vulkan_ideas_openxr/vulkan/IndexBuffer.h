@@ -11,6 +11,8 @@ class IndexBuffer {
       size_t bufferSize);
     static bool uploadData(VkRenderData &renderData, VkIndexBufferData &bufferData,
       VkMesh vertexData);
+    static bool uploadData(VkRenderData &renderData, VkIndexBufferData &bufferData,
+      std::vector<uint32_t> indexData);
 
     static void cleanup(VkRenderData &renderData, VkIndexBufferData &bufferData);
 };

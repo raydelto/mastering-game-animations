@@ -72,6 +72,10 @@ bool VRHeadset::init(GLFWwindow* window, ModelInstanceCamCallbacks callbacks) {
     return false;
   }
 
+  if (!getVisibilityMask()) {
+    return false;
+  }
+
   if (!createXRActionPoses()) {
     return false;
   }
@@ -380,6 +384,7 @@ bool VRHeadset::createXRInstance() {
   Logger::log(1, "%s: Trying to activate extensions\n", __FUNCTION__);
   mInstanceExtensions.push_back(XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
   mInstanceExtensions.push_back(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);
+  mInstanceExtensions.push_back(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME);
 
   for (auto &requestedInstanceExtension : mInstanceExtensions) {
     bool found = false;
@@ -554,6 +559,60 @@ bool VRHeadset::getEnvBlendModes() {
   return true;
 }
 
+bool VRHeadset::getVisibilityMask() {
+  PFN_xrGetVisibilityMaskKHR xrGetVisibilityMaskKHR = nullptr;
+  XrResult result = xrGetInstanceProcAddr(mXRInstance, "xrGetVisibilityMaskKHR", (PFN_xrVoidFunction *)&xrGetVisibilityMaskKHR);
+  if (result != XR_SUCCESS) {
+    Logger::log(1, "%s error: Failed to get instance address of xrGetVisibilityMaskKHR (error code: %i)\n", __FUNCTION__, result);
+    return false;
+  }
+
+  XrVisibilityMaskTypeKHR visMaskType = XrVisibilityMaskTypeKHR::XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR;
+  XrVisibilityMaskKHR visMask{};
+  visMask.type = XR_TYPE_VISIBILITY_MASK_KHR;
+
+  XRVisibilityMask visibilityMask{};
+
+  for (uint32_t i = 0; i < mViewConfigurationViews.size(); ++i) {
+    result = xrGetVisibilityMaskKHR(mSession, mViewConfiguration, i, visMaskType, &visMask);
+    if (result != XR_SUCCESS) {
+      Logger::log(1, "%s error: Failed to get visibility mask (error code: %i)\n", __FUNCTION__, result);
+      return false;
+    }
+
+    Logger::log(1, "%s: visibility mask for eye %i has %i vertices and %i indices\n", __FUNCTION__, i, visMask.vertexCountOutput, visMask.indexCountOutput);
+
+    std::vector<XrVector2f> vertices{};
+    vertices.resize(visMask.vertexCountOutput);
+    visMask.vertexCapacityInput = static_cast<uint32_t>(vertices.size());
+    visMask.vertices = vertices.data();
+
+    std::vector<uint32_t> indices{};
+    indices.resize(visMask.indexCountOutput);
+    visMask.indexCapacityInput = static_cast<uint32_t>(indices.size());
+    visMask.indices = indices.data();
+
+    result = xrGetVisibilityMaskKHR(mSession, mViewConfiguration, i, visMaskType, &visMask);
+    if (result != XR_SUCCESS) {
+      Logger::log(1, "%s error: Failed to get visibility mask (error code: %i)\n", __FUNCTION__, result);
+      return false;
+    }
+
+    for (int j = 0; j < visMask.indexCountOutput; ++j) {
+      visibilityMask.indices.at(i).push_back(indices[j]);
+    }
+
+    for (int j = 0; j < visMask.vertexCountOutput; ++j) {
+      VkSimpleVertex vertex({ vertices[j].x, vertices[j].y, -1.0f}, {0.0f, 0.0f, 0.0f});
+      visibilityMask.vertices.at(i).vertices.push_back(vertex);
+    }
+  }
+
+  mRenderer->setXRVisibilityMask(visibilityMask);
+
+  return true;
+}
+
 bool VRHeadset::getVulkanGraphicsRequirements() {
   PFN_xrGetVulkanGraphicsRequirementsKHR xrGetVulkanGraphicsRequirementsKHR = nullptr;
   XrResult result = xrGetInstanceProcAddr(mXRInstance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction *)&xrGetVulkanGraphicsRequirementsKHR);
@@ -656,7 +715,7 @@ bool VRHeadset::createXRDebugMessenger() {
     return false;
   }
 
-  Logger::log(1, "%s: Debug utils manager created\n", __FUNCTION__);
+  Logger::log(1, "%s: Debug utils manager created (%p)\n", __FUNCTION__, mDebugMessenger);
   return true;
 }
 
@@ -1272,9 +1331,13 @@ void VRHeadset::destroyXRDebugMessenger() {
     Logger::log(1, "%s error: Failed to get instance address of xrDestroyDebugUtilsMessengerEXT (error code: %i)\n", __FUNCTION__, result);
   }
 
-  result = xrDestroyDebugUtilsMessengerEXT(mDebugMessenger);
-  if (result != XR_SUCCESS) {
-    Logger::log(1, "%s error: Failed to destroy debug messenger (error code: %i)\n", __FUNCTION__, result);
+  if (mDebugMessenger != XR_NULL_HANDLE) {
+    result = xrDestroyDebugUtilsMessengerEXT(mDebugMessenger);
+    if (result != XR_SUCCESS) {
+      Logger::log(1, "%s error: Failed to destroy debug messenger (error code: %i)\n", __FUNCTION__, result);
+    }
+    mDebugMessenger = XR_NULL_HANDLE;
+    Logger::log(1, "%s: Debug messenger destroyed\n", __FUNCTION__);
   }
 }
 

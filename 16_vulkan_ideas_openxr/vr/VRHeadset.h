@@ -66,6 +66,7 @@ class VRHeadset {
     bool getSystemID();
     bool getViewConfigViews();
     bool getEnvBlendModes();
+    bool getVisibilityMask();
     bool getVulkanGraphicsRequirements();
     bool getVKDeviceExtensions();
     bool getVKInstanceExtension();

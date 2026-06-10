@@ -92,6 +92,8 @@ class VkRenderer {
     bool updateXRControllerPositions(std::array<glm::mat4, 2> &transformMatrix);
     bool drawXRControllers(bool shadowMapPass = false, bool dynamicsShadows = false, uint32_t dynLight = 0);
     bool moveCamera(glm::vec3 amount);
+    void setXRVisibilityMask(XRVisibilityMask visibilityMask);
+    void drawXRVisibilityMask();
 
     void handleKeyEvents(int key, int scancode, int action, int mods);
     void handleMouseButtonEvents(int button, int action, int mods);
@@ -342,7 +344,12 @@ class VkRenderer {
 
     DynamicLightDebugModel mDynLightModel{};
 
+    // OpenXR
     std::vector<glm::mat4> mVRHandWorldPosMatrices{};
     std::shared_ptr<AssimpModel> mRHandVRControllerModel;
     std::shared_ptr<AssimpModel> mLHandVRControllerModel;
+
+    std::array<VkIndexBufferData, 2> mVisibilityMaskIndices{};
+    std::array<VkVertexBufferData, 2> mVisibilityMaskVertices{};
+    std::array<uint32_t, 2> mNumVisMaskTriangles{};
 };
