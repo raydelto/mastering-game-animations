@@ -377,7 +377,7 @@ void VkRenderer::setPhysicalDevice(VkPhysicalDevice physDevice) {
   mRenderData.rdVkbPhysicalDevice.physical_device = physDevice;
 }
 
-void VkRenderer::setRendererMICCallbacks(ModelInstanceCamCallbacks callbacks) {
+void VkRenderer::setRendererMICCallbacks(ModelInstanceCamCallbacks &callbacks) {
   mModelInstCamCallbacks = callbacks;
 }
 

@@ -68,7 +68,7 @@ class VkRenderer {
     void destroyXRPipeline();
 
     void setPhysicalDevice(VkPhysicalDevice physDevice);
-    void setRendererMICCallbacks(ModelInstanceCamCallbacks callbacks);
+    void setRendererMICCallbacks(ModelInstanceCamCallbacks &callbacks);
 
     std::pair<uint32_t, uint32_t> getQueueFamilyAndIndex();
     std::pair<float, float> getNearAndFarPlane();

@@ -567,13 +567,13 @@ bool VRHeadset::getVisibilityMask() {
     return false;
   }
 
-  XrVisibilityMaskTypeKHR visMaskType = XrVisibilityMaskTypeKHR::XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR;
-  XrVisibilityMaskKHR visMask{};
-  visMask.type = XR_TYPE_VISIBILITY_MASK_KHR;
-
   XRVisibilityMask visibilityMask{};
 
   for (uint32_t i = 0; i < mViewConfigurationViews.size(); ++i) {
+    XrVisibilityMaskTypeKHR visMaskType = XrVisibilityMaskTypeKHR::XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR;
+    XrVisibilityMaskKHR visMask{};
+    visMask.type = XR_TYPE_VISIBILITY_MASK_KHR;
+
     result = xrGetVisibilityMaskKHR(mSession, mViewConfiguration, i, visMaskType, &visMask);
     if (result != XR_SUCCESS) {
       Logger::log(1, "%s error: Failed to get visibility mask (error code: %i)\n", __FUNCTION__, result);
@@ -584,12 +584,12 @@ bool VRHeadset::getVisibilityMask() {
 
     std::vector<XrVector2f> vertices{};
     vertices.resize(visMask.vertexCountOutput);
-    visMask.vertexCapacityInput = static_cast<uint32_t>(vertices.size());
+    visMask.vertexCapacityInput = static_cast<uint32_t>(visMask.vertexCountOutput);
     visMask.vertices = vertices.data();
 
     std::vector<uint32_t> indices{};
     indices.resize(visMask.indexCountOutput);
-    visMask.indexCapacityInput = static_cast<uint32_t>(indices.size());
+    visMask.indexCapacityInput = static_cast<uint32_t>(visMask.indexCountOutput);
     visMask.indices = indices.data();
 
     result = xrGetVisibilityMaskKHR(mSession, mViewConfiguration, i, visMaskType, &visMask);
@@ -598,14 +598,14 @@ bool VRHeadset::getVisibilityMask() {
       return false;
     }
 
-    for (int j = 0; j < visMask.indexCountOutput; ++j) {
-      visibilityMask.indices.at(i).push_back(indices[j]);
-    }
-
+    VkSimpleMesh mesh{};
     for (int j = 0; j < visMask.vertexCountOutput; ++j) {
       VkSimpleVertex vertex({ vertices[j].x, vertices[j].y, -1.0f}, {0.0f, 0.0f, 0.0f});
-      visibilityMask.vertices.at(i).vertices.push_back(vertex);
+      mesh.vertices.push_back(vertex);
     }
+
+    visibilityMask.vertices.at(i) = mesh;
+    visibilityMask.indices.at(i) = indices;
   }
 
   mRenderer->setXRVisibilityMask(visibilityMask);
